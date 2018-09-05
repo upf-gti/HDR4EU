@@ -1,0 +1,227 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+
+<title>exr loader</title>
+<link rel="stylesheet" href="css/bootstrap.min.css">
+	<style type='text/css'>
+		html, body { width: 100%; height: 100%; margin: 0; padding: 0 }
+	</style>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+	<script type="text/javascript" src="js/gl-matrix-min.js"></script>
+	<script type="text/javascript" src="js/litegl-mod.js"></script>
+  <script type="text/javascript" src="js/litescene.js"></script>
+  <script type="text/javascript" src="js/dat.gui.min.js"></script>
+	<script type="text/javascript" src="js/tinyexr.js"></script>
+	<script type="text/javascript" src="js/rendeer.js"></script>
+	<script type="text/javascript" src="js/utils.js"></script>
+	<script type="text/javascript" src="js/parse.js"></script>
+		<script type="text/javascript" src="data/data.js"></script>
+	<script type="text/javascript">
+
+        function init()
+        {
+            //create a scene
+            scene = new RD.Scene();
+
+            //create the rendering context
+            var context = GL.create({width: window.innerWidth, height:window.innerHeight});
+
+            renderer = new RD.Renderer(context, {
+                shaders_file: "data/shaders.glsl",
+                autoload_assets: true
+            });
+
+            document.body.appendChild(renderer.canvas); //attach
+
+						document.querySelector(".container").onmouseleave = function(e){ e.target.style.opacity = 0.2 }
+						document.querySelector(".container").onmouseenter = function(e){ e.target.style.opacity = 1.0 }
+
+						document.body.ondragover = function(){ return false;}
+						document.body.ondragend = function(){ return false;}
+						document.body.ondrop = function( e )
+						{
+							e.preventDefault();
+                            document.querySelector("#loading").style.display = "block";
+
+							var file = e.dataTransfer.files[0],
+								name = file.name;
+
+								//prepare reader
+								var reader = new FileReader();
+								reader.onload = function (event) {
+									//console.log(event.target);
+									var data = event.target.result;
+									load( data );
+								};
+
+								//read data
+								reader.readAsArrayBuffer(file);
+								return false;
+						}
+
+            //create camera
+            camera = new RD.Camera();
+            camera.perspective( 45, gl.canvas.width / gl.canvas.height, 1, 10000 );
+           	camera.lookAt( [0,0,750],[0,0,0],[0,1,0] );
+
+            //create a cube in the scene
+            box = new RD.SceneNode();
+            box.position = [0,0,0];
+            box.color = [1,1,1,1];
+            box.mesh = "plane";
+            box.scale([100,100,100]);
+            box.flags.two_sided = true;
+            box.flags.visible = false;
+						scene.root.addChild(box);
+
+						renderer._uniforms.exposure = 5.5;
+						renderer._uniforms.brightMax = 18.0;
+
+						var params_gui = {
+										exposure: renderer._uniforms.exposure,
+						};
+
+						var gui = new dat.GUI();
+						gui.add( params_gui, 'exposure', 0.1, 20 );
+						gui.open();
+
+            //global settings
+            var bg_color = vec4.fromValues(0.2,0.3,0.4,1);
+
+            //main render loop
+            var last = now = getTime();
+
+            function ondraw() {
+
+								// get gui params_gui
+								renderer._uniforms.exposure = params_gui.exposure;
+
+                last = now;
+                now = getTime();
+                var dt = (now - last) * 0.001;
+                renderer.clear(bg_color);
+
+                renderer.render(scene, camera);
+            }
+
+						renderer.context.ondraw = ondraw;
+						renderer.context.onupdate = function(dt){
+							scene.update(dt);
+						}
+						renderer.context.animate();
+
+            //input
+            renderer.context.captureMouse(true);
+            renderer.context.onmousemove = function(e)
+            {
+                if(e.dragging){
+									camera.orbit(-e.deltax * 0.01, RD.UP);
+                  camera.orbit(-e.deltay * 0.01, camera._right);
+								}
+            }
+						renderer.context.onmousewheel = function(e)
+		        {
+		            if(!e.wheel)
+		                return;
+		            camera.position = vec3.scale( camera.position, camera.position, e.wheel < 0 ? 1.05 : 0.95 );
+		        }
+        }
+
+				function load( arraybuffer )
+        {
+            var texData = parseEXRImage(arraybuffer);
+           console.log(texData);
+
+            var width = texData.width;
+            var height = texData.height;
+
+						// tiny exr library adds a channel extra we want to remove
+						var fakeNchannels = texData.data.length / (width * height);
+						var pixelData, pixelFormat;
+
+						// remove extra channel
+						var oldSize = texData.data.length,
+								newSize = oldSize * (3/4);
+						var data = new Float32Array(newSize);
+
+						var it = 0;
+
+						for(var i = 0; i < oldSize; i += 4){
+								data[it] = texData.data[i];
+								data[it+1] = texData.data[i+1];
+								data[it+2] = texData.data[i+2];
+								it+=3;
+						}
+
+						if(texData.numChannels === 3)
+            {
+							pixelFormat = gl.RGB;
+							if(fakeNchannels === 3)
+                pixelData = texData.data;
+							else
+                pixelData = data;
+            }
+            else(texData.numChannels === 4)
+            {
+                pixelFormat = gl.RGB;
+                pixelData = data;
+            }
+
+						console.log('Pixel data length:', pixelData.length);
+						generateTexture(width, height, pixelFormat, pixelData, texData);
+        }
+
+				function generateTexture(width, height, pixelFormat, pixelData, texData)
+				{
+                    // basic texture
+                    var texture = new GL.Texture( width, height, { format: pixelFormat, type: gl.FLOAT, pixel_data: pixelData });
+
+                    texture.wrapS = texData.wrapS ? texData.wrapS : gl.CLAMP_TO_EDGE;
+                    texture.wrapT = texData.wrapT ? texData.wrapT : gl.CLAMP_TO_EDGE;
+                    texture.magFilter = texData.magFilter ? texData.magFilter : gl.LINEAR;
+                    texture.minFilter = texData.minFilter ? texData.minFilter : gl.LINEAR_MIPMAP_LINEAR;
+
+                    renderer.textures["exr"] = texture;
+                    box.texture = "exr";
+                    box.shader = "exposure";
+                    box.flags.visible = true;
+                    box.scaling = [width, -height, 100];
+
+                    camera.lookAt( [0,0,width*1.25],[0,0,0],[0,1,0] );
+                    document.querySelector("#loading").style.display = "none";
+				}
+
+	</script>
+</head>
+<body>
+	<div class="container" style="position: absolute !important; left: calc(50% - 200px);border: 3px white dotted; height: 250px; width: 400px; top: 30vh; padding: 50px;">
+		<h2 style="color: white;">DRAG OR SELECT</h2>
+		<div class="controller" style="position: absolute; margin: 10px;margin-left: 0px; text-align: center;">
+ 			 <div style="display: flex">
+ 					 <select id="exr-input" style="padding: 2px; width: 200px;" class="form-control">
+
+ 					 </select>
+ 					 <button class="btn btn-primary" onclick="readFile()" style="margin-left: 10px">Generate</button>
+ 			 </div>
+ 			 <br>
+            <p id="loading" style="color: white; margin-top: 20px; font-size: 20px; display: none;">Loading...</p>
+ 	 </div>
+	</div>
+</body>
+
+    <script>
+		for(var i in DATA.exr_loader_files)
+		{
+			var option = document.createElement("option");
+			option.value = DATA.exr_loader_files[i];
+            if(option.value.includes("cubemap"))
+                continue;
+			option.innerHTML = DATA.exr_loader_files[i].replace(".exr", "");
+			document.querySelector("#exr-input").append( option );
+		}
+		init();
+	</script>
+</html>

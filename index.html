@@ -1,0 +1,61 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+
+<title>HDR4EU PBR/IBL</title>
+<link rel="stylesheet" href="css/bootstrap.min.css">
+<link rel="stylesheet" href="css/litegui.css">
+<link rel="stylesheet" href="css/progress.css">
+	<style type='text/css'>
+		html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;}
+    select, option { color: black; }
+	</style>
+</head>
+<body>
+
+	<div id="progress"></div>
+
+	<div id="fps" style="font-weight: bold; padding: 3px; bottom: 10px; left: 10px; position: absolute;font-size: 13px; color: black; background-color: #aaaaff"></div>
+
+	<div id="modal" style="display: none; top: 0; left: 0; right: 0; bottom: 0; width: 100%; position: absolute; text-align: center;  background-color: rgba(0, 0, 0, 0.86);">
+
+		<div style="margin-top: 40vh; opacity: 0.85;">
+			<img src="data/hdr4eu.png" style="width: 12%;">
+			<div class="loader"></div>
+		</div>
+
+	</div>
+	
+	<div id="push" style="position: absolute;">
+		
+	</div>
+	
+</body>
+	
+
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    <script type="text/javascript" src="js/lib/litegui.js"></script>
+	<script type="text/javascript" src="js/lib/gl-matrix-min.js"></script>
+	<script type="text/javascript" src="js/lib/litegl.js"></script>
+	<script type="text/javascript" src="js/lib/litegraph.js"></script>
+    <script type="text/javascript" src="js/lib/dat.gui.min.js"></script>
+	<script type="text/javascript" src="js/lib/tinyexr.js"></script>
+	<script type="text/javascript" src="js/lib/rendeer.js"></script>
+	<script type="text/javascript" src="js/scenes.js"></script>
+    <script type="text/javascript" src="js/EXRLoader.js"></script>
+	<script type="text/javascript" src="js/tools.js"></script>
+	<script type="text/javascript" src="js/bindings.js"></script>
+	<script type="text/javascript" src="js/gui.js"></script>
+	<script type="text/javascript" src="js/fx.js"></script>
+	<script type="text/javascript" src="js/3d.js"></script>
+	<script type="text/javascript" src="js/init.js"></script>
+
+    <script>
+        // init app here
+		init();
+        //
+	</script>
+</html>

@@ -1,0 +1,334 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+
+<title>exr loader</title>
+<link rel="stylesheet" href="css/bootstrap.min.css">
+	<style type='text/css'>
+		html, body { width: 100%; height: 100%; margin: 0; padding: 0 }
+	</style>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+	<script type="text/javascript" src="js/gl-matrix-min.js"></script>
+	<script type="text/javascript" src="js/litegl-mod.js"></script>
+  <script type="text/javascript" src="js/litescene.js"></script>
+  <script type="text/javascript" src="js/dat.gui.min.js"></script>
+	<script type="text/javascript" src="js/tinyexr.js"></script>
+	<script type="text/javascript" src="js/rendeer.js"></script>
+	<script type="text/javascript" src="js/utils.js"></script>
+	<script type="text/javascript" src="js/parse.js"></script>
+		<script type="text/javascript" src="data/data.js"></script>
+	<script type="text/javascript">
+
+        function init()
+        {
+            //create a scene
+            scene = new RD.Scene();
+
+            //create the rendering context
+            var context = GL.create({width: window.innerWidth, height:window.innerHeight});
+
+            renderer = new RD.Renderer(context, {
+                shaders_file: "data/shaders.glsl",
+                autoload_assets: true
+            });
+
+            document.body.appendChild(renderer.canvas); //attach
+
+						document.querySelector(".container").onmouseleave = function(e){ e.target.style.opacity = 0.2 }
+						document.querySelector(".container").onmouseenter = function(e){ e.target.style.opacity = 1.0 }
+
+						document.body.ondragover = function(){ return false;}
+						document.body.ondragend = function(){ return false;}
+						document.body.ondrop = function( e )
+						{
+							e.preventDefault();
+							document.querySelector("#loading").innerHTML = "Loading...";
+					    document.querySelector("#loading").style.display = "block";
+
+							var file = e.dataTransfer.files[0],
+								name = file.name;
+
+								//prepare reader
+								var reader = new FileReader();
+								reader.onload = function (event) {
+									//console.log(event.target);
+									var data = event.target.result;
+									load( data );
+								};
+
+								//read data
+								reader.readAsArrayBuffer(file);
+								return false;
+						}
+
+            //create camera
+            camera = new RD.Camera();
+            camera.perspective( 45, gl.canvas.width / gl.canvas.height, 1, 10000 );
+           	camera.lookAt( [0,0,750],[0,0,0],[0,1,0] );
+
+						skybox = new RD.SceneNode({
+		            mesh: "cube",
+								scale: [3, 3, 3],
+								shader: "skyboxExpo"
+		        });
+
+						skybox.flags.depth_test = false;
+		        skybox.flags.flip_normals = true;
+						skybox.flags.visible = false;
+		        skybox.render_priority = RD.PRIORITY_BACKGROUND;
+		        scene.root.addChild( skybox );
+
+						renderer._uniforms.exposure = 5.5;
+						renderer._uniforms.brightMax = 18.0;
+
+						var params_gui = {
+										exposure: renderer._uniforms.exposure,
+						};
+
+						var gui = new dat.GUI();
+						gui.add( params_gui, 'exposure', 0.1, 20 );
+						gui.open();
+
+            //global settings
+            var bg_color = vec4.fromValues(0.2,0.3,0.4,1);
+
+            //main render loop
+            var last = now = getTime();
+
+            function ondraw() {
+
+								// get gui params_gui
+								renderer._uniforms.exposure = params_gui.exposure;
+
+                last = now;
+                now = getTime();
+                var dt = (now - last) * 0.001;
+                renderer.clear(bg_color);
+
+								skybox.position = camera.position;
+                renderer.render(scene, camera);
+            }
+
+						renderer.context.ondraw = ondraw;
+						renderer.context.onupdate = function(dt){
+							scene.update(dt);
+						}
+						renderer.context.animate();
+
+            //input
+            renderer.context.captureMouse(true);
+            renderer.context.onmousemove = function(e)
+            {
+                if(e.dragging){
+									camera.orbit(-e.deltax * 0.01, RD.UP);
+                  camera.orbit(-e.deltay * 0.01, camera._right);
+								}
+            }
+						renderer.context.onmousewheel = function(e)
+		        {
+		            if(!e.wheel)
+		                return;
+		            camera.position = vec3.scale( camera.position, camera.position, e.wheel < 0 ? 1.05 : 0.95 );
+		        }
+        }
+
+				function load( arraybuffer )
+        {
+            var texData = parseEXRImage(arraybuffer);
+           console.log(texData);
+
+            var width = texData.width;
+            var height = texData.height;
+
+            if( (width/4 != height/3) || !isPowerOfTwo(width) )
+            {
+								   document.querySelector("#loading").innerHTML = "Image is not in cubemap format";
+									 return;
+						}
+
+						// tiny exr library adds a channel extra we want to remove
+						var fakeNchannels = texData.data.length / (width * height);
+						var pixelData, pixelFormat;
+
+						// remove extra channel
+						var oldSize = texData.data.length,
+								newSize = oldSize * (3/4);
+						var data = new Float32Array(newSize);
+
+						var it = 0;
+
+						for(var i = 0; i < oldSize; i += 4){
+								data[it] = texData.data[i];
+								data[it+1] = texData.data[i+1];
+								data[it+2] = texData.data[i+2];
+								it+=3;
+						}
+
+						if(texData.numChannels === 3)
+            {
+							pixelFormat = gl.RGB;
+							if(fakeNchannels === 3)
+                pixelData = texData.data;
+							else
+                pixelData = data;
+            }
+            else(texData.numChannels === 4)
+            {
+                pixelFormat = gl.RGB;
+                pixelData = data;
+            }
+
+						console.log('Pixel data length:', pixelData.length);
+						generateTexture(width, height, pixelFormat, pixelData, texData);
+        }
+
+				var CUBE_MAP_POSITIVE_X = 0,
+						CUBE_MAP_POSITIVE_Y = 1,
+						CUBE_MAP_POSITIVE_Z = 2,
+						CUBE_MAP_NEGATIVE_X = 3,
+						CUBE_MAP_NEGATIVE_Y = 4,
+						CUBE_MAP_NEGATIVE_Z = 5;
+
+				function getFaces(size, width, height, pixelData)
+				{
+					var faces = [], it = 0, F = CUBE_MAP_POSITIVE_Y;
+
+					for(var i = 0; i < 6; i++)
+						faces[i] = new Float32Array(size);
+
+					// get 3 vertical faces
+					for(var i = 0; i < height; i++)
+					{
+							var x1_n = (width * 0.25) + (i * width),
+									x2_n = (width * 0.5) + (i * width);
+
+							if( i === (height / 3) ) { F = CUBE_MAP_POSITIVE_Z; it = 0; }
+							if( i === (height / 3) * 2 ) { F = CUBE_MAP_NEGATIVE_Y; it = 0; }
+
+							var line = pixelData.subarray(x1_n * 3, x2_n * 3);
+							faces[F].set(line, it);
+							it += line.length;
+					}
+
+					// from now get the rest from left to right
+
+					it = 0;
+					F = CUBE_MAP_NEGATIVE_X; // next face
+					for(var i = (height / 3); i < (height / 3) * 2; i++)
+					{
+							var x1_n = (width * 0.0) + (i * width),
+									x2_n = (width * 0.25) + (i * width);
+
+							var line = pixelData.subarray(x1_n * 3, x2_n * 3);
+							faces[F].set(line, it);
+							it += line.length;
+					}
+
+					it = 0;
+					F = CUBE_MAP_POSITIVE_X; // next face
+					for(var i = (height / 3); i < (height / 3) * 2; i++)
+					{
+							var x1_n = (width * 0.5) + (i * width),
+									x2_n = (width * 0.75) + (i * width);
+
+							var line = pixelData.subarray(x1_n * 3, x2_n * 3);
+							faces[F].set(line, it);
+							it += line.length;
+					}
+
+					it = 0;
+					F = CUBE_MAP_NEGATIVE_Z; // next face
+					for(var i = (height / 3); i < (height / 3) * 2; i++)
+					{
+							var x1_n = (width * 0.75) + (i * width),
+									x2_n = (width * 1.0) + (i * width);
+
+							var line = pixelData.subarray(x1_n * 3, x2_n * 3);
+							faces[F].set(line, it);
+							it += line.length;
+					}
+					return faces;
+				}
+
+                function getImages(size, width, height, pixelData)
+				{
+					var faces = getFaces(size, width, height, pixelData),
+                        images = [];
+
+                    for(var i = 0; i < faces.length; i++)
+                    {
+                        // create off-screen canvas element
+                        var canvas = document.createElement('canvas'),
+                            ctx = canvas.getContext('2d');
+
+                        canvas.width = width / 4;
+                        canvas.height = height / 3;
+
+                        // create imageData object
+                        var idata = ctx.createImageData(width, height);
+
+                        // set our buffer as source
+                        idata.data.set(faces[i]);
+
+                        // update canvas with new data
+                        ctx.putImageData(idata, 0, 0);
+                        images.push( canvas );
+                    }
+
+					return images;
+				}
+
+				function generateTexture(width, height, pixelFormat, pixelData, texData)
+				{
+
+                    var square_length = pixelData.length / 12;
+
+                    // get cubemap texture
+                    // method 1 with litegl mod (works)
+
+                    var faces = getFaces(square_length, width, height, pixelData);
+                    width /= 4;
+                    height /= 3;
+                    var cubemapTexture = new GL.Texture( width, height, {
+                        format: pixelFormat,
+                        type: gl.FLOAT,
+                        texture_type: GL.TEXTURE_CUBE_MAP,
+                        pixel_data: pixelData,
+                        cubemap_faces_data: faces
+                    });
+
+                    // method 2
+                    /*
+                    var images = getImages(square_length, width, height, pixelData);
+                    var cubemapTexture = GL.Texture.cubemapFromImages(images);
+                    console.log(cubemapTexture);
+                    */
+                    cubemapTexture.wrapS = texData.wrapS ? texData.wrapS : gl.CLAMP_TO_EDGE;
+                    cubemapTexture.wrapT = texData.wrapT ? texData.wrapT : gl.CLAMP_TO_EDGE;
+                    cubemapTexture.magFilter = texData.magFilter ? texData.magFilter : gl.LINEAR;
+                    cubemapTexture.minFilter = texData.minFilter ? texData.minFilter : gl.LINEAR_MIPMAP_LINEAR;
+
+                    renderer.textures["skybox"] = cubemapTexture;
+                    skybox.texture = "skybox";
+                    skybox.flags.visible = true;
+                    camera.lookAt( [5,5,5],[0,5,0],[0,1,0] );
+
+                    document.querySelector("#loading").style.display = "none";
+				}
+
+	</script>
+</head>
+<body>
+		<div class="container" style="position: absolute !important; left: calc(50% - 200px);border: 3px white dotted; height: 250px; width: 400px; top: 30vh; text-align: center;">
+		  <h2 style="color: white; margin-top: 100px;">DRAG FILE OR</h2>
+            <button class="btn btn-primary" onclick="readFile('cubemap.exr')">Example</button>
+            <p id="loading" style="color: white; margin-top: 20px; font-size: 20px; display: none;">Loading...</p>
+	   </div>
+</body>
+
+    <script>
+		init();
+	</script>
+</html>
