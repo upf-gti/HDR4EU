@@ -1,5 +1,5 @@
 /*
-*   Alex Rodríguez
+*   Alex RodrÃ­guez
 *   @jxarco 
 */
 
@@ -18,8 +18,6 @@ var $temp = {
     mat3 : mat3.create(),
     mat4 : mat4.create()
 }
-
-var loader = new EXRLoader();
 
 var push_msgs = 0;
 
@@ -96,7 +94,18 @@ function init()
     renderer._uniforms["u_offset"] = 0.0;
     renderer._uniforms["u_channel"] = 0.0;
     renderer._uniforms["u_enable_ao"] = true;
-    renderer._uniforms["u_light_position"] = vec3.fromValues(2, 2, 2);
+
+    renderer._uniforms["u_light_intensity"] = 1.0;
+    renderer._uniforms["u_light_position"] = vec3.fromValues(1, 1, 2);
+
+    light = new RD.SceneNode();
+    light.visible = false;
+    light.name = "light";
+    light.color = [0, 0, 0];
+    light.scaling = 0.05;
+    light.mesh = "sphere";
+    light.position = renderer._uniforms["u_light_position"];
+    scene.root.addChild(light);
 
     renderer._uniforms["u_near"] = camera.near;
     renderer._uniforms["u_far"] = camera.far;
@@ -204,12 +213,19 @@ function onInit( data )
     textures = data;
     showLoading();
 
-    Integrate_BRDF_EM(); // Environment BRDF (LUT)
+    renderer.loadShaders("data/shaders.glsl", function(){
+        
+        // Environment BRDF (LUT) when reloading shaders
+        EXRTool.brdf( 'brdfIntegrator');
+        model.textures['brdf'] = "_brdf_integrator";
+
+    }, default_shader_macros);
+     
 
     for(var t in data)
     {
         if(data[t].fast)
-            loadEXRTexture( data[t].path, null, isReady );
+            EXRTool.load( data[t].path, null, isReady );
     }
 
     // update gui
@@ -220,18 +236,44 @@ function onInit( data )
 function isReady()
 {
     LOAD_STEPS++;
-    $("#progress").css("width", ((LOAD_STEPS/STEPS)*100 + "%") );
 
     if(STEPS && LOAD_STEPS === STEPS)
     {
-        parseSceneFigure( "Roughness scale" );
+        parseSceneFigure( "Sphere" );
         setScene( "textures/eucalyptus_grove_spheremap.exr", true );
-    }
-
-    if(true)
-    {
         gui.updateDisplay();
         gui.domElement.style.display = "block";
     }
 }
 
+function getQueryString() {
+    // This function is anonymous, is executed immediately and 
+    // the return value is assigned to QueryString!
+    var query_string = {};
+    var query = window.location.search.substring(1);
+    var vars = query.split("&");
+    for (var i=0;i<vars.length;i++) {
+      var pair = vars[i].split("=");
+          // If first entry with this name
+      if (typeof query_string[pair[0]] === "undefined") {
+        query_string[pair[0]] = decodeURIComponent(pair[1]);
+          // If second entry with this name
+      } else if (typeof query_string[pair[0]] === "string") {
+        var arr = [ query_string[pair[0]],decodeURIComponent(pair[1]) ];
+        query_string[pair[0]] = arr;
+          // If third or later entry with this name
+      } else {
+        query_string[pair[0]].push(decodeURIComponent(pair[1]));
+      }
+    } 
+      return query_string;
+  }
+  
+  function sleep(milliseconds) {
+      var start = new Date().getTime();
+      for (var i = 0; i < 1e7; i++) {
+        if ((new Date().getTime() - start) > milliseconds){
+          break;
+        }
+      }
+  }

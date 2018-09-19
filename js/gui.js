@@ -1,11 +1,8 @@
 /*
-*   Alex Rodríguez
+*   Alex RodrÃ­guez
 *   @jxarco 
 */
 
-/*
-    
-*/
 function drawGUI()
 {
     var params_gui = {
@@ -19,16 +16,19 @@ function drawGUI()
         'Scene': "",
 
         'Albedo': [255, 255, 255],
-        'Roughness': 0,
-        'Metalness': 0,
+        'Roughness': 0.25,
+        'Metalness': 0.5,
         'Channel': 'All',
         'Apply AO': renderer._uniforms["u_enable_ao"],
       
         'Light color': [0, 0, 0],
-        'Light position': "2 2 2",
-        'Light intensity': 1.0,
+        'Light X': 1,
+        'Light Y': 1,
+        'Light Z': 2,
+        'Light intensity': renderer._uniforms["u_light_intensity"],
 
         'Draw skybox': true,
+        'Draw light': false,
         'Tone mapping': 'Uncharted2',
         'Glow': window.glow,
         'Iterations': window.iterations,
@@ -53,7 +53,7 @@ function drawGUI()
                 dest = new Float32Array(size);
 
             // width, height, channels, bits per channel, header size
-            dest.set( [tex.width, tex.height, 4, 32, 5] ); // no index = beggining
+            dest.set( [tex.width, tex.height, 4, 32, headerSize] ); // no index = beggining
 
             for(var i = 0; i < 6; i++)
                 dest.set( tex.getPixels(i), headerSize + index * i );
@@ -86,6 +86,7 @@ function drawGUI()
     gui.tonemapping = f_render.add( params_gui, 'Tone mapping', gui.tmp["tonemapping"]);
     f_render.add( params_gui, 'Apply AO' );
     gui.cubemap = f_render.add( params_gui, 'Draw skybox' );
+    gui.draw_light = f_render.add( params_gui, 'Draw light' );
     // Glow
     var f_glow = gui.addFolder( "FX" );
     gui.glow = f_glow.add( params_gui, 'Glow' );
@@ -93,19 +94,21 @@ function drawGUI()
     f_glow.add( params_gui, 'Threshold', 0, 20, 0.01);
     f_glow.add( params_gui, 'Intensity', 1, 2, 0.01);
     // Direct light
-    /* var f_light = gui.addFolder("Direct light");
+    var f_light = gui.addFolder("Direct light");
     gui.light = f_light.addColor( params_gui, 'Light color');
-    gui.light_position = f_light.add( params_gui, 'Light position');
-    gui.light_intensity = f_light.add( params_gui, 'Light intensity', 1.0, 5.0, 0.1 );
-    */ // Other
+    gui.light_position_x = f_light.add( params_gui, 'Light X', -5, 5.0, 0.1 );
+    gui.light_position_y = f_light.add( params_gui, 'Light Y', -5, 5.0, 0.1 );
+    gui.light_position_z = f_light.add( params_gui, 'Light Z', -5, 5.0, 0.1 );
+    gui.light_intensity = f_light.add( params_gui, 'Light intensity', 1.0, 50.0, 0.5 );
+    // Other
     var f_other = gui.addFolder("Other");
     f_other.add( params_gui, 'Reload shaders' );
     f_other.add( params_gui, 'Get skybox' );
     f_other.add( params_gui, 'Show FPS' );
     gui.samples = f_other.add( params_gui, 'PrefilteringSamples');
-    // gui.show_texture = f_other.add( params_gui, 'Show texture');
 
     f1.open();
+    f_render.open(); f_light.open();
 
     updateGUIBindings();
     return params_gui;
@@ -128,37 +131,57 @@ function getTextures()
 }
 
 /*
+    Update div with fps counter
+*/
+function renderFPS( enable )
+{
+    var e = (enable == null) ? params_gui['Show FPS'] : enable;
+    var now = getTime();
+	var elapsed = now - window.last_time;
+
+	window.frames++;
+
+	if(elapsed > window.refresh_time)
+	{
+        window.last_fps = window.frames;
+        $("#fps").html( window.last_fps * (1000 / window.refresh_time) + " FPS");
+		window.frames = 0;
+        window.last_time = now;
+    }
+    
+    if(e)
+        $("#fps").show();
+    else
+        $("#fps").hide();
+}
+
+/*
     
 */
 function showMessage( text, duration )
 {
-  if(text == null)
-    return;
-  duration = duration || 3000;
+    if(text == null)
+        return;
+    duration = duration || 3000;
 
-  var id = "msg-"+(push_msgs++);
+    var id = "msg-"+(push_msgs++);
 
-    var msg = `
-        <div id="`+id+`" style="padding: 20px; margin: 35px; height: 60px; background-color: rgba(85, 85, 85, 0.75);">
-			<p style="color: white; font-size: 16px; ">
-				` + text + `
-			</p>
-		</div>
-    `;
+        var msg = `
+            <div class="pushmessage" id="`+id+`">
+                <p>` + text + `</p>
+            </div>
+        `;
 
-  $("#push").prepend( msg );
+    $("#push").prepend( msg );
 
-  setTimeout(function(){
-    $("#"+id).fadeOut();
-  }, duration);
+    setTimeout(function(){
+        $("#"+id).fadeOut();
+    }, duration);
 }
 
 function showLoading()
 {
-//   $("#modal").html(`
-    
-//     `);
-  $("#modal").fadeIn();
+    $("#modal").fadeIn();
 }
 
 function removeLoading()
@@ -212,7 +235,7 @@ function onDragDialog( id, options )
         widgets.addButton( null, "Load", {width: "100%", name_width: "50%", callback: function(){
             $("#"+dialog_id).remove();
             showMessage("Processing scene...");
-            loadEXRTexture(options.filename, window._vars_dialog, function(){
+            EXRTool.load(options.filename, window._vars_dialog, function(){
                 setScene( options.filename, true );
             });
         }});
@@ -223,4 +246,5 @@ function onDragDialog( id, options )
     var w = 400;
     dialog.setPosition( renderer.canvas.width/2 - w/2, renderer.canvas.height/2 - renderer.canvas.height/4 );
 }
+
 

@@ -1,5 +1,5 @@
 /*
-*   Alex Rodríguez
+*   Alex RodrÃ­guez
 *   @jxarco 
 */
 
@@ -87,7 +87,10 @@ function updateGUIBindings()
     });
 
     gui.cubemap.onChange(function(){
-        skybox.flags.visible = params_gui['Draw skybox'];
+        skybox.visible = params_gui['Draw skybox'];
+    });
+    gui.draw_light.onChange(function(){
+        light.visible = params_gui['Draw light'];
     });
 
     gui.samples.onFinishChange(function(){
@@ -104,32 +107,31 @@ function updateGUIBindings()
         renderer.loadShaders("data/shaders.glsl", function(){console.log("Samples changed")}, default_shader_macros);
     });
 
-//    gui.show_texture.onFinishChange(function(){
-//        showingTex = (params_gui['Show texture'] === '') ? false:true;
-//    });
-    
-    /*
+    gui.light_position_x.onChange(function(){
+        renderer._uniforms["u_light_position"][0] = params_gui['Light X'];
+        light.position = [params_gui['Light X'], light.position[1], light.position[2]];
+    });
+    gui.light_position_y.onChange(function(){
+        renderer._uniforms["u_light_position"][1] = params_gui['Light Y'];
+        light.position = [light.position[0], params_gui['Light Y'], light.position[2]];
+    });
+    gui.light_position_z.onChange(function(){
+        renderer._uniforms["u_light_position"][2] = params_gui['Light Z'];
+        light.position = [light.position[0], light.position[1], params_gui['Light Z'] ];
+    });
+
     gui.light.onChange(function(){
         let x = params_gui['Light color'][0]/255.0;
         let y = params_gui['Light color'][1]/255.0;
         let z = params_gui['Light color'][2]/255.0;
         gui.tmp["Light"] = vec3.fromValues( x, y, z);
-    });
-
-    gui.light_position.onFinishChange(function(){
-
-        let a = params_gui['Light position'];
-        let x = parseInt(a.trim().split(/\s+/)[0]);
-        let y = parseInt(a.trim().split(/\s+/)[1]);
-        let z = parseInt(a.trim().split(/\s+/)[2]);
-        renderer._uniforms["u_light_position"] = vec3.fromValues(x, y, z);
-        console.log(renderer._uniforms["u_light_position"]);
+        light.color = vec3.fromValues( x*15, y*15, z*15);
     });
     
     gui.light_intensity.onChange(function(){
         renderer._uniforms["u_light_intensity"] = params_gui['Light intensity'];
     });
-    */
+    
 }
 
 /*
@@ -151,4 +153,15 @@ function updateSceneFromGUI()
     window.iterations = params_gui['Iterations'];
     window.threshold = params_gui['Threshold'];
     window.intensity = params_gui['Intensity'];
+}
+
+function resize()
+{
+    var w = window.innerWidth, h = window.innerHeight;
+    renderer.canvas.height = h;
+    renderer.canvas.width = w;
+    renderer.context.viewport(0, 0, w, h);
+
+    if(camera)
+        camera.perspective(camera.fov, w / h, camera.near, camera.far);
 }

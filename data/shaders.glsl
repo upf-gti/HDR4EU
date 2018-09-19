@@ -654,7 +654,7 @@ pbrMat pbr.vs pbrMatrix.fs
 		// Calculate Fresnel term for direct lighting. 
 		vec3 F = fresnelGDC(pbrInputs.specularColor, pbrInputs.NdotV);
 		// Calculate normal distribution for specular BRDF.
-		float D = ndfGGX(pbrInputs.alphaRoughness, pbrInputs.NdotV);
+		float D = ndfGGX(pbrInputs.alphaRoughness, cosLh);
 		// Calculate geometric attenuation for specular BRDF.
 		float G = gaSchlickGGX(cosLi, cosLo, pbrInputs.perceptualRoughness);
 
@@ -747,8 +747,6 @@ pbrMat pbr.vs pbrMatrix.fs
 			   
         vec4 color = vec4(IBL + DIRECT, (u_hasAlpha) ? opacity : 1.0);
 
-		// if(u_channel == 3.0)
-		// 	color.rgb = DIRECT;
 		if(u_channel == 3.0)
 			color = texture2D(u_roughness_texture, v_coord);
 		if(u_channel == 4.0)
@@ -832,7 +830,7 @@ pbrMat pbr.vs pbrMatrix.fs
         vec3 brdf = texture2D(u_brdf_texture, vec2(x_brdf, y_brdf)).rgb;
         
         // Sample diffuse irradiance at normal direction.
-		vec3 diffuseLight = prem(n, 1.0);
+		vec3 diffuseLight = prem(reflection, 1.0);
 		// Sample pre-filtered specular reflection environment
 		vec3 specularLight = prem(reflection, pbrInputs.perceptualRoughness);
         
@@ -850,41 +848,30 @@ pbrMat pbr.vs pbrMatrix.fs
         return color;
     }
 
-	vec3 getDirectLighting(PBRInfo pbrInputs, vec3 Lo, vec3 Li, vec3 N)
+	vec3 getDirectLighting(PBRInfo pbrInputs)
 	{
 		vec3 Lradiance = vec3(u_light_intensity);
-
-		// Half-vector between Li and Lo.
-		vec3 Lh = normalize(Li + Lo);
+		float invPI = 0.31830988618;
 
 		// Calculate angles between surface normal and various light vectors.
 		float cosLi = pbrInputs.NdotL;
 		float cosLo = pbrInputs.NdotV;
-		float cosLh = max(0.0, dot(N, Lh));
+		float cosLh = pbrInputs.NdotH;
 
-		// vec3 F0 = mix(vec3(FDIELECTRIC), pbrInputs.diffuseColor, pbrInputs.metalness);
+		vec3 diffuseColor = pbrInputs.diffuseColor * invPI * cosLi;
 
-		// Calculate Fresnel term for direct lighting. 
-		vec3 F = fresnelGDC(pbrInputs.specularColor, pbrInputs.NdotV);
 		// Calculate normal distribution for specular BRDF.
-		float D = ndfGGX(pbrInputs.alphaRoughness, pbrInputs.NdotV);
+		float D = ndfGGX(pbrInputs.perceptualRoughness, cosLh);
+		// Calculate Fresnel term for direct lighting. 
+		vec3 F = fresnelGDC(pbrInputs.specularColor, cosLo);
 		// Calculate geometric attenuation for specular BRDF.
 		float G = gaSchlickGGX(cosLi, cosLo, pbrInputs.perceptualRoughness);
 
-		// Diffuse scattering happens due to light being refracted multiple times by a dielectric medium.
-		// Metals on the other hand either reflect or absorb energy, so diffuse contribution is always zero.
-		// To be energy conserving we must scale diffuse BRDF contribution based on Fresnel factor & metalness.
-		vec3 kd = mix(vec3(1.0) - F, vec3(0.0), pbrInputs.metalness);
-
-		// Lambert diffuse BRDF.
-		// https://seblagarde.wordpress.com/2012/01/08/pi-or-not-to-pi-in-game-lighting-equation/
-		vec3 diffuseBRDF = kd * pbrInputs.diffuseColor;
-
 		// Cook-Torrance specular microfacet BRDF.
-		vec3 specularBRDF = (F * D * G) / max(0.00001, 4.0 * cosLi * cosLo);
+		vec3 specularBRDF = (F * D * G) / max(0.001, 4.0 * cosLi * cosLo);
 
 		// Total contribution for this light.
-		return (diffuseBRDF + specularBRDF) * Lradiance * cosLi * u_light_color;
+		return (diffuseColor + specularBRDF) * Lradiance * u_light_color * cosLi;
 	}
 
 	void main() {
@@ -903,16 +890,16 @@ pbrMat pbr.vs pbrMatrix.fs
 		vec3 diffuseColor = mix(baseColor , vec3(0.0), metallic);
 		vec3 specularColor = mix(f0, baseColor, metallic);
       	
-        vec3 v = normalize(v_wPosition - u_camera_position);    // Vector from surface point to camera
-        vec3 n = -normalize(v_wNormal);                          // normal at surface point
-        vec3 l = -normalize(v_wPosition - u_light_position);  			// Vector from surface point to light
+        vec3 v = normalize(u_camera_position - v_wPosition);    // Vector from surface point to camera
+        vec3 n = normalize(v_wNormal);                          // normal at surface point
+        vec3 l = normalize(u_light_position - v_wPosition);  			// Vector from surface point to light
         vec3 h = normalize(l+v);                                // Half vector between both l and v
-        vec3 reflection = normalize(reflect(-v, n));
+        vec3 reflection = normalize(reflect(v, n));
 		reflection.x *= -1.0;
         
-		float NdotL = clamp(dot(-n, l), 0.001, 1.0);
+		float NdotL = clamp(dot(n, l), 0.001, 1.0);
         float NdotV = clamp(abs(dot(n, v)), 0.001, 1.0);
-        float NdotH = clamp(dot(n, h), 0.0, 1.0);
+        float NdotH = max(0.0, dot(n, h));
         float LdotH = clamp(dot(l, h), 0.0, 1.0);
         float VdotH = clamp(dot(v, h), 0.0, 1.0);
         
@@ -930,13 +917,15 @@ pbrMat pbr.vs pbrMatrix.fs
             specularColor
         );
 
-        // IBL
-        vec3 color = getIBLContribution(pbrInputs, n, reflection);// + getDirectLighting(pbrInputs, v, l, n);
+		// DIRECT LIGHTING
+        vec3 DIRECT = getDirectLighting(pbrInputs);
+       	vec3 IBL = getIBLContribution(pbrInputs, n, reflection);
+        vec3 color = DIRECT + IBL;
 
 		if(u_channel == 3.0)
-			color.rgb = vec3(perceptualRoughness);
+			color = vec3(perceptualRoughness);
 		if(u_channel == 4.0)
-			color.rgb = vec3(metallic);
+			color = vec3(metallic);
 
 		gl_FragColor = vec4(color, 1.0);
 	}
