@@ -44,9 +44,21 @@ function drawGUI()
             }, default_shader_macros); 
         },
         'Get skybox': function() {
-            var tex = rt[ current_em ];
+            
+            let 
+                tex = gl.textures[ current_em ],
+                index = tex.width * tex.height * 4, // w * h * channels
+                size = index * 6 + 5, // index * faces,
+                headerSize = 5;
+                dest = new Float32Array(size);
+
+            // width, height, channels, bits per channel, header size
+            dest.set( [tex.width, tex.height, 4, 32, 5] ); // no index = beggining
+
             for(var i = 0; i < 6; i++)
-                LiteGUI.downloadFile("EM"+(i+1)+".raw", tex.getPixels(i));
+                dest.set( tex.getPixels(i), headerSize + index * i );
+                
+            LiteGUI.downloadFile( current_em + ".raw", dest );
         }
     };
 

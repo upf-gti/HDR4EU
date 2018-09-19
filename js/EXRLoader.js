@@ -15,10 +15,7 @@ EXRLoader.CUBE_MAP_NEGATIVE_X = 3;
 EXRLoader.CUBE_MAP_NEGATIVE_Y = 4;
 EXRLoader.CUBE_MAP_NEGATIVE_Z = 5;
 
-EXRLoader.CONVO = 6;
-EXRLoader.SAMPLING = 7;
-
-EXRLoader.CUBE_MAP_SIZE = 512;
+EXRLoader.CUBE_MAP_SIZE = 256;
 
 EXRLoader.ERRORS = {
   "0": "Undefined compression",
@@ -217,7 +214,10 @@ EXRLoader.prototype.generateTex = function( texParams, to_cubemap )
 // add callback in options
 EXRLoader.prototype.toCubemap = function( tex, callback )
 {
-    var size = EXRLoader.CUBE_MAP_SIZE || 512;
+    var size = EXRLoader.CUBE_MAP_SIZE || null;
+    if(!size)
+    throw( "CUBE_MAP_SIZE not defined" );
+
     Texture.setUploadOptions( this.cubemap_upload_options );
 
     //save state

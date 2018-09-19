@@ -42,7 +42,7 @@
         $file["filesize"] = $size;
 
         // set default textures to load
-        if($file_name == "Eucalyptus Grove")
+        if( $file_name == "Eucalyptus Grove" )
             $file["fast"] = true;
 
         $response[$file_name] = $file;

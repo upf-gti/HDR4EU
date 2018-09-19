@@ -5,7 +5,7 @@
 
 function parseSceneFigure( name )
 {
-    showLoading();
+    // showLoading();
 
     // remove previous matrix
     removeByName( 'matrix_node' );
@@ -62,16 +62,16 @@ function parseSceneFigure( name )
             // update node uniforms
             if(toParse.shader == "pbr")
             {
-                model.textures['roughness'] = "assets/"+ name +"/roughness.png";
-                model.textures['metalness'] = "assets/"+ name +"/metalness.png";
-                model.textures['albedo'] = "assets/"+ name +"/albedo.png";
-                model.textures['normal'] = "assets/"+ name +"/normal.png";
-                model.textures['ao'] = "assets/"+ name +"/ao.png";
+                model.textures['roughness'] = assets_folder + name +"/roughness.png";
+                model.textures['metalness'] = assets_folder + name +"/metalness.png";
+                model.textures['albedo'] = assets_folder + name +"/albedo.png";
+                model.textures['normal'] = assets_folder + name +"/normal.png";
+                model.textures['ao'] = assets_folder + name +"/ao.png";
 
                 if(toParse.hasOpacity)
                 {
                     model._uniforms["u_hasAlpha"] = true;
-                    model.textures['opacity'] = "assets/"+ name +"/opacity.png";
+                    model.textures['opacity'] = assets_folder + name +"/opacity.png";
                 }
                 else
                 {
@@ -82,7 +82,7 @@ function parseSceneFigure( name )
                 if(toParse.isEmissive)
                 {
                     model._uniforms["u_isEmissive"] = true;
-                    model.textures['emissive'] = "assets/"+ name +"/emissive.png";
+                    model.textures['emissive'] = assets_folder + name +"/emissive.png";
                 }
                 else
                 {
@@ -99,7 +99,7 @@ function setScene( filename, to_cubemap )
     var tex_name = getTexName( filename );
     current_em = tex_name;
 
-    showLoading();
+    // showLoading();
 
     var f = function()
     {
@@ -114,7 +114,7 @@ function setScene( filename, to_cubemap )
 
         // wait 200 ms to show "finish! " message
         setTimeout(function(){
-            params_gui['Scene'] = findTexPath(filename) || tex_name;
+            params_gui['Scene'] = findTexPath(filename);
             gui.updateDisplay();
             gui.domElement.style.display = "block";
             removeLoading();
@@ -211,9 +211,12 @@ function removeByName( name )
 function findTexPath(fn)
 { 
     for(t in textures)
+    {
         if(textures[t].path == fn)
             return t;
-    return null;
+    }
+        
+    return "";
 }
 
 function drawSphereMatrix( em, visible )
@@ -314,7 +317,5 @@ function drawMetalnessScale( em, visible, roughness )
         mn.shader = "pbrMat";
         node.addChild( mn );
     }
-
     removeLoading();
 }
-

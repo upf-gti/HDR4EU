@@ -9,8 +9,7 @@ var textures = {};
 
 var default_shader_macros = {
         "N_SAMPLES": 2048,
-    },
-    irradiance_mode = EXRLoader.SAMPLING;
+    };
 
 var $temp = {
     vec2 : vec2.create(),
@@ -111,7 +110,7 @@ function init()
     window.intensity = 1.0;
 
     // get response from files.php
-    $.get("files.php", function(data){
+    $.get("files.php", function(data, response){
        
         onInit(JSON.parse(data));
     }) 
@@ -205,19 +204,17 @@ function onInit( data )
     textures = data;
     showLoading();
 
-    setTimeout(function(){
-        Integrate_BRDF_EM(); // Environment BRDF (LUT)
+    Integrate_BRDF_EM(); // Environment BRDF (LUT)
 
-        for(var t in data)
-        {
-            if(data[t].fast)
-                loadEXRTexture( data[t].path, null, isReady );
-        }
-    
-        // update gui
-        gui.destroy();
-        params_gui = drawGUI();
-    }, 500);
+    for(var t in data)
+    {
+        if(data[t].fast)
+            loadEXRTexture( data[t].path, null, isReady );
+    }
+
+    // update gui
+    gui.destroy();
+    params_gui = drawGUI();
 }
 
 function isReady()
@@ -235,7 +232,6 @@ function isReady()
     {
         gui.updateDisplay();
         gui.domElement.style.display = "block";
-        removeLoading();
     }
 }
 

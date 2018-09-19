@@ -395,13 +395,19 @@ pbrMat pbr.vs pbrMatrix.fs
 
 	precision highp float;
     attribute vec2 a_coord;
-
+	uniform vec2 u_offset;
 	varying vec3 v_dir;
 
 	void main() {
-		vec2 uv = vec2( a_coord.x, 1.0 - a_coord.y );
+
+		vec2 uv = a_coord;
+		
+		uv /= 2.0;
+		uv += u_offset;
+		
 		v_dir = vec3( uv - vec2(0.5), 0.5 );
-		gl_Position = vec4(vec3(a_coord * 2.0 - 1.0, 0.5), 1.0);
+
+		gl_Position = vec4(vec3(uv * 2.0 - 1.0, 0.5), 1.0);
 	}
 
 \cubemapBlur.fs
@@ -420,7 +426,8 @@ pbrMat pbr.vs pbrMatrix.fs
 
 	void main() {
 
-		vec3 V = normalize(u_rotation * v_dir);
+		vec3 dir = vec3(v_dir.x, -v_dir.y, v_dir.z); 
+		vec3 V = normalize(u_rotation * dir);
 		vec3 N = V;
 
 		#ifdef N_SAMPLES

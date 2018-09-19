@@ -75,7 +75,7 @@ function updateGUIBindings()
     gui.scene_sm.onChange(function() {
         showMessage("Loading scene");
         var tex = textures[ params_gui['Scene'] ];
-        setScene( tex.path, !tex.cubemap );
+        setScene( tex.path, true );
     });
 
     gui.channels.onChange(function(){
