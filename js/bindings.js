@@ -74,8 +74,11 @@ function updateGUIBindings()
     
     gui.scene_sm.onChange(function() {
         showMessage("Loading scene");
-        var tex = textures[ params_gui['Scene'] ];
-        setScene( tex.path, true );
+        
+        var tex = textures[ params_gui['Scene'] ],
+            path = HDRTool.getName( tex.path );
+
+        setScene( path, true );
     });
 
     gui.channels.onChange(function(){

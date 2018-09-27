@@ -130,69 +130,69 @@
 		        }
         }
 
-				function load( arraybuffer )
-        {
-            var texData = parseEXRImage(arraybuffer);
-           console.log(texData);
+		function load( arraybuffer )
+		{
+			var texData = parseEXRImage(arraybuffer);
+			console.log(texData);
 
-            var width = texData.width;
-            var height = texData.height;
+			var width = texData.width;
+			var height = texData.height;
 
-						// tiny exr library adds a channel extra we want to remove
-						var fakeNchannels = texData.data.length / (width * height);
-						var pixelData, pixelFormat;
+			// tiny exr library adds a channel extra we want to remove
+			var fakeNchannels = texData.data.length / (width * height);
+			var pixelData, pixelFormat;
 
-						// remove extra channel
-						var oldSize = texData.data.length,
-								newSize = oldSize * (3/4);
-						var data = new Float32Array(newSize);
+			// remove extra channel
+			var oldSize = texData.data.length,
+					newSize = oldSize * (3/4);
+			var data = new Float32Array(newSize);
 
-						var it = 0;
+			var it = 0;
 
-						for(var i = 0; i < oldSize; i += 4){
-								data[it] = texData.data[i];
-								data[it+1] = texData.data[i+1];
-								data[it+2] = texData.data[i+2];
-								it+=3;
-						}
+			for(var i = 0; i < oldSize; i += 4){
+					data[it] = texData.data[i];
+					data[it+1] = texData.data[i+1];
+					data[it+2] = texData.data[i+2];
+					it+=3;
+			}
 
-						if(texData.numChannels === 3)
-            {
-							pixelFormat = gl.RGB;
-							if(fakeNchannels === 3)
-                pixelData = texData.data;
-							else
-                pixelData = data;
-            }
-            else(texData.numChannels === 4)
-            {
-                pixelFormat = gl.RGB;
-                pixelData = data;
-            }
+			if(texData.numChannels === 3)
+			{
+				pixelFormat = gl.RGB;
+				if(fakeNchannels === 3)
+					pixelData = texData.data;
+				else
+					pixelData = data;
+			}
+			else(texData.numChannels === 4)
+			{
+				pixelFormat = gl.RGB;
+				pixelData = data;
+			}
 
-						console.log('Pixel data length:', pixelData.length);
-						generateTexture(width, height, pixelFormat, pixelData, texData);
+			console.log('Pixel data length:', pixelData.length);
+			generateTexture(width, height, pixelFormat, pixelData, texData);
         }
 
-				function generateTexture(width, height, pixelFormat, pixelData, texData)
-				{
-                    // basic texture
-                    var texture = new GL.Texture( width, height, { format: pixelFormat, type: gl.FLOAT, pixel_data: pixelData });
+		function generateTexture(width, height, pixelFormat, pixelData, texData)
+		{
+			// basic texture
+			var texture = new GL.Texture( width, height, { format: pixelFormat, type: gl.FLOAT, pixel_data: pixelData });
 
-                    texture.wrapS = texData.wrapS ? texData.wrapS : gl.CLAMP_TO_EDGE;
-                    texture.wrapT = texData.wrapT ? texData.wrapT : gl.CLAMP_TO_EDGE;
-                    texture.magFilter = texData.magFilter ? texData.magFilter : gl.LINEAR;
-                    texture.minFilter = texData.minFilter ? texData.minFilter : gl.LINEAR_MIPMAP_LINEAR;
+			texture.wrapS = texData.wrapS ? texData.wrapS : gl.CLAMP_TO_EDGE;
+			texture.wrapT = texData.wrapT ? texData.wrapT : gl.CLAMP_TO_EDGE;
+			texture.magFilter = texData.magFilter ? texData.magFilter : gl.LINEAR;
+			texture.minFilter = texData.minFilter ? texData.minFilter : gl.LINEAR_MIPMAP_LINEAR;
 
-                    renderer.textures["exr"] = texture;
-                    box.texture = "exr";
-                    box.shader = "exposure";
-                    box.flags.visible = true;
-                    box.scaling = [width, -height, 100];
+			renderer.textures["exr"] = texture;
+			box.texture = "exr";
+			box.shader = "exposure";
+			box.flags.visible = true;
+			box.scaling = [width, -height, 100];
 
-                    camera.lookAt( [0,0,width*1.25],[0,0,0],[0,1,0] );
-                    document.querySelector("#loading").style.display = "none";
-				}
+			camera.lookAt( [0,0,width*1.25],[0,0,0],[0,1,0] );
+			document.querySelector("#loading").style.display = "none";
+		}
 
 	</script>
 </head>

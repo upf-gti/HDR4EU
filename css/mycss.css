@@ -12,72 +12,27 @@
 }
 
 #modal {
-  display: none; 
+  display: block; 
   top: 0; left: 0; right: 0; bottom: 0; 
   width: 100%; 
   position: absolute; 
   text-align: center; 
-  background-color: rgba(0, 0, 0, 0.86);
+  background-color: rgba(0, 0, 0, 1);
+}
+
+#push{
+  position: absolute;
+  margin: 35px;
 }
 
 .pushmessage{
-  padding: 10px; margin: 35px; height: 40px; background-color: rgba(70, 70, 70, 1);
+  padding: 10px; 
+  height: 40px;
+  background-color: rgba(70, 70, 70, 1);
   border-bottom: 2px solid #AAF;
 }
 
 .pushmessage p{
-  color: white; font-size: 15px;
-  font-weight: bold; 
+  color: white; 
+  font-size: 14px;
 }
-
-/* === LOADER ===*/
-
-.loader {
-    position: relative;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 12%;
-    height: 4px;
-    border-radius: 4px;
-    background-color: #f0f0f0;
-    margin-top: 2px;
-    overflow: hidden;
-  }
-  .loader::before, .loader::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 0;
-    height: 4px;
-    border-radius: 4px;
-    z-index: 2;
-  }
-  .loader::before {
-    background: linear-gradient(90deg, #08AEEA, #2AF598);
-    animation: animation 1.0s linear infinite;
-  }
-  .loader::after {
-    background: linear-gradient(90deg, #B721FF, #08AEEA);
-    animation: animation 1.0s .5s linear infinite;
-  }
-  
-  @keyframes animation {
-    0% {
-      width: 0;
-    }
-    25% {
-      width: 30%;
-      left: 15%;
-    }
-    50% {
-      width: 70%;
-      left: 40%;
-    }
-    100% {
-      width: 15%;
-      left: 100%;
-    }
-  }
-  

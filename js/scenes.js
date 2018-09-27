@@ -1,4 +1,5 @@
 var assets_folder = "assets/";
+var textures_folder = "textures/sphere_maps/";
 
 var scenes = {
     "Cerberus": {

@@ -1,19 +1,83 @@
 /*
-*   Alex RodrÃ­guez
+*   Alex Rodri­guez
 *   @jxarco 
 */
 
+function setScene( filename, to_cubemap )
+{
+    // free memory
+    for(var t in gl.textures)
+        if(t.includes(".exr"))
+            delete gl.textures[t];
+
+    // add full path
+    filename = textures_folder + filename;
+    // get texture name
+    var tex_name = HDRTool.getName( filename );
+    current_em = tex_name;
+
+    // Load raw pre-processed files
+    if( filename.includes(".raw") )
+    {
+        HDRTool.load( filename, null, loaded);        
+
+        for(var i = 0; i < 5; i++)
+        {
+            var tmp =  filename.replace( tex_name, "_prem_" + i + "_" + tex_name );
+            HDRTool.load(tmp, null, loaded);        
+        }   
+
+        return;
+    }
+
+    // not prefiltered tex
+    if(!renderer.textures[ "_prem_0_" + current_em ])
+        HDRTool.prefilter( filename, {to_cubemap: to_cubemap, oncomplete: displayScene, shader: "cubemapBlur"} );
+    else
+        displayScene();
+    
+}
+
+function displayScene()
+{
+    // load all prefiltered EMS
+    if(renderer.textures[current_em])
+        updateNodeTextures(current_em);
+
+    // config scene
+    skybox.texture = current_em;
+    skybox.flags.visible = true;
+
+    // params_gui['Scene'] = findTexPath(filename);
+    // gui.updateDisplay();
+    gui.domElement.style.display = "block";
+
+    removeLoading();
+
+    if( params_gui['Mesh'] == "" )
+        parseSceneFigure( "Sphere" );
+}
+
+var steps = 0;
+var max_steps = 6;
+
+function loaded ()
+{
+    steps++;
+    $(".pbar").css("width", parseFloat( (steps)/max_steps * 100 ) + "%");
+
+    if(steps == max_steps)
+        displayScene();
+}
+
 function parseSceneFigure( name )
 {
-    // showLoading();
-
     // remove previous matrix
     removeByName( 'matrix_node' );
     removeByName( 'roughness_scale_node' );
     removeByName( 'metalness_scale_node' );
 
-    var toParse = scenes[name],
-        current_figure = toParse;
+    var toParse = scenes[name];
 
     showMessage("Shaded model: " + name);
     params_gui['Mesh'] = name;
@@ -25,105 +89,79 @@ function parseSceneFigure( name )
     // update camera by default
     camera.lookAt( toParse.camera.eye, toParse.camera.target, toParse.camera.up );
 
-    if(name === "Sphere") {
-        gui.f2.open();
-        // set configuration
-        model.mesh = toParse.mesh;
-        model.shader = toParse.shader;
-        removeLoading();
-        return;
-    }
-        
-    gui.f2.close();  // close sphere GUI 
-
-    if(name === "Matrix") drawSphereMatrix( current_em );
-    else if(name === "Roughness scale") drawRoughnessScale( current_em );
-    else if(name === "Metalness scale") drawMetalnessScale( current_em );
-    else
-        renderer.loadMesh(toParse.mesh, function(res){
-
-            // set configuration
-            model.mesh = toParse.mesh;
-            model.shader = toParse.shader;
-
-            let bb = gl.meshes[toParse.mesh].getBoundingBox();
-
-            // update target from bb
-            camera.lookAt( toParse.camera.eye, [bb[0], bb[1], bb[2]], toParse.camera.up );
-
-            if( toParse.uniforms )
-            {
-                // model._uniforms["u_albedo"] = toParse.uniforms["u_albedo"];
-                model._uniforms["u_roughness"] = toParse.uniforms["u_roughness"];
-                model._uniforms["u_metalness"] = toParse.uniforms["u_metalness"];
-            }
-
-            // update node uniforms
-            if(toParse.shader == "pbr")
-            {
-                model.textures['roughness'] = assets_folder + name +"/roughness.png";
-                model.textures['metalness'] = assets_folder + name +"/metalness.png";
-                model.textures['albedo'] = assets_folder + name +"/albedo.png";
-                model.textures['normal'] = assets_folder + name +"/normal.png";
-                model.textures['ao'] = assets_folder + name +"/ao.png";
-
-                if(toParse.hasOpacity)
-                {
-                    model._uniforms["u_hasAlpha"] = true;
-                    model.textures['opacity'] = assets_folder + name +"/opacity.png";
-                }
-                else
-                {
-                    model._uniforms["u_hasAlpha"] = false;
-                    delete model.textures['opacity'];
-                }
-
-                if(toParse.isEmissive)
-                {
-                    model._uniforms["u_isEmissive"] = true;
-                    model.textures['emissive'] = assets_folder + name +"/emissive.png";
-                }
-                else
-                {
-                    model._uniforms["u_isEmissive"] = false;
-                    delete model.textures['emissive'];
-                }
-            }
-            removeLoading();
-        });
-}
-
-function setScene( filename, to_cubemap )
-{
-    var tex_name = EXRTool.getName( filename );
-    current_em = tex_name;
-
-    var f = function()
+    switch( name )
     {
-        // load all prefiltered EMS
-        if(renderer.textures[current_em])
-            updateNodeTextures(current_em);
+        case "Sphere":
+            model.mesh = "sphere";
+            model.shader = toParse.shader;
+            break;
+        case "Matrix":
+            drawMatrix( current_em );
+            break;
+        case "Roughness scale":
+            drawScale( current_em, true, { property: 'roughness', aux_prop: 1.0 } );
+            break;
+        case "Metalness scale":
+            drawScale( current_em, true, { property: 'metalness' } );
+            break;
+        default:
+            renderer.loadMesh(toParse.mesh, function(res){
 
-        // config scene
-        skybox.texture = current_em;
-        skybox.flags.visible = true;
+                if(!res) throw( "No mesh loaded" );
 
-        // wait 200 ms to show "finish! " message
-        setTimeout(function(){
-            params_gui['Scene'] = findTexPath(filename);
-            gui.updateDisplay();
-            gui.domElement.style.display = "block";
-            removeLoading();
-            showMessage("Rendering with " + default_shader_macros.N_SAMPLES + " samples");
-        }, 200);
+                // set configuration
+                model.mesh = toParse.mesh;
+                model.shader = toParse.shader;
+
+                let bb = gl.meshes[toParse.mesh].getBoundingBox();
+
+                // update target from bb
+                camera.lookAt( toParse.camera.eye, [bb[0], bb[1], bb[2]], toParse.camera.up );
+
+                if( toParse.uniforms )
+                {
+                    model._uniforms["u_roughness"] = toParse.uniforms["u_roughness"];
+                    model._uniforms["u_metalness"] = toParse.uniforms["u_metalness"];
+                }
+
+                // update node uniforms
+                if(toParse.shader == "pbr")
+                {
+                    model.textures['roughness'] = assets_folder + name +"/roughness.png";
+                    model.textures['metalness'] = assets_folder + name +"/metalness.png";
+                    model.textures['albedo'] = assets_folder + name +"/albedo.png";
+                    model.textures['normal'] = assets_folder + name +"/normal.png";
+                    model.textures['ao'] = assets_folder + name +"/ao.png";
+
+                    if(toParse.hasOpacity)
+                    {
+                        model._uniforms["u_hasAlpha"] = true;
+                        model.textures['opacity'] = assets_folder + name +"/opacity.png";
+                    }
+                    else
+                    {
+                        model._uniforms["u_hasAlpha"] = false;
+                        delete model.textures['opacity'];
+                    }
+
+                    if(toParse.isEmissive)
+                    {
+                        model._uniforms["u_isEmissive"] = true;
+                        model.textures['emissive'] = assets_folder + name +"/emissive.png";
+                    }
+                    else
+                    {
+                        model._uniforms["u_isEmissive"] = false;
+                        delete model.textures['emissive'];
+                    }
+                }
+                
+            });
     }
 
-    // not prefiltered tex
-    if(!renderer.textures[ "_prem_0_" + current_em ])
-        EXRTool.prefilter( filename, {to_cubemap: to_cubemap, oncomplete: f, shader: "cubemapBlur"} );
-    else
-        f();
-    
+
+
+    removeLoading();
 }
 
 function updateNodeTextures(em)
@@ -205,16 +243,17 @@ function removeByName( name )
 
 function findTexPath(fn)
 { 
+
     for(t in textures)
     {
-        if(textures[t].path == fn)
+        if(HDRTool.getName(textures[t].path) == HDRTool.getName(fn))
             return t;
     }
         
     return "";
 }
 
-function drawSphereMatrix( em, visible )
+function drawMatrix( em, visible )
 {
     // remove previous
     removeByName( 'matrix_node' );
@@ -233,7 +272,6 @@ function drawSphereMatrix( em, visible )
             mn.mesh = "sphere";
             mn.shader = "pbrMat";
             mn.position = [j*2,0,i*2];
-            // mn._uniforms["u_albedo"] = vec3.fromValues( params_gui['Albedo'][0]/255.0, params_gui['Albedo'][1]/255.0,params_gui['Albedo'][2]/255.0);
             mn._uniforms["u_roughness"] = values[i];
             mn._uniforms["u_metalness"] = values[j];
             mn.textures['brdf'] = "_brdf_integrator";
@@ -250,65 +288,47 @@ function drawSphereMatrix( em, visible )
     removeLoading();
 }
 
-function drawRoughnessScale( em, visible, metalness )
+function drawScale( em, visible, options )
 {
     // remove previous
     removeByName( 'roughness_scale_node' );
-    var values = [1.0, 0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.0];
+    options = options || {};
+    if(!options.property)
+    throw( 'No property to make scale' );
+    
+    var prop = options.property;
+    var name = (prop == 'roughness') ? 'roughness_scale_node' : 'metalness_scale_node';
+    var aux_prop = options.aux_prop;
 
+    var values = [1.0, 0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.0];
     var node = new RD.SceneNode();
-    node.name = "roughness_scale_node";
+    node.name = name;
     node.flags.visible = visible;
     scene.root.addChild(node);
 
     for(var i = 0; i < 9; i++)
     {
         var mn = new RD.SceneNode();
+        mn.name = "child" + i;
         mn.mesh = "sphere";
         mn.position = [0,0,i*2];
-        // mn._uniforms["u_albedo"] = vec3.fromValues( params_gui['Albedo'][0]/255.0, params_gui['Albedo'][1]/255.0,params_gui['Albedo'][2]/255.0);
-        mn._uniforms["u_roughness"] = values[i];
-        mn._uniforms["u_metalness"] = metalness != null ? metalness : 1.0;
+
+        if(prop == 'roughness') {
+            mn._uniforms["u_roughness"] = values[i];
+            mn._uniforms["u_metalness"] = aux_prop != null ? aux_prop : 0.0;
+        }
+        else {
+            mn._uniforms["u_roughness"] = aux_prop != null ? aux_prop : 1.0;
+            mn._uniforms["u_metalness"] = values[i];
+        }
+
         mn.textures['brdf'] = "_brdf_integrator";
         mn.textures['env'] = em;
-        mn.textures['env_1'] = "_prem_0_"+em;
-        mn.textures['env_2'] = "_prem_1_"+em;
-        mn.textures['env_3'] = "_prem_2_"+em;
-        mn.textures['env_4'] = "_prem_3_"+em;
-        mn.textures['env_5'] = "_prem_4_"+em;
-        mn.shader = "pbrMat";
-        node.addChild( mn );
-    }
-
-    removeLoading();
-}
-
-function drawMetalnessScale( em, visible, roughness )
-{
-    // remove previous
-    removeByName( 'metalness_scale_node' );
-    var values = [1.0, 0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.0];
-
-    var node = new RD.SceneNode();
-    node.name = "metalness_scale_node";
-    node.flags.visible = visible;
-    scene.root.addChild(node);
-
-    for(var i = 0; i < 9; i++)
-    {
-        var mn = new RD.SceneNode();
-        mn.mesh = "sphere";
-        mn.position = [0,0,i*2];
-       //  mn._uniforms["u_albedo"] = vec3.fromValues( params_gui['Albedo'][0]/255.0, params_gui['Albedo'][1]/255.0,params_gui['Albedo'][2]/255.0);
-        mn._uniforms["u_roughness"] = roughness != null ? roughness : 1.0;
-        mn._uniforms["u_metalness"] = values[i];
-        mn.textures['brdf'] = "_brdf_integrator";
-        mn.textures['env'] = em;
-        mn.textures['env_1'] = "_prem_0_"+em;
-        mn.textures['env_2'] = "_prem_1_"+em;
-        mn.textures['env_3'] = "_prem_2_"+em;
-        mn.textures['env_4'] = "_prem_3_"+em;
-        mn.textures['env_5'] = "_prem_4_"+em;
+        mn.textures['env_1'] = "_prem_0_" + em;
+        mn.textures['env_2'] = "_prem_1_" + em;
+        mn.textures['env_3'] = "_prem_2_" + em;
+        mn.textures['env_4'] = "_prem_3_" + em;
+        mn.textures['env_5'] = "_prem_4_" + em;
         mn.shader = "pbrMat";
         node.addChild( mn );
     }
@@ -483,25 +503,4 @@ function getAverage(tex)
         var val = (v[0] + v[1] + v[2]) / 3;
         return Math.clamp(val, 0.2, 1.0);
     }
-}
-
-function drawDepthTexture()
-{
-    var tex_name = '_depth_texture';
-    var texture = new GL.Texture(gl.canvas.width,gl.canvas.height, { format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT });
-
-    gl.enable( gl.DEPTH_TEST );
-
-    var cam = new RD.Camera();
-    cam.perspective( 45, gl.canvas.width / gl.canvas.height, 0.5, 100000);
-    cam.lookAt( camera._position, camera._target, camera._up );
-
-    texture.drawTo(function() {
-        renderer.clear(bg_color);
-        gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
-
-        renderer.render(scene, cam);
-    });
-
-    renderer.textures[tex_name] = texture;
 }

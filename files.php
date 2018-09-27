@@ -37,7 +37,6 @@
         $file_name = ucwords($file_name);
 
         $file["path"] = $aux;
-        $file["name"] = $file_name;
         $size = round(floatval(filesize($aux)/1000000), 1);
         $file["filesize"] = $size;
 

@@ -13,19 +13,24 @@
 	</style>
 </head>
 <body>
-
+		
 	<div id="fps">FPS</div>
 
 	<div id="modal">
 
-		<div style="margin-top: 40vh; opacity: 0.85;">
-			<img src="data/hdr4eu.png" style="width: 12%;">
-			<div class="loader"></div>
+		<div style="margin-top: 40vh; width: 100%;">
+
+			<img src="data/hdr4eu.png" style="width: 260px;">
+			<div style="width: 260px; margin-left: calc( 50% - 130px );">
+				<div class="pbar" style="width: 0%; height: 4px; background-color: rgb(30, 211, 111) !important; margin-top: 2px;"></div>
+				<div class="pbar" style="width: 0%; height: 4px; background-color: #AAF !important; margin-top: 1px;"></div>
+			</div>
+						
 		</div>
 
 	</div>
 	
-	<div id="push" style="position: absolute;">
+	<div id="push">
 		
 	</div>
 	
@@ -48,6 +53,7 @@
 
 	<!-- My scripts -->
 	<script type="text/javascript" src="js/scenes.js"></script>
+	<script type="text/javascript" src="js/utils.js"></script>
 	<script type="text/javascript" src="js/bindings.js"></script>
 	<script type="text/javascript" src="js/gui.js"></script>
 	<script type="text/javascript" src="js/fx.js"></script>

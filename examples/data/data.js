@@ -6,8 +6,6 @@ var DATA = {
     "lights.exr",
     "flowers.exr",
     "sponza.exr",
-    "sponza-2048.exr",
-    "cubemap.exr",
-    "cubemap-2048.exr"
+    "cubemap.exr"
     ]
 }

@@ -3,7 +3,7 @@
 *   @jxarco 
 */
 
-// EXRTool.js 
+// HDRTool.js 
 // Dependencies: litegl.js & tinyexr.js
 
 //main namespace
@@ -11,7 +11,7 @@
 
     /**
      * Main namespace
-     * @namespace EXRTool
+     * @namespace HDRTool
      */
     
     /**
@@ -21,13 +21,13 @@
 
     
     if(!GL)
-    throw( "EXRTool.js needs litegl.js to work" );
+    throw( "HDRTool.js needs litegl.js to work" );
 
     if(!Module.EXRLoader)
-    throw( "EXRTool.js needs tinyexr.js to work" );
+    throw( "HDRTool.js needs tinyexr.js to work" );
     
     
-    var EXRTool = global.EXRTool = {
+    var HDRTool = global.HDRTool = {
 
         version: 1.0,
 
@@ -50,20 +50,20 @@
         spheremap_upload_options: {}
     };
     
-    EXRTool.setup = function(o)
+    HDRTool.setup = function(o)
     {
         o = o || {};
-        if(EXRTool.configuration)
+        if(HDRTool.configuration)
             throw("setup already called");
-        EXRTool.configuration = o;
+        HDRTool.configuration = o;
     }
 
     /**
     * Parse the input data and get all the EXR info 
-    * @method parseFile
+    * @method parseExr
     * @param {ArrayBuffer} buffer 
     */
-    EXRTool.parseFile = function( buffer )
+    HDRTool.parseExr = function( buffer )
     {
         var EXRHeader = {};
 
@@ -132,11 +132,86 @@
     }
 
     /**
+    * Parse the input data and get all raw data
+    * @method parseRaw
+    * @param {ArrayBuffer} buffer 
+    * @param {String} filename
+    */
+    HDRTool.parseRaw = function( buffer )
+    {
+        if(!buffer)
+        throw( "No data buffer" );
+
+        var data = new Float32Array(buffer);
+
+        // Get header
+        var width = data[0],
+            height = data[1]
+            numChannels = data[2],
+            bitsPerChannel = data[3],
+            headerSize = data[4];
+
+        // console.log( { width: width, height: height, numChannels: numChannels, bitsPerChannel: bitsPerChannel, headerSize: headerSize } );
+
+        // Get bytes
+        var bytes = data.slice( headerSize );
+        
+        // Reorder faces
+        var faces = [];
+        var bPerFace = data.length / 6;
+
+        for(var i = 0; i < 6; i++)
+        {
+            faces[i] = new Float32Array(bPerFace);
+            var index = i * numChannels * width * height,
+                endIndex = index + numChannels * width * height;
+
+            var subdata = bytes.slice(index, endIndex);
+            faces[i].set(subdata);
+        }
+
+        // order faces
+        var facesSorted = [];
+
+        facesSorted.push( 
+            faces[0], // X neg
+            faces[2], // Y neg
+            faces[4], // Z pos
+            faces[1], // X pos
+            faces[3], // Y pos
+            faces[5] // Z neg
+        );
+        
+        // Create texture
+        var options = {
+            format: gl.RGBA,
+            type: gl.FLOAT,
+            texture_type: GL.TEXTURE_CUBE_MAP,
+            cubemap_faces_data: facesSorted
+        };
+
+        var texture = null;
+        Texture.setUploadOptions( {no_flip: true} );
+            
+        texture = new GL.Texture( width, height, options);
+
+        // texture properties
+        texture.wrapS = gl.CLAMP_TO_EDGE;
+        texture.wrapT = gl.CLAMP_TO_EDGE;
+        texture.magFilter = gl.LINEAR;
+        texture.minFilter = gl.LINEAR_MIPMAP_LINEAR;
+
+        Texture.setUploadOptions();
+        
+        return texture;
+    }
+
+    /**
     * Create a texture based in data received as input 
     * @method toTexture
     * @param {Object} data 
     */
-    EXRTool.toTexture = function( data )
+    HDRTool.toTexture = function( data )
     {
         if(!data)
         throw( "No data to get texture" );
@@ -222,7 +297,7 @@
     * @method toCubemap
     * @param {Texture} tex
     */
-    EXRTool.toCubemap = function( tex )
+    HDRTool.toCubemap = function( tex )
     {
         var size = this.CUBE_MAP_SIZE || 0;
         
@@ -282,7 +357,7 @@
     * @param {Object} options
     * @param {Function} oncomplete
     */
-    EXRTool.load = function(file, options, oncomplete)
+    HDRTool.load = function(file, options, oncomplete)
     {
         options = options || {};
         var that = this;
@@ -290,16 +365,24 @@
         var onread = function( buffer, options )
         {
             options = options || {};
+            
+            // File has been dropped
+            if(options.filename)
+                tex_name = options.filename;
 
             t1 = getTime();
 
-            // delete memory
-            for(var t in gl.textures)
-                if(t.includes(".exr"))
-                    delete gl.textures[t];
+            var texture = null;
 
-            var texData = that.parseFile( buffer );
-            var texture = that.toTexture( texData );
+            if(isRaw(tex_name))
+                texture = that.parseRaw( buffer );
+            else
+            {
+                var texData = that.parseExr( buffer );
+                texture = that.toTexture( texData );
+            }
+
+            // tex_name = tex_name.replace(".raw", "");
 
             // store the texture
             gl.textures[tex_name] = texture;
@@ -336,7 +419,7 @@
     * @method getName
     * @param {string} path
     */
-    EXRTool.getName = function( path )
+    HDRTool.getName = function( path )
     {
         var tokens = path.split("/");
         return tokens[ tokens.length - 1 ];
@@ -348,7 +431,7 @@
     * @param {string} file
     * @param {Object} options
     */
-    EXRTool.prefilter = function(file, options)
+    HDRTool.prefilter = function(file, options)
     {
         var tex_name = this.getName( file );
         var tex = gl.textures[tex_name];
@@ -374,7 +457,7 @@
         if(!tex)
         {
             console.warn("Loading exr file: " + file);
-            this.load( file, options, inner );        
+            this.load( file, null, inner );        
         }
         else
             inner( tex );
@@ -387,7 +470,7 @@
     * @param {Number} level
     * @param {Shader||String} shader
     */
-    EXRTool.blur = function(input, level, shader)
+    HDRTool.blur = function(input, level, shader)
     {
         var size = input.height; // by default
 
@@ -469,7 +552,7 @@
     * @method brdf
     * @param {Shader||String} shader
     */
-    EXRTool.brdf = function( shader )
+    HDRTool.brdf = function( shader )
     {
         var tex_name = '_brdf_integrator';
        
@@ -491,7 +574,7 @@
     * @method download
     * @param {string} name
     */
-    EXRTool.download = function(name)
+    HDRTool.download = function(name)
     {
         var tex = gl.textures[name];
         if(!tex)
@@ -513,11 +596,16 @@
         Private methods used in parsing steps
     */
 
+    function isRaw( texture_name )
+    {
+        return texture_name.includes(".raw");
+    }
+
     function parseFaces( size, width, height, pixelData )
     {
         var faces = [],
             it = 0,
-            F = EXRLoader.CUBE_MAP_NEGATIVE_Y;
+            F = HDRTool.CUBE_MAP_NEGATIVE_Y;
     
         for(var i = 0; i < 6; i++)
             faces[i] = new Float32Array(size);
@@ -528,8 +616,8 @@
             var x1_n = (width * 0.25) + (i * width),
                     x2_n = (width * 0.5) + (i * width);
     
-            if( i === (height / 3) ) { F = EXRLoader.CUBE_MAP_POSITIVE_Z; it = 0; }
-            if( i === (height / 3) * 2 ) { F = EXRLoader.CUBE_MAP_POSITIVE_Y; it = 0; }
+            if( i === (height / 3) ) { F = HDRTool.CUBE_MAP_POSITIVE_Z; it = 0; }
+            if( i === (height / 3) * 2 ) { F = HDRTool.CUBE_MAP_POSITIVE_Y; it = 0; }
     
             var line = pixelData.subarray(x1_n * 3, x2_n * 3);
             faces[F].set(line, it);
@@ -539,7 +627,7 @@
         // from now get the rest from left to right
     
         it = 0;
-        F = EXRLoader.CUBE_MAP_NEGATIVE_X; // next face
+        F = HDRTool.CUBE_MAP_NEGATIVE_X; // next face
         for(var i = (height / 3); i < (height / 3) * 2; i++)
         {
             var x1_n = (width * 0.0) + (i * width),
@@ -551,7 +639,7 @@
         }
     
         it = 0;
-        F = EXRLoader.CUBE_MAP_POSITIVE_X; // next face
+        F = HDRTool.CUBE_MAP_POSITIVE_X; // next face
         for(var i = (height / 3); i < (height / 3) * 2; i++)
         {
                 var x1_n = (width * 0.5) + (i * width),
@@ -563,7 +651,7 @@
         }
     
         it = 0;
-        F = EXRLoader.CUBE_MAP_NEGATIVE_Z; // next face
+        F = HDRTool.CUBE_MAP_NEGATIVE_Z; // next face
         for(var i = (height / 3); i < (height / 3) * 2; i++)
         {
                 var x1_n = (width * 0.75) + (i * width),
@@ -577,12 +665,12 @@
         // order faces
         var ret = [];
 
-        ret.push( faces[EXRLoader.CUBE_MAP_POSITIVE_X],
-                faces[EXRLoader.CUBE_MAP_POSITIVE_Y],
-                faces[EXRLoader.CUBE_MAP_POSITIVE_Z],
-                faces[EXRLoader.CUBE_MAP_NEGATIVE_X],
-                faces[EXRLoader.CUBE_MAP_NEGATIVE_Y],
-                faces[EXRLoader.CUBE_MAP_NEGATIVE_Z] );
+        ret.push( faces[HDRTool.CUBE_MAP_POSITIVE_X],
+                faces[HDRTool.CUBE_MAP_POSITIVE_Y],
+                faces[HDRTool.CUBE_MAP_POSITIVE_Z],
+                faces[HDRTool.CUBE_MAP_NEGATIVE_X],
+                faces[HDRTool.CUBE_MAP_NEGATIVE_Y],
+                faces[HDRTool.CUBE_MAP_NEGATIVE_Z] );
 
         return ret;
     }
@@ -792,15 +880,15 @@
     // */
     // function Class( o )
     // {
-    //     if(this.constructor !== EXRTool.Class)
-    //         throw("Use new to create EXRTool.Class");
+    //     if(this.constructor !== HDRTool.Class)
+    //         throw("Use new to create HDRTool.Class");
 
     //     this._ctor();
     //     if(o)
     //         this.configure( o );
     // }
     
-    // EXRTool.Class = Class;
+    // HDRTool.Class = Class;
     
     // Class.prototype._ctor = function()
     // {

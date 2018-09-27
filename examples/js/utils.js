@@ -4,8 +4,12 @@ function isPowerOfTwo(v)
 }
 
 // read exr file and run the EXRLoader
-function readFile( file, to_cubemap)
+function readFile( file, to_cubemap, mode)
 {
+  var post = (mode) ? "cube_maps/" : "2d/";
+  if(mode > 1)
+  post = "sphere_maps/";
+
   try {
     
     document.querySelector("#loading").innerHTML = "Loading...";
@@ -13,9 +17,9 @@ function readFile( file, to_cubemap)
 
     var url = "";
     if(!file)
-        url = "../textures/" + document.getElementById("exr-input").value;
+        url = "../textures/" + post + document.getElementById("exr-input").value;
     else
-        url = "../textures/" + file;
+        url = "../textures/" + post + file;
 
     var xhr = new XMLHttpRequest();
     xhr.open( "GET", url, true );

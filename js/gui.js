@@ -1,5 +1,5 @@
 /*
-*   Alex RodrÃ­guez
+*   Alex Rodri­guez
 *   @jxarco 
 */
 
@@ -45,20 +45,7 @@ function drawGUI()
         },
         'Get skybox': function() {
             
-            let 
-                tex = gl.textures[ current_em ],
-                index = tex.width * tex.height * 4, // w * h * channels
-                size = index * 6 + 5, // index * faces,
-                headerSize = 5;
-                dest = new Float32Array(size);
-
-            // width, height, channels, bits per channel, header size
-            dest.set( [tex.width, tex.height, 4, 32, headerSize] ); // no index = beggining
-
-            for(var i = 0; i < 6; i++)
-                dest.set( tex.getPixels(i), headerSize + index * i );
-                
-            LiteGUI.downloadFile( current_em + ".raw", dest );
+            downloadCubemap();
         }
     };
 
@@ -96,9 +83,9 @@ function drawGUI()
     // Direct light
     var f_light = gui.addFolder("Direct light");
     gui.light = f_light.addColor( params_gui, 'Light color');
-    gui.light_position_x = f_light.add( params_gui, 'Light X', -5, 5.0, 0.1 );
-    gui.light_position_y = f_light.add( params_gui, 'Light Y', -5, 5.0, 0.1 );
-    gui.light_position_z = f_light.add( params_gui, 'Light Z', -5, 5.0, 0.1 );
+    gui.light_position_x = f_light.add( params_gui, 'Light X', -15, 15.0, 0.1 );
+    gui.light_position_y = f_light.add( params_gui, 'Light Y', -15, 15.0, 0.1 );
+    gui.light_position_z = f_light.add( params_gui, 'Light Z', -15, 15.0, 0.1 );
     gui.light_intensity = f_light.add( params_gui, 'Light intensity', 1.0, 50.0, 0.5 );
     // Other
     var f_other = gui.addFolder("Other");
@@ -112,6 +99,24 @@ function drawGUI()
 
     updateGUIBindings();
     return params_gui;
+}
+
+function downloadCubemap( index )
+{
+    let
+        which = (index != null ? "_prem_" + index + "_" : ""); 
+        tex = gl.textures[ which + current_em ],
+        size =  (tex.width * tex.height * 4) * 6; // w * h * channels
+        headerSize = 5,
+        dest = new Float32Array(size + headerSize); // testing first prem
+
+    // width, height, channels, bits per channel, header size
+    dest.set( [tex.width, tex.height, 4, 32, headerSize] ); // no index = beggining
+
+    for(var i = 0; i < 6; i++)
+        dest.set( tex.getPixels(i), headerSize + (tex.width * tex.height * 4) * i );
+
+    LiteGUI.downloadFile( current_em.replace(".exr", '') + ".raw", dest );
 }
 
 function getScenes()
@@ -175,7 +180,7 @@ function showMessage( text, duration )
     $("#push").prepend( msg );
 
     setTimeout(function(){
-        $("#"+id).fadeOut();
+        $("#"+id).slideUp();
     }, duration);
 }
 
@@ -186,7 +191,7 @@ function showLoading()
 
 function removeLoading()
 {
-    $("#progress").css("width", "0%");
+    // $(".pbar").css("width", "0%");
     $("#modal").fadeOut();
 };
 
@@ -210,10 +215,12 @@ function onDragDialog( id, options )
     dialog.show('fade');
 
     var widgets = new LiteGUI.Inspector();
+
+    var filename = options.filename;
     
     window._vars_dialog = {
         data: options.data,
-        filename: options.filename,
+        filename: filename,
         to_cubemap: true,
         show_texture: false,
         gen_cubemap_size: 512
@@ -224,7 +231,7 @@ function onDragDialog( id, options )
         widgets.clear();
 
         widgets.addSection("Texture");
-        widgets.addString( "File", options.filename );
+        widgets.addString( "File", filename );
         widgets.addCheckbox( "Convert to cube map", true,{name_width: "33.33%", callback: function(v) {      
             window._vars_dialog["to_cubemap"] = v;
         }});
@@ -235,8 +242,12 @@ function onDragDialog( id, options )
         widgets.addButton( null, "Load", {width: "100%", name_width: "50%", callback: function(){
             $("#"+dialog_id).remove();
             showMessage("Processing scene...");
-            EXRTool.load(options.filename, window._vars_dialog, function(){
-                setScene( options.filename, true );
+
+            var params = window._vars_dialog;
+
+            HDRTool.load(filename, params, function(){
+                
+                setScene( filename, true );
             });
         }});
     }
