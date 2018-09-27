@@ -11,6 +11,36 @@ https://webglstudio.org/users/arodriguez/projects/HDR4EU/?samples=4096
 
 An extreme number of samples could reduce the performance. 
 
+## HDRTool.js
+
+Javascript library responsible of parsing and processing different file formats as **raw** and **exr**. The result is used to create a texture [(litegl.js)](https://github.com/jagenjo/litegl.js).
+
+Steps:
+
+*Load* example,
+
+
+``` 
+var filename = "uffizi_gallery.exr";
+HDRTool.load( filename ); 
+```
+
+As a result, the created texture is stored in ```gl.textures```.
+
+... and *Prefilter*:
+
+
+``` 
+var filename = "uffizi_gallery.exr";
+var shader = "blur"; // Shader used for prefiltering (Blur process)
+var f = function (...) {  };
+HDRTool.prefilter( filename, {to_cubemap: true, oncomplete: f, shader: shader} );
+```
+
+When completed, all prefiltered versions of the original texture are stored in ```gl.textures```.
+
+## Results
+
 ![alt text](https://webglstudio.org/users/arodriguez/screenshots/example.PNG)
 ![alt text](https://webglstudio.org/users/arodriguez/screenshots/BlueLights.PNG)
 
