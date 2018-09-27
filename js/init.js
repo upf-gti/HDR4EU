@@ -117,7 +117,7 @@ function init()
     var url = "";
 
     if(1 || window.location.host.includes( "github" ))
-        url = "https://api.github.com/repos/upf-gti/HDR4EU/contents/textures";
+        url = "https://api.github.com/repos/upf-gti/HDR4EU/contents/textures/sphere_maps";
 
     $.get(url, function(data){
        
