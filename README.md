@@ -20,7 +20,7 @@ Steps:
 *Load* example,
 
 
-``` 
+```javascript
 var filename = "uffizi_gallery.exr";
 HDRTool.load( filename ); 
 ```
@@ -30,7 +30,7 @@ As a result, the created texture is stored in ```gl.textures```.
 ... and *Prefilter*:
 
 
-``` 
+```javascript
 var filename = "uffizi_gallery.exr";
 var shader = "blur"; // Shader used for prefiltering (Blur process)
 var f = function (...) {  };
