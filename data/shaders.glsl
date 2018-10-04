@@ -787,11 +787,17 @@ pbrMat pbr.vs pbrMatrix.fs
     uniform vec3 u_light_color;
 	uniform vec3 u_light_position;
 
+	uniform float u_light2_intensity;
+    uniform vec3 u_light2_color;
+	uniform vec3 u_light2_position;
+
 	uniform float u_channel;
     uniform vec3 u_albedo;
     uniform float u_roughness;
     uniform float u_metalness;
     
+	uniform bool u_onlyLights;
+
 	#import "ggx.inc"
 	#import "prem.inc"
 	#import "fresnel.inc"
@@ -805,6 +811,7 @@ pbrMat pbr.vs pbrMatrix.fs
     struct PBRInfo
     {
         float NdotL;                  // cos angle between normal and light direction
+		float NdotL2;                  // cos angle between normal and light direction
         float NdotV;                  // cos angle between normal and view direction
         float NdotH;                  // cos angle between normal and half vector
         float LdotH;                  // cos angle between light direction and half vector
@@ -844,7 +851,7 @@ pbrMat pbr.vs pbrMatrix.fs
         return color;
     }
 
-	vec3 getDirectLighting(PBRInfo pbrInputs, vec3 L)
+	vec3 getDirectLighting(PBRInfo pbrInputs, vec3 L, vec3 L2)
 	{
 		vec3 Lradiance = vec3(u_light_intensity);
 		float invPI = 0.31830988618;
@@ -870,7 +877,8 @@ pbrMat pbr.vs pbrMatrix.fs
 
 		// Total contribution for this light.
 		float df = min(1.0, 10.0/light_distance);
-		return (diffuseColor + specularBRDF) * Lradiance * u_light_color * cosLi * df;
+				// pbr color					// lighting
+		return (specularBRDF + diffuseColor) * (Lradiance * u_light_color * cosLi * df);
 	}
 
 	void main() {
@@ -891,11 +899,13 @@ pbrMat pbr.vs pbrMatrix.fs
       	
         vec3 v = normalize(u_camera_position - v_wPosition);    // Vector from surface point to camera
         vec3 n = normalize(v_wNormal);                          // normal at surface point
-        vec3 l = normalize(u_light_position - v_wPosition);  			// Vector from surface point to light
-        vec3 h = normalize(l+v);                                // Half vector between both l and v
+        vec3 l = normalize(u_light_position - v_wPosition);  			// Vector from surface point to ligh
+		vec3 l2 = normalize(u_light2_position - v_wPosition);  			// Vector from surface point to light
+		vec3 h = normalize(l+v);                                // Half vector between both l and v
         vec3 reflection = normalize(reflect(v, n));
         
 		float NdotL = clamp(dot(n, l), 0.001, 1.0);
+		float NdotL2 = clamp(dot(n, l2), 0.001, 1.0);
         float NdotV = clamp(abs(dot(n, v)), 0.001, 1.0);
         float NdotH = max(0.0, dot(n, h));
         float LdotH = clamp(dot(l, h), 0.0, 1.0);
@@ -903,6 +913,7 @@ pbrMat pbr.vs pbrMatrix.fs
         
         PBRInfo pbrInputs = PBRInfo(
             NdotL,
+			NdotL2,
             NdotV,
             NdotH,
             LdotH,
@@ -917,9 +928,14 @@ pbrMat pbr.vs pbrMatrix.fs
 
 		// DIRECT LIGHTING
 		vec3 L0 = u_light_position - v_wPosition;
-        vec3 DIRECT = getDirectLighting(pbrInputs, L0);
+		vec3 L2 = u_light2_position - v_wPosition;
+		vec3 DIRECT = getDirectLighting(pbrInputs, L0, L2);
+
        	vec3 IBL = getIBLContribution(pbrInputs, n, reflection);
-        vec3 color = DIRECT + IBL;
+        vec3 color = DIRECT;
+
+		if(!u_onlyLights)
+			color += IBL;
 
 		if(u_channel == 3.0)
 			color = vec3(perceptualRoughness);

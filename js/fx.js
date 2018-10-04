@@ -5,20 +5,15 @@
 
 function setScene( filename, to_cubemap )
 {
-    // free memory
-    for(var t in gl.textures)
-        if(t.includes(".exr"))
-            delete gl.textures[t];
-
-    // add full path
-    filename = textures_folder + filename;
     // get texture name
     var tex_name = HDRTool.getName( filename );
+    last_em = current_em;
     current_em = tex_name;
 
     // Load raw pre-processed files
     if( filename.includes(".raw") )
     {
+        showLoading();
         HDRTool.load( filename, null, loaded);        
 
         for(var i = 0; i < 5; i++)
@@ -26,20 +21,24 @@ function setScene( filename, to_cubemap )
             var tmp =  filename.replace( tex_name, "_prem_" + i + "_" + tex_name );
             HDRTool.load(tmp, null, loaded);        
         }   
-
-        return;
     }
-
-    // not prefiltered tex
-    if(!renderer.textures[ "_prem_0_" + current_em ])
-        HDRTool.prefilter( filename, {to_cubemap: to_cubemap, oncomplete: displayScene, shader: "cubemapBlur"} );
-    else
-        displayScene();
+    else // Load and prefilter exr files
+    {
+        if(!renderer.textures[ "_prem_0_" + current_em ])
+            HDRTool.prefilter( filename, {to_cubemap: to_cubemap, oncomplete: displayScene, shader: "cubemapBlur"} );
+        else
+            displayScene();
+    }
     
 }
 
 function displayScene()
 {
+    // delete previous em (free memory)
+    for(var t in gl.textures)
+        if(t.includes( last_em ))
+            delete gl.textures[t];
+
     // load all prefiltered EMS
     if(renderer.textures[current_em])
         updateNodeTextures(current_em);
@@ -48,9 +47,8 @@ function displayScene()
     skybox.texture = current_em;
     skybox.flags.visible = true;
 
-    // params_gui['Scene'] = findTexPath(filename);
-    // gui.updateDisplay();
-    gui.domElement.style.display = "block";
+    params_gui['Scene'] = findTexPath(current_em);
+    gui.updateDisplay();
 
     removeLoading();
 
@@ -58,16 +56,18 @@ function displayScene()
         parseSceneFigure( "Sphere" );
 }
 
-var steps = 0;
-var max_steps = 6;
-
 function loaded ()
 {
     steps++;
     $(".pbar").css("width", parseFloat( (steps)/max_steps * 100 ) + "%");
 
     if(steps == max_steps)
+    {
+        steps = 0;
+        gui.domElement.style.display = "block";
         displayScene();
+    }
+        
 }
 
 function parseSceneFigure( name )
@@ -99,10 +99,10 @@ function parseSceneFigure( name )
             drawMatrix( current_em );
             break;
         case "Roughness scale":
-            drawScale( current_em, true, { property: 'roughness', aux_prop: 1.0 } );
+            drawScale( current_em, true, { property: 'roughness' } );
             break;
         case "Metalness scale":
-            drawScale( current_em, true, { property: 'metalness' } );
+            drawScale( current_em, true, { property: 'metalness', aux_prop: 0.5 } );
             break;
         default:
             renderer.loadMesh(toParse.mesh, function(res){
@@ -133,6 +133,7 @@ function parseSceneFigure( name )
                     model.textures['normal'] = assets_folder + name +"/normal.png";
                     model.textures['ao'] = assets_folder + name +"/ao.png";
 
+                    // other textures
                     if(toParse.hasOpacity)
                     {
                         model._uniforms["u_hasAlpha"] = true;
@@ -158,8 +159,6 @@ function parseSceneFigure( name )
                 
             });
     }
-
-
 
     removeLoading();
 }
@@ -250,7 +249,7 @@ function findTexPath(fn)
             return t;
     }
         
-    return "";
+    return null;
 }
 
 function drawMatrix( em, visible )

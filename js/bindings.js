@@ -76,7 +76,7 @@ function updateGUIBindings()
         showMessage("Loading scene");
         
         var tex = textures[ params_gui['Scene'] ],
-            path = HDRTool.getName( tex.path );
+            path = tex.path;
 
         setScene( path, true );
     });
@@ -94,6 +94,7 @@ function updateGUIBindings()
     });
     gui.draw_light.onChange(function(){
         light.visible = params_gui['Draw light'];
+        light2.visible = params_gui['Draw light'];
     });
 
     gui.samples.onFinishChange(function(){
@@ -128,11 +129,15 @@ function updateGUIBindings()
         let y = params_gui['Light color'][1]/255.0;
         let z = params_gui['Light color'][2]/255.0;
         gui.tmp["Light"] = vec3.fromValues( x, y, z);
+        gui.tmp["Light2"] = vec3.fromValues( y, x, z);
         light.color = vec3.fromValues( x*15, y*15, z*15);
+
+        light2.color = vec3.fromValues( y*15, x*15, z*15);
     });
     
     gui.light_intensity.onChange(function(){
         renderer._uniforms["u_light_intensity"] = params_gui['Light intensity'];
+        renderer._uniforms["u_light2_intensity"] = params_gui['Light intensity'];
     });
     
 }
@@ -146,11 +151,13 @@ function updateSceneFromGUI()
     renderer._uniforms["u_offset"] = params_gui['Offset'];
     renderer._uniforms["u_albedo"] = vec3.fromValues( params_gui['Albedo'][0]/255.0, params_gui['Albedo'][1]/255.0,params_gui['Albedo'][2]/255.0);
     renderer._uniforms["u_light_color"] = gui.tmp["Light"];
+    renderer._uniforms["u_light2_color"] = gui.tmp["Light2"];
     
     model._uniforms["u_roughness"] = params_gui['Roughness'];
     model._uniforms["u_metalness"] = params_gui['Metalness'];
 
     renderer._uniforms["u_enable_ao"] = params_gui['Apply AO'];
+    renderer._uniforms["u_onlyLights"] = params_gui['Disable IBL'];
 
     window.glow = params_gui['Glow'];
     window.iterations = params_gui['Iterations'];

@@ -3,8 +3,8 @@
 *   @jxarco 
 */
 
-var LOAD_STEPS = 0;
-var STEPS = 1;
+var steps = 0;
+var max_steps = 6;
 var textures = {};
 
 var default_shader_macros = {
@@ -26,7 +26,8 @@ var tmp = {};
 var _dt = 0.0;
 
 var t1, t2, t;
-var current_em = "";
+var current_em = "no current",
+    last_em = "no previous";
 
 function init()
 {
@@ -94,6 +95,9 @@ function init()
     renderer._uniforms["u_light_intensity"] = 1.0;
     renderer._uniforms["u_light_position"] = vec3.fromValues(1, 1, 2);
 
+    renderer._uniforms["u_light2_intensity"] = 1.0;
+    renderer._uniforms["u_light2_position"] = vec3.fromValues(-1, 1, -2);
+
     light = new RD.SceneNode();
     light.visible = false;
     light.name = "light";
@@ -103,13 +107,22 @@ function init()
     light.position = renderer._uniforms["u_light_position"];
     scene.root.addChild(light);
 
+    light2 = new RD.SceneNode();
+    light2.visible = false;
+    light2.name = "light2";
+    light2.color = [0, 0, 0];
+    light2.scaling = 0.05;
+    light2.mesh = "sphere";
+    light2.position = renderer._uniforms["u_light2_position"];
+    scene.root.addChild(light2);
+
     renderer._uniforms["u_near"] = camera.near;
     renderer._uniforms["u_far"] = camera.far;
 
     bg_color = vec4.fromValues(0.03,0.08,0.13,1);
     
     // initialize some global parameters 
-    window.glow = true;
+    window.glow = false;
     window.iterations = 8;
     window.threshold = 10.0;
     window.intensity = 1.0;
@@ -133,11 +146,20 @@ function init()
             success[ name ] = data[i];
         }   
 
-        console.log(success);
+        // add hardcoded raws (for now)
+        success['Eucalyptus (raw)'] = {
+            name: 'Eucalyptus (raw)',
+            path: textures_folder + 'eucalyptus/eucalyptus.raw',
+            isRaw: true,
+        }
+        success['Rooftop (raw)'] = {
+            name: 'Rooftop (raw)',
+            path: textures_folder + 'rooftop/rooftop.raw',
+            isRaw: true,
+        }
+
         onInit( success );
     }) ;
-
-    // onInit( {} );
 
     // draw initial parameters
     params_gui = drawGUI();
@@ -227,6 +249,11 @@ function onInit( data )
     
     params_gui = drawGUI();
 
-    let initScene = "eucalyptus/eucalyptus_grove.raw";
+
+    let initScene = textures_folder + "eucalyptus/eucalyptus.raw";
+
+    if(queries['scene'])
+        initScene = textures_folder + queries['scene'];
+    
     setScene( initScene );
 }

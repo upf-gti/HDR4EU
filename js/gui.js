@@ -27,6 +27,7 @@ function drawGUI()
         'Light Z': 2,
         'Light intensity': renderer._uniforms["u_light_intensity"],
 
+        'Disable IBL': false,
         'Draw skybox': true,
         'Draw light': false,
         'Tone mapping': 'Uncharted2',
@@ -70,6 +71,7 @@ function drawGUI()
     f_render.addColor( params_gui, 'Albedo');
     f_render.add( params_gui, 'Exposure', -10, 10, 0.01 );
     f_render.add( params_gui, 'Offset', -0.5, 0.5, 0.001 );
+    f_render.add( params_gui, 'Disable IBL');
     gui.tonemapping = f_render.add( params_gui, 'Tone mapping', gui.tmp["tonemapping"]);
     f_render.add( params_gui, 'Apply AO' );
     gui.cubemap = f_render.add( params_gui, 'Draw skybox' );
@@ -95,7 +97,7 @@ function drawGUI()
     gui.samples = f_other.add( params_gui, 'PrefilteringSamples');
 
     f1.open();
-    f_render.open(); f_light.open();
+    f_light.open(); f_glow.open();
 
     updateGUIBindings();
     return params_gui;
@@ -116,7 +118,7 @@ function downloadCubemap( index )
     for(var i = 0; i < 6; i++)
         dest.set( tex.getPixels(i), headerSize + (tex.width * tex.height * 4) * i );
 
-    LiteGUI.downloadFile( current_em.replace(".exr", '') + ".raw", dest );
+    LiteGUI.downloadFile( which + current_em.replace("_spheremap.exr", '') + ".raw", dest );
 }
 
 function getScenes()
