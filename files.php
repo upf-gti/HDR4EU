@@ -16,9 +16,10 @@
 
     $response = [];
 
-    $directory = "textures/"; 
+    // Use HDR4EU textures
+    $directory = "textures/sphere_maps/"; 
     $filecount = 0;
-    $files = glob($directory . "*_spheremap.{exr}", GLOB_BRACE);
+    $files = glob($directory . "*.{hdre}", GLOB_BRACE);
 
     if ($files){
         $filecount = count($files);
@@ -31,18 +32,22 @@
         // Process files
         $file_name = $files[$i];
         $aux = $file_name;
-        $file_name = substr($file_name, 9);
-        $file_name = substr($file_name, 0, -14);
+        $file_name = substr($file_name, 21);
+        $file_name = substr($file_name, 0, -5);
         $file_name = str_replace("_", " ", $file_name);
         $file_name = ucwords($file_name);
 
         $file["path"] = $aux;
+        $file["name"] = $file_name;
         $size = round(floatval(filesize($aux)/1000000), 1);
         $file["filesize"] = $size;
 
         // set default textures to load
-        if( $file_name == "Eucalyptus Grove" )
+        if($file_name == "Eucalyptus Grove")
             $file["fast"] = true;
+        else
+            $file["fast"] = false;
+
 
         $response[$file_name] = $file;
     }

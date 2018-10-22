@@ -3,40 +3,32 @@
 *   @jxarco 
 */
 
-function setScene( filename, to_cubemap )
+function setScene( filename )
 {
-    // get texture name
-    var tex_name = HDRTool.getName( filename );
     last_em = current_em;
-    current_em = tex_name;
-
-    // Load raw pre-processed files
-    if( filename.includes(".raw") )
-    {
-        showLoading();
-        HDRTool.load( filename, null, loaded);        
-
-        for(var i = 0; i < 5; i++)
-        {
-            var tmp =  filename.replace( tex_name, "_prem_" + i + "_" + tex_name );
-            HDRTool.load(tmp, null, loaded);        
-        }   
-    }
-    else // Load and prefilter exr files
-    {
-        if(!renderer.textures[ "_prem_0_" + current_em ])
-            HDRTool.prefilter( filename, {to_cubemap: to_cubemap, oncomplete: displayScene, shader: "cubemapBlur"} );
-        else
-            displayScene();
-    }
+    current_em = HDRTool.getName( filename );;
     
+    showLoading();
+
+    var params = {oncomplete: displayScene};
+
+    if(renderer.textures[ "_prem_0_" + current_em ])
+        displayScene();
+    else
+    {
+        // Load hdre pre-processed files
+        if( filename.includes(".hdre") )
+            HDRTool.load( filename, params); 
+        else // Load and prefilter exr files
+            HDRTool.prefilter( filename, params );
+    }
 }
 
 function displayScene()
 {
     // delete previous em (free memory)
     for(var t in gl.textures)
-        if(t.includes( last_em ))
+        if(t.includes( last_em ) && last_em != current_em)
             delete gl.textures[t];
 
     // load all prefiltered EMS
@@ -49,25 +41,14 @@ function displayScene()
 
     params_gui['Scene'] = findTexPath(current_em);
     gui.updateDisplay();
+    gui.domElement.style.display = "block";
 
-    removeLoading();
+    removeLoading( () => $(".pbar").css("width", "0%") );
+    showMessage( current_em );
+    console.log(`%cUsing environment: ${current_em}`, 'background: #333; color: #AAF; font-weight: bold; padding: 5px; font-size; 18px;');
 
     if( params_gui['Mesh'] == "" )
         parseSceneFigure( "Sphere" );
-}
-
-function loaded ()
-{
-    steps++;
-    $(".pbar").css("width", parseFloat( (steps)/max_steps * 100 ) + "%");
-
-    if(steps == max_steps)
-    {
-        steps = 0;
-        gui.domElement.style.display = "block";
-        displayScene();
-    }
-        
 }
 
 function parseSceneFigure( name )
@@ -79,7 +60,6 @@ function parseSceneFigure( name )
 
     var toParse = scenes[name];
 
-    showMessage("Shaded model: " + name);
     params_gui['Mesh'] = name;
     gui.updateDisplay();
 

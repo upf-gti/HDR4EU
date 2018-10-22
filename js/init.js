@@ -3,12 +3,11 @@
 *   @jxarco 
 */
 
-var steps = 0;
-var max_steps = 6;
+var max_steps = 5;
 var textures = {};
 
 var default_shader_macros = {
-        "N_SAMPLES": 2048,
+        "N_SAMPLES": 4096,
     };
 
 var $temp = {
@@ -19,15 +18,8 @@ var $temp = {
     mat4 : mat4.create()
 }
 
-var push_msgs = 0;
-
-// save all buffer files to avoid reading twice
-var tmp = {};
-var _dt = 0.0;
-
-var t1, t2, t;
-var current_em = "no current",
-    last_em = "no previous";
+var push_msgs = 0, gui, _dt = 0.0
+var current_em = "no current", last_em = "no previous";
 
 function init()
 {
@@ -54,24 +46,7 @@ function init()
     document.body.ondrop = function( e )
     {
         e.preventDefault();
-        showMessage("Reading file");
-
-        var file = e.dataTransfer.files[0],
-            name = file.name;
-
-        var reader = new FileReader();
-        reader.onload = function (event) {
-            var data = event.target.result;
-            var options = {
-                filename: name,
-                data: data
-            }
-
-            onDragDialog( null, options );
-        };
-
-        reader.readAsArrayBuffer(file);
-        return false;
+        onDragDialog( e.dataTransfer.files[0] );
     }
 
     camera = new RD.Camera();
@@ -127,36 +102,30 @@ function init()
     window.threshold = 10.0;
     window.intensity = 1.0;
 
-    var url = "";
+    var url = "files.php";
 
-    if(1 || window.location.host.includes( "github" ))
+    if(window.location.host.includes( "github" ))
         url = "https://api.github.com/repos/upf-gti/HDR4EU/contents/textures/sphere_maps";
 
     $.get(url, function(data){
        
+        if(!window.location.host.includes( "github" ))
+        {
+            onInit( JSON.parse(data) );
+            return;
+        }
+
+        // getting files from github
         var success = {};
 
         // Prepare data
         for(var i = 0; i < data.length; i++)
         {
             let name = replaceAll(data[i].name, '_', ' ');
-            if(!name.includes("spheremap")) continue;
-            name = name.split(".")[0].replace(" spheremap", '');
             name = firstLetterUC(name);
+            
             success[ name ] = data[i];
         }   
-
-        // add hardcoded raws (for now)
-        success['Eucalyptus (raw)'] = {
-            name: 'Eucalyptus (raw)',
-            path: textures_folder + 'eucalyptus/eucalyptus.raw',
-            isRaw: true,
-        }
-        success['Rooftop (raw)'] = {
-            name: 'Rooftop (raw)',
-            path: textures_folder + 'rooftop/rooftop.raw',
-            isRaw: true,
-        }
 
         onInit( success );
     }) ;
@@ -245,15 +214,14 @@ function onInit( data )
         HDRTool.brdf( 'brdfIntegrator');
         model.textures['brdf'] = "_brdf_integrator";
 
+        params_gui = drawGUI();
+
+        let initScene = textures_folder + "beverly_hills.hdre";
+
+        if(queries['scene'])
+            initScene = textures_folder + queries['scene'];
+        
+        setScene( initScene );
+
     }, default_shader_macros);
-    
-    params_gui = drawGUI();
-
-
-    let initScene = textures_folder + "eucalyptus/eucalyptus.raw";
-
-    if(queries['scene'])
-        initScene = textures_folder + queries['scene'];
-    
-    setScene( initScene );
 }

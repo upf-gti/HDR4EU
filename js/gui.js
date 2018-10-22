@@ -50,6 +50,9 @@ function drawGUI()
         }
     };
 
+    if(gui)
+        gui.destroy();
+
     gui = new dat.GUI();
     gui.domElement.style.display = "none";
     gui.tmp = {};
@@ -103,22 +106,11 @@ function drawGUI()
     return params_gui;
 }
 
-function downloadCubemap( index )
+function downloadCubemap()
 {
-    let
-        which = (index != null ? "_prem_" + index + "_" : ""); 
-        tex = gl.textures[ which + current_em ],
-        size =  (tex.width * tex.height * 4) * 6; // w * h * channels
-        headerSize = 5,
-        dest = new Float32Array(size + headerSize); // testing first prem
-
-    // width, height, channels, bits per channel, header size
-    dest.set( [tex.width, tex.height, 4, 32, headerSize] ); // no index = beggining
-
-    for(var i = 0; i < 6; i++)
-        dest.set( tex.getPixels(i), headerSize + (tex.width * tex.height * 4) * i );
-
-    LiteGUI.downloadFile( which + current_em.replace("_spheremap.exr", '') + ".raw", dest );
+    var buffer = HDRE.write( current_em );
+    var data = new Float32Array(buffer);
+    LiteGUI.downloadFile( current_em.replace(".exr", ".hdre"), data );
 }
 
 function getScenes()
@@ -191,26 +183,20 @@ function showLoading()
     $("#modal").fadeIn();
 }
 
-function removeLoading()
+function removeLoading(oncomplete)
 {
-    // $(".pbar").css("width", "0%");
-    $("#modal").fadeOut();
+    $("#modal").fadeOut( 400, oncomplete );
 };
-
-var q = removeLoading;
 
 /*
     
 */
-function onDragDialog( id, options )
+function onDragDialog( file )
 {   
-    id = id || "EXR Loader"
-    options = options || {};
-    
+    var filename = file.name;
+
+    var id = "EXR Loader"
     var dialog_id = id.replace(" ", "-").toLowerCase();
-    // remove old dialogs
-    if( document.getElementById( dialog_id ) )
-        $("#"+dialog_id).remove();
         
     var w = 400;
     var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", title: id, close: true, width: w, scroll: true, draggable: true });
@@ -218,14 +204,9 @@ function onDragDialog( id, options )
 
     var widgets = new LiteGUI.Inspector();
 
-    var filename = options.filename;
-    
-    window._vars_dialog = {
-        data: options.data,
+    var params = {
         filename: filename,
-        to_cubemap: true,
-        show_texture: false,
-        gen_cubemap_size: 512
+        size: 256
     };
 
     widgets.on_refresh = function(){
@@ -234,23 +215,38 @@ function onDragDialog( id, options )
 
         widgets.addSection("Texture");
         widgets.addString( "File", filename );
-        widgets.addCheckbox( "Convert to cube map", true,{name_width: "33.33%", callback: function(v) {      
-            window._vars_dialog["to_cubemap"] = v;
-        }});
-        widgets.addCombo( "Cubemap size", "512",{values: ["64","128","256","512","1024"], name_width: "33.33%", callback: function(v) {      
-            window._vars_dialog["gen_cubemap_size"] = parseInt(v);
-        }});
+        if( !filename.includes('hdre') )
+        {
+            widgets.addCombo( "Cubemap size", "256",{values: ["64","128","256","512","1024"], name_width: "33.33%", callback: function(v) {      
+                params["size"] = parseInt(v);
+            }});
+        }
+        
         widgets.addSeparator();
         widgets.addButton( null, "Load", {width: "100%", name_width: "50%", callback: function(){
+            
             $("#"+dialog_id).remove();
-            showMessage("Processing scene...");
 
-            var params = window._vars_dialog;
+            showLoading();
 
-            HDRTool.load(filename, params, function(){
+            var reader = new FileReader();
+            reader.onprogress = (e) =>  $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%");
+            reader.onload = function (event) {
+
+                var data = event.target.result;
+                var oncomplete = (() => setScene( filename ));
                 
-                setScene( filename, true );
-            });
+                params['data'] = data;
+                params['oncomplete'] = oncomplete;
+
+                if(filename.includes(".exr"))
+                    HDRTool.prefilter( filename, params);     
+                else
+                    HDRTool.load( filename, params); 
+            };
+    
+            reader.readAsArrayBuffer(file);
+            return false;
         }});
     }
 

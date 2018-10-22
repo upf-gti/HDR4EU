@@ -73,8 +73,6 @@ function updateGUIBindings()
     });
     
     gui.scene_sm.onChange(function() {
-        showMessage("Loading scene");
-        
         var tex = textures[ params_gui['Scene'] ],
             path = tex.path;
 

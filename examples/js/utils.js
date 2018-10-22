@@ -8,7 +8,7 @@ function readFile( file, to_cubemap, mode)
 {
   var post = (mode) ? "cube_maps/" : "2d/";
   if(mode > 1)
-  post = "sphere_maps/";
+  post = "exr/";
 
   try {
     
