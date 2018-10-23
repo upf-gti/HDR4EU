@@ -123,7 +123,6 @@ function init()
         {
             let name = replaceAll(data[i].name, '_', ' ');
             name = firstLetterUC(name);
-            
             success[ name ] = data[i];
         }   
 
@@ -216,7 +215,7 @@ function onInit( data )
 
         params_gui = drawGUI();
 
-        let initScene = textures_folder + "beverly_hills.hdre";
+        let initScene = textures_folder + "galileo_probe.hdre";
 
         if(queries['scene'])
             initScene = textures_folder + queries['scene'];

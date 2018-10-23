@@ -17,7 +17,7 @@
 
     var HDRE = global.HDRE = {
 
-        version: 1.0,
+        version: 1.1,
     };
     
     HDRE.setup = function(o)
@@ -42,50 +42,22 @@
      * Flags                                    1 byte
      */
     
-
     /**
     * Write and download an HDRE
     * @method write
-    * @param {String} e environment's texture name
+    * @param {Object} package
+    * @param {Number} width
+    * @param {Number} height
+    * @param {Number} size buffer size
     */
-    HDRE.write = function( e )
+    HDRE.write = function( package, width, height, size )
     {
-        if(!gl)
-        throw( 'no webgl context' );
-
-        /*
-        *   Store texture names and compute total Data Size
-        */
-
-        var numFaces = 6;
-        var package = [ e ];
-        var env = gl.textures[e];
-        if(!env)
-        throw( 'no stored texture' );
-        
-        var width = env.width;
-        var height = env.height;
-        var size = width * height;
-
-        // Get all roughness levels
-        for(var i = 0; i < 5; i++)
-        {
-            let a = "_prem_" + i + "_" + e;
-            let t = gl.textures[a];
-
-            if(!t)
-            throw('download failed');
-
-            // update final size
-            size += t.width * t.height;
-            package.push( a );
-        }
-
         /*
         *   Create header
         */
 
         // File format information
+        var numFaces = 6;
         var numChannels = 4;
         var headerSize = 164; // Bytes
         var contentSize = size * numFaces * numChannels * FLO2BYTE; // Bytes
@@ -130,16 +102,15 @@
 
         for(var i = 0; i < package.length; i++)
         {
-            let a = package[i],
-                t = gl.textures[a],
-                w = t.width,
-                h = t.height,
+            let _env = package[i],
+                w = _env.width,
+                h = _env.height,
                 s = w * h * numChannels;
 
             var suboff = 0;
 
             for(var f = 0; f < numFaces; f++) {
-                var subdata = t.getPixels(f);
+                var subdata = _env.pixelData[f];
                 data.set( subdata, offset + suboff);
                 suboff += subdata.length;
             }
@@ -238,7 +209,10 @@
         {
             ems.push( data.slice(offset, offset + (w*w*numChannels*6)) );
             offset += (w*w*numChannels*6);
-            w /= (i == 0) ? 1 : 2;
+            if(v == 1.0)
+                w /= (i == 0) ? 1 : 2;
+            else
+                w /= 2;
         }
 
         /*
@@ -286,7 +260,10 @@
             });
 
             // resize next textures
-            w /= (i == 0) ? 1 : 2;
+            if(v == 1.0)
+                w /= (i == 0) ? 1 : 2;
+            else
+                w /= 2;
 
             if(options.onprogress)
                 options.onprogress( i );
@@ -294,7 +271,7 @@
 
         // return 6 images: original env + 5 levels of roughness
         // pass this to a GL.Texture
-        return precomputed;
+        return {header: header, _envs: precomputed};
     }
 
     /* 

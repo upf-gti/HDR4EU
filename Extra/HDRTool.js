@@ -73,7 +73,7 @@
             if(options.filename)
                 tex_name = options.filename;
 
-            console.time(`${tex_name} parsed in`);
+            console.time(`Parsed in`);
             var result = null;
 
             if(isHDRE(tex_name))
@@ -89,7 +89,7 @@
             else
                 throw("file format not accepted");
 
-            console.timeEnd(`${tex_name} parsed in`);
+            console.timeEnd(`Parsed in`);
 
             if(options.oncomplete) // do things when all is loaded
                 options.oncomplete( result );
@@ -113,25 +113,29 @@
     {
         var onprogress = onprogress || ( (loaded) => $(".pbar").css("width", (loaded)/5 * 100 + "%") );
         var r = HDRE.parse(buffer, {onprogress: onprogress});
+        var _envs = r._envs;
+        var header = r.header;
         var textures = [];
 
         // create textures
-        for(var i = 0; i < r.length; i++)
+        for(var i = 0; i < _envs.length; i++)
         {
             var options = {
                 format: gl.RGBA,
                 type: gl.FLOAT,
                 texture_type: GL.TEXTURE_CUBE_MAP,
-                cubemap_faces_data: r[i].data
+                cubemap_faces_data: _envs[i].data
             };
 
             var texture = null;
             Texture.setUploadOptions( {no_flip: true} );
-            texture = new GL.Texture( r[i].width, r[i].width, options);
+            texture = new GL.Texture( _envs[i].width, _envs[i].width, options);
 
             Texture.setUploadOptions();
             textures.push( texture );
         }
+
+        logVersion( header.version );
 
         // store the texture 
         gl.textures[tex_name] = textures[0];
@@ -393,7 +397,7 @@
             for( var level = 0; level < 5; level++ )
             {
                 // prefilter (result tex dimensions depends on the level of blur)
-                var result = that.blur( tex, level, shader );
+                var result = that.blur( tex, (level+1), shader );
                 // store
                 var name = "_prem_" + level + "_" + tex_name;
                 gl.textures[ name ] = result;
@@ -433,7 +437,7 @@
             size = input.height / Math.pow(2, level);
 
         var roughness_range = [0.2, 0.4, 0.6, 0.8, 1];
-        var roughness = roughness_range[ level ] || 0;
+        var roughness = roughness_range[ level-1 ] || 0;
 
         //save state
         var current_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
@@ -533,6 +537,62 @@
     }
 
     /**
+    * Write an HDRE file to store the cubemap and its roughness levels
+    * @method getSkybox
+    * @param {string} e
+    */
+    HDRTool.getSkybox = function( e )
+    {
+        /**
+         * GET HERE THE DATA TO AVOID DEPENDENCIES OF WEBGL IN HDRE.JS
+         */
+
+        var env = this.processSkybox(e);
+        var width = env.width;
+        var height = env.height;
+        var package = [ env ];
+        var acc_size = width * height;
+
+        // Get all roughness levels
+        for(var i = 0; i < 5; i++)
+        {
+            let a = `_prem_${i}_${e}`;
+            let _env = this.processSkybox(a);
+
+            let w = _env.width;
+            let h = _env.height;
+
+            // update final size
+            acc_size += w * h;
+            package.push( _env );
+        }
+
+        var buffer = HDRE.write( package, width, height, acc_size );
+        LiteGUI.downloadFile( e.replace(".exr", ".hdre"), new Float32Array(buffer) );
+    }
+
+    /**
+    * Get info of a texture (pixel data per face, width and height )
+    * @method processSkybox
+    */
+    HDRTool.processSkybox = function(e)
+    {
+        if(!gl)
+        throw( 'no webgl' );
+
+        var env = gl.textures[e];
+        if(!env)
+        throw( 'no stored texture' );
+
+        var info = {width: env.width, height: env.height, pixelData: []};
+
+        for(var i = 0; i < 6; i++)
+            info.pixelData.push( env.getPixels(i) );
+
+        return info;
+    }
+
+    /**
     * Opens a texture in a new window to download
     * @method download
     * @param {string} name
@@ -612,6 +672,11 @@
     /* 
         Private methods used in parsing steps
     */
+
+    function logVersion( v )
+    {
+        console.log( `%cHDRE v${v}`, 'padding: 3px; background: black; color: #6E6; font-weight: bold;' );
+    }
 
     function isHDRE( texture_name )
     {

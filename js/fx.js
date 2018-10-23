@@ -45,7 +45,7 @@ function displayScene()
 
     removeLoading( () => $(".pbar").css("width", "0%") );
     showMessage( current_em );
-    console.log(`%cUsing environment: ${current_em}`, 'background: #333; color: #AAF; font-weight: bold; padding: 5px; font-size; 18px;');
+    console.log(`%cEnvironment: ${current_em}`, 'background: #222; color: #AAF; padding: 5px; font-size: 18px; border: 1px solid #AAF;');
 
     if( params_gui['Mesh'] == "" )
         parseSceneFigure( "Sphere" );

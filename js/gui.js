@@ -39,15 +39,12 @@ function drawGUI()
         'Show FPS': true,
         'PrefilteringSamples': "" + default_shader_macros['N_SAMPLES'],
 
-        'Reload shaders': function() {
+        'Reload shaders': () =>
             renderer.loadShaders("data/shaders.glsl", function(){
                 showMessage("Shaders reloaded");
-            }, default_shader_macros); 
-        },
-        'Get skybox': function() {
+            }, default_shader_macros),
             
-            downloadCubemap();
-        }
+        'Get skybox': () => HDRTool.getSkybox(current_em),
     };
 
     if(gui)
@@ -104,13 +101,6 @@ function drawGUI()
 
     updateGUIBindings();
     return params_gui;
-}
-
-function downloadCubemap()
-{
-    var buffer = HDRE.write( current_em );
-    var data = new Float32Array(buffer);
-    LiteGUI.downloadFile( current_em.replace(".exr", ".hdre"), data );
 }
 
 function getScenes()
