@@ -30,9 +30,8 @@ As a result, the created texture is stored in ```gl.textures```.
 
 ```javascript
 var filename = "uffizi_gallery.exr";
-var shader = "blur"; // Shader used for prefiltering (Blur process)
 var f = function (...) {  };
-HDRTool.prefilter( filename, {to_cubemap: true, oncomplete: f, shader: shader} );
+HDRTool.prefilter( filename, {oncomplete: f} );
 ```
 
 When completed, all prefiltered versions of the original texture are stored in ```gl.textures```. If the file is not loaded in memory, the method itself will call ```load```.
