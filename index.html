@@ -3,24 +3,20 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
 
-<title>HDR4EU</title>
-<link rel="stylesheet" href="css/bootstrap.min.css">
+<title>GTI-UPF/HDR4EU Demo</title>
+<!-- <link rel="stylesheet" href="css/bootstrap.min.css"> -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
 <link rel="stylesheet" href="css/litegui.css">
-<link rel="stylesheet" href="css/mycss.css">
-	<style type='text/css'>
-		html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;}
-    select, option { color: black; }
-	</style>
+<link rel="stylesheet" href="css/progress.css">
+
 </head>
 <body>
-		
-	<div id="fps">FPS</div>
 
 	<div id="modal">
 
 		<div style="margin-top: 40vh; width: 100%;">
 
-			<img src="data/hdr4eu.png" style="width: 260px;">
+			<img src="data/title.png" style="width: 260px;">
 			<div style="width: 260px; margin-left: calc( 50% - 130px );">
 				<div id="xhr-load" style="width: 0%; height: 4px; background-color: rgb(30, 211, 111) !important; margin-top: 2px;"></div>
 				<div class="pbar" style="width: 0%; height: 4px; background-color: #AAF !important; margin-top: 1px;"></div>
@@ -29,39 +25,43 @@
 		</div>
 
 	</div>
-	
-	<div id="push">
-		
-	</div>
+
+	<div class="pixelPicker">
+        <span id="pixelPickerColor"></span>
+        <span id="pixelPickerText"></span>
+    </div>
+
+	<div id="log"></div>
 	
 </body>
-	
-
 
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
 	
-	<!-- Libraries -->
-    <script type="text/javascript" src="js/lib/dat.gui.min.js"></script>
+	<!-- Libs -->
+	<script type="text/javascript" src="js/lib/jscolor/jscolor.js"></script>
+    <script type="text/javascript" src="js/lib/litegui.js"></script>
 	<script type="text/javascript" src="js/lib/gl-matrix-min.js"></script>
 	<script type="text/javascript" src="js/lib/litegl.js"></script>
-    <script type="text/javascript" src="js/lib/litegui.js"></script>
+	<script type="text/javascript" src="js/lib/wbin.js"></script>
+	<script type="text/javascript" src="js/lib/litescene.js"></script>
 	<script type="text/javascript" src="js/lib/litegraph.js"></script>
-	<script type="text/javascript" src="js/lib/rendeer.js"></script>
+	<script type="text/javascript" src="js/lib/importer.js"></script>
+    <script type="text/javascript" src="js/lib/dat.gui.min.js"></script>
 	<script type="text/javascript" src="js/lib/tinyexr.js"></script>
+	<script type="text/javascript" src="js/lib/rendeer.js"></script>
 	<script type="text/javascript" src="https://webglstudio.org/users/arodriguez/libs/HDRTool.js"></script>
 	<script type="text/javascript" src="https://webglstudio.org/users/arodriguez/libs/hdre.js"></script>
 
-	<!-- My scripts -->
+	<!-- Other scripts -->
+    <script type="text/javascript" src="js/framework.js"></script>
+	<script type="text/javascript" src="js/wShade.js"></script>
+	<script type="text/javascript" src="js/components.js"></script>
 	<script type="text/javascript" src="js/scenes.js"></script>
-	<script type="text/javascript" src="js/utils.js"></script>
-	<script type="text/javascript" src="js/bindings.js"></script>
-	<script type="text/javascript" src="js/gui.js"></script>
-	<script type="text/javascript" src="js/fx.js"></script>
-	<script type="text/javascript" src="js/init.js"></script>
+    <script type="text/javascript" src="js/init.js"></script>
 
     <script>
-        // init app here
+        // 
 		init();
         //
 	</script>

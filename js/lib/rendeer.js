@@ -316,7 +316,7 @@ Object.defineProperty(SceneNode.prototype, 'color', {
 });
 
 /**
-* This number is the 4Âº component of color but can be accessed directly 
+* This number is the 4º component of color but can be accessed directly 
 * @property opacity {number}
 */
 Object.defineProperty(SceneNode.prototype, 'opacity', {
@@ -999,7 +999,7 @@ SceneNode.prototype.propagate = function(method, params)
 	for(var i = 0, l = this.children.length; i < l; i++)
 	{
 		var node = this.children[i];
-		if(!node) //Â¿?
+		if(!node) //¿?
 			continue;
 		//has method
 		if(node[method])

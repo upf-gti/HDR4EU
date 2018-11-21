@@ -1,0 +1,65 @@
+#log{
+  width: 30%;
+  height: 15vh;
+  padding: 6px;
+  bottom: 20px;
+  left: 20px;
+  position: absolute;
+  font-size: 13px;
+  background-color: rgba(0, 0, 0, 0.4);
+  color: #AAF;
+  z-index: 1;
+  overflow: scroll;
+  display: none;
+}
+
+#fps{
+  padding: 6px;
+  bottom: 20px; 
+  left: 20px; 
+  position: absolute;
+  font-size: 15px; 
+  color: white; 
+  background-color: rgb(50, 50, 50); 
+  z-index: 2; 
+  display: none;
+  border-bottom: 2px solid  rgb(30, 211, 111);
+}
+
+#modal{
+
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100%;
+  position: absolute;
+  text-align: center;
+  background-color: rgba(0, 0, 0, 1);
+  z-index: 10;
+}
+
+#canvasarea{
+  /* background: white; */
+  /* url('../data/gradient.jpg'); */
+}
+
+.pixelPicker {
+  position: absolute;
+  right: 0px;
+  bottom: 0px;
+  color: white;
+  height: 30px;
+  padding: 10px;
+  font-family: monospace;
+  white-space: nowrap;
+}
+
+.pixelPicker span {
+  display: inline-block;
+  white-space: pre;
+}
+
+#pixelPickerColor {
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
+  border: 1px solid black;
+}

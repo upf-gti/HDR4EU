@@ -2897,7 +2897,7 @@ LiteGUI.Console = Console;
 		var dynamic_section = null;
 		if(editable)
 		{
-			splitinfo = " - " + (Area.splitbar_size + 2) +"px"; //2 px margin ¿?
+			splitinfo = " - " + (Area.splitbar_size + 2) +"px"; //2 px margin �?
 			splitbar = document.createElement("div");
 			splitbar.className = "litesplitbar " + direction;
 			if(direction == "vertical")
@@ -8734,8 +8734,7 @@ Inspector.prototype.addComboButtons = function(name, value, options)
 		that.values[name] = buttonname;
 
 		var elements = element.querySelectorAll(".selected");
-		for(var i in elements)
-			elements.classList.remove("selected");
+		elements[0].classList.remove("selected");
 		this.classList.add("selected");
 
 		Inspector.onWidgetChange.call( that,element,name,buttonname, options );
