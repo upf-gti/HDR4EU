@@ -8734,6 +8734,7 @@ Inspector.prototype.addComboButtons = function(name, value, options)
 		that.values[name] = buttonname;
 
 		var elements = element.querySelectorAll(".selected");
+		if(elements.length)
 		elements[0].classList.remove("selected");
 		this.classList.add("selected");
 

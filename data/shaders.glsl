@@ -13,12 +13,13 @@ atmos default.vs atmos.fs
 
 // Cubemap FX Shaders
 cubemapBlur cubemapBlur.vs cubemapBlur.fs
-blurTest cubemapBlur.vs blurTest.fs
+blurTest blurTest.vs blurTest.fs
 fromSphere screen_shader.vs fromSphere.fs
 fromPanoramic screen_shader.vs fromPanoramic.fs
 
 // Texture FX Shaders
 glow screen_shader.vs glow.fs
+luminance screen_shader.vs luminance.fs
 
 // PBR Shaders
 brdfIntegrator brdf.vs brdf.fs
@@ -104,11 +105,13 @@ pbr pbr.vs pbr.fs
 	uniform float u_exposure;
 	uniform float u_offset;
     uniform vec4 u_color;
-    uniform float u_average_lum;
 	uniform sampler2D u_color_texture;
+	uniform sampler2D u_last_frame;
 
 	uniform float u_lum;
 	uniform vec4 u_average;
+	uniform float u_logMean;
+	uniform float u_maxLum;
 
 	#import "tonemap.inc"
 
@@ -126,15 +129,13 @@ pbr pbr.vs pbr.fs
 			color = tonemapReinhard( color );
 		else if(v == 2.0)
 			color = tonemapUncharted2( color );
-		else if(v == 3.0)
-			color = tonemapFilmic( color );
+		else if(v == 3.0) {
+			color = exponential( color, u_logMean );
+		}
 		else if(v == 4.0)
-			color = acesFilm( color );
+			color = logTM( color, u_maxLum );
 		else if(v == 5.0)
 			color = atmosTonemap( color );
-		// else if(v == 6.0) {
-
-		// }
 
 		// apply offset
 		color += vec3(u_offset);
@@ -143,6 +144,49 @@ pbr pbr.vs pbr.fs
 
         gl_FragColor = vec4(color, 1.0);
     }
+
+//
+// Luminance shader
+//
+
+\luminance.fs
+
+	precision highp float;
+	
+	uniform sampler2D u_texture;
+	varying vec2 v_coord;
+	
+	void main() {
+		vec4 color = vec4(0.0);
+		int k = 0;
+		float maxLum = -1.0;
+		
+		#ifdef INPUT_TEX_WIDTH
+			const float width = float(INPUT_TEX_WIDTH);
+		#endif
+		#ifdef INPUT_TEX_HEIGHT
+			const float height = float(INPUT_TEX_HEIGHT);
+		#endif
+
+		for(float i = 0.5; i < width; i+=30.0)
+			for(float j = 0.5; j < height; j+=30.0)
+			{
+				vec2 coord = vec2(i, j) / vec2(width, height);
+				vec4 pixelColor = texture2D(u_texture, coord );
+				color += pixelColor;
+				k++;
+
+				float lum = 0.2126*pixelColor.r + 0.7152*pixelColor.g + 0.0722*pixelColor.b;
+				
+				if(lum > maxLum)
+					maxLum = lum;
+			}
+
+		vec4 averageColor = color/float(k);
+		averageColor.a = maxLum;
+
+		gl_FragColor = averageColor;
+	}
 
 //
 // Shader used to show skybox 
@@ -339,25 +383,17 @@ pbr pbr.vs pbr.fs
 
 	precision highp float;
     attribute vec2 a_coord;
-
-	uniform vec2 u_offset;
+	uniform float u_ioffset;
 	varying vec3 v_dir;
 	varying vec2 v_coord;
 
 	void main() {
-		// v_coord = a_coord;
+		v_coord = a_coord;
 		
-		vec2 uv = a_coord;
-		// uv /= 2.0;
-		// uv += u_offset;
-
-		v_coord = uv;
-
-	
-		v_dir = vec3( uv - vec2(0.5), 0.5 );
+		v_dir = vec3( v_coord - vec2(0.5), 0.5 );
 		v_dir.y = -v_dir.y;
 
-		gl_Position = vec4(vec3(uv * 2.0 - 1.0, 0.5), 1.0);
+		gl_Position = vec4(vec3(a_coord * 2.0 - 1.0, 0.5), 1.0);
 	}
 
 \cubemapBlur.fs
@@ -381,6 +417,7 @@ pbr pbr.vs pbr.fs
 		#ifdef N_SAMPLES
 			const int SAMPLES = N_SAMPLES;
 		#endif
+
 
 		vec4 prefiltered = vec4(0.0);
 		float TotalWeight = 0.0;
@@ -411,6 +448,28 @@ pbr pbr.vs pbr.fs
 		gl_FragColor = prefiltered / TotalWeight;
 	}
 
+\blurTest.vs
+
+	precision highp float;
+    attribute vec2 a_coord;
+	uniform float u_ioffset;
+	uniform float u_blocks;
+	varying vec3 v_dir;
+	varying vec2 v_coord;
+
+	void main() {
+
+		vec2 uv = a_coord;
+		uv.x /= u_blocks;
+		uv.x += u_ioffset;
+	
+		v_coord = uv;
+		v_dir = vec3( uv - vec2(0.5), 0.5 );
+		v_dir.y = -v_dir.y;
+
+		gl_Position = vec4(vec3(a_coord * 2.0 - 1.0, 0.5), 1.0);
+	}
+
 \blurTest.fs
 
 	precision highp float;
@@ -419,7 +478,6 @@ pbr pbr.vs pbr.fs
 	uniform mat3 u_cameras[6]; 
 	uniform mat3 u_rotation;
 	uniform float u_roughness;
-	uniform vec2 u_offset;
 	uniform vec4 u_viewport; 
 
 	varying vec3 v_dir;
@@ -447,32 +505,28 @@ pbr pbr.vs pbr.fs
 
 			// Get pixel
 			vec2 r_coord = vec2(i, j) / vec2(size, size);
-
 			// Get 3d vector
-			vec3 zStep = vec3( r_coord - vec2(0.5), 0.5 );
+			vec3 direction = vec3( r_coord - vec2(0.5), 0.5 );
 
 			// Use all faces
-			for(int i = 0; i < 6; i++) {
+			for(int f = 0; f < 6; f++) {
 
-				mat3 _camera_rotation = u_cameras[i];
-				vec3 N = normalize( _camera_rotation * zStep );
+				mat3 _camera_rotation = u_cameras[f];
+				vec3 N = normalize( _camera_rotation * direction );
+				vec3 H = importanceSampleGGX(r_coord, u_roughness, N);
+				vec3 L = 2.0 * dot( N, H ) * H - N;
+				float weight = max( dot(V, L), 0.0);
 
-				float NdotV = max( dot(N, V), 0.0);
-				// vec3 H = importanceSampleGGX(r_coord, u_roughness, V);
-				// vec3 L = 2.0 * dot( N, H ) * H - N;
-				// float NdotL = max( dot(V, L), 0.0);
-
-				// get pixel color from direction and add it
-				if(NdotV > (1.0 - roughnessSq)) {
-					vec4 Li = textureCube(u_color_texture, N);
-					color += NdotV * Li;
-					TotalWeight += NdotV;
+				if(weight > 0.99) {
+					color += textureCube(u_color_texture, L) * weight;
+					TotalWeight += weight;
 					samples ++;
 				}
 			}
 		}
 
 		gl_FragColor = color / TotalWeight;
+		// gl_FragColor = textureCube(u_color_texture, V);
 	}
 
 //
@@ -931,6 +985,7 @@ pbr pbr.vs pbr.fs
 	}
 
 	// Based on Filmic Tonemapping Operators http://filmicgames.com/archives/75
+	// https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ToneMapping.hlsl
 	vec3 tonemapFilmic(const vec3 color) {
 		vec3 x = max(vec3(0.0), color - 0.004);
 		return (x * (6.2 * x + 0.5)) / (x * (6.2 * x + 1.7) + 0.06);
@@ -946,6 +1001,27 @@ pbr pbr.vs pbr.fs
 		return clamp((x * (a * x + b)) / (x * (c * x + d ) + e), 0.0, 1.0);
 	}
 
+	vec3 exponential(const vec3 color, const float logMean) {
+		float lum = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
+		float lum_TMO = 1.0 - exp( -0.35 * lum/logMean );
+		vec3 color_TMO = color * (lum_TMO/lum);
+		return mix(color, color_TMO, 1.0); 
+	}
+
+	float log10( float x ) {
+
+		const float invLog10 = 0.43429448190325176;
+		return (invLog10) * log(x);
+	}
+
+	vec3 logTM(const vec3 color, const float maxLum) {
+
+		float lum = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
+		float lum_TM = log10(1.0+lum)/log10(1.0+maxLum);
+
+		return color.rgb * lum_TM/lum;
+	}
+
 	vec3 tonemapReinhard(const vec3 color) {
 		return color / (color + vec3(1.0));
 	}
@@ -957,7 +1033,7 @@ pbr pbr.vs pbr.fs
 	mat4 rotationMatrix(vec3 a, float angle) {
 
 		vec3 axis = normalize(a);
-		float s = sin(angle);
+		float s = sin(angle);                                                                                                                          
 		float c = cos(angle);
 		float oc = 1.0 - c;
 		
@@ -981,8 +1057,6 @@ pbr pbr.vs pbr.fs
 
         return textureCube(u_env_5_texture, R).xyz;
     }
-
-
 
 
 \brdf.inc

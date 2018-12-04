@@ -235,7 +235,7 @@
             createGlow(this._viewport_tex) :
             this._viewport_tex;
 
-        // getAverage( render_texture );
+        getAverage( render_texture );
 
         // RENDER SCENE
         render_texture.toViewport( renderer.shaders['fx'], renderer._uniforms );
@@ -287,7 +287,7 @@
         this._environment = tex_name;
                 
         var that = this;
-        var oncomplete = () => that.display( options.no_free_memory );
+        var oncomplete = () => { that.display( options.no_free_memory ); if(options.onImport) options.onImport(); };
         var params = {oncomplete: oncomplete};
 
         if(tex_name != ":atmos")
@@ -300,11 +300,8 @@
             // Load hdre pre-processed files
             if( env_path.includes(".hdre") )
                 HDRTool.load( env_path, params);
-            else // Load and prefilter exr files{}
-            {
-                console.log("wefef");
+            else // Load and prefilter exr files
                 HDRTool.prefilter( env_path, params );
-            }  
         }
     }
  
@@ -533,6 +530,7 @@
     */
     WScene.prototype.reloadShaders = async function(macros, callback)
     {
+        $("#short-load").show();
         macros = macros || {};
         // assign default macros
         Object.assign(default_shader_macros, macros);
@@ -541,6 +539,7 @@
             this._renderer.loadShaders("data/shaders.glsl", ()=>{
                 
                 console.log("Shaders reloaded");
+                $("#short-load").hide();
                 if(callback)
                     callback();
                 resolve();
@@ -936,6 +935,7 @@
             return;
         }
         
+            
         for(var i in o.nodes)    
         {
             var node_properties = JSON.parse(o.nodes[i]);
@@ -956,13 +956,14 @@
                     let new_node = new RD.SceneNode();
                     new_node.name = "tmp";
                     new_node.configure(node_properties);
+                    new_node.setTextureProperties();
                     this._root.addChild(new_node);
                     break;
             }
         }
 
         // set scene
-        // this.set( textures_folder + o.e );
+        this.set( textures_folder + o.e );
         gui.updateSidePanel(null, 'root');
     }
     
@@ -1130,8 +1131,8 @@
         var camera = wScene.controller._camera;
         var skybox = wScene.cubemap;
 
-        // widgets.addInfo("blur back cubemap", null, {name_width: "100%"});
-        // widgets.addButton(null, "Test blur", {callback: () => IMPprefilter()});
+        widgets.addInfo("blur back cubemap", null, {name_width: "100%"});
+        widgets.addButton(null, "Test blur", {callback: () => IMPprefilter()});
 
         if(item_selected == 'root')
         {
@@ -1147,7 +1148,10 @@
             widgets.addCheckbox("Visible", skybox.flags.visible, {callback: (v) => skybox.visible = v});
             widgets.addSeparator();
             widgets.addTitle("Sampling");
-            widgets.addComboButtons("Irradiance samples", wScene.blur_samples,{name_width: "40%", values:[256, 512, 1024, 2048, 4096], callback: (v) => wScene.blur_samples = v });
+            widgets.addComboButtons("Irradiance samples", wScene.blur_samples,{name_width: "40%", values:[512, 1024, 2048, 4096, 8192], callback: async (v) => {
+                wScene.blur_samples = parseInt(v);
+                await wScene.reloadShaders();
+            }});
             widgets.addSeparator();
             widgets.addTitle("Atmospheric scattering");
             widgets.widgets_per_row = 2;
@@ -1212,7 +1216,7 @@
             
             widgets.addSection("FX");
             widgets.addTitle("Tonemapping");
-            widgets.addCombo(null, WS.Components["FX"].tonemapping, {values: ["none", "Reinhard", "Uncharted2", "Filmic", "Aces Filmic", "Atmos"], callback: function(v){
+            widgets.addCombo(null, WS.Components["FX"].tonemapping, {values: ["none", "Reinhard", "Uncharted2", "Exp", "Log", "Atmos"], callback: function(v){
                 let values = $(this)[0].options.values;
                 WS.Components["FX"].tonemapping = v;
                 WS.Components["FX"].n_tonemapping = parseFloat(values.indexOf(v));
@@ -1309,8 +1313,8 @@
         inspector.addSection("Material");
         inspector.addTitle("PBR properties");
         inspector.addColor("Base color", node._uniforms["u_albedo"], {callback: color => node._uniforms["u_albedo"] = color });
-        inspector.addSlider("Roughness", node._uniforms['u_roughness'],{min:0,max:1,step:0.05,callback: v => node._uniforms['u_roughness'] = v });
-        inspector.addSlider("Metalness", node._uniforms['u_metalness'],{min:0,max:1,step:0.05,callback: v => node._uniforms['u_metalness'] = v });
+        inspector.addSlider("Roughness", node._uniforms['u_roughness'],{min:0,max:1,step:0.01,callback: v => node._uniforms['u_roughness'] = v });
+        inspector.addSlider("Metalness", node._uniforms['u_metalness'],{min:0,max:1,step:0.01,callback: v => node._uniforms['u_metalness'] = v });
         
         inspector.addTitle("Textures")
         inspector.addNumber("Bump scale", node._uniforms['u_bumpScale'],{name_width: "50%", min:0,max:5,step:0.01, callback: v => node._uniforms['u_bumpScale'] = v });
@@ -1888,8 +1892,14 @@
             if(!e.dragging) return;
 
             if (e.leftButton && !ctx.keys["M"]) {
+
+                let last = camera.position.clone();
+
                 camera.orbit(-e.deltax * _dt * s, RD.UP,  camera._target);
                 camera.orbit(-e.deltay * _dt * s, camera._right, camera._target );
+
+                vec3.lerp( camera.position, camera.position, last, 0.2 );
+
             }
 
             if (e.rightButton && ctx.keys["L"]) {

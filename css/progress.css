@@ -36,6 +36,24 @@
   z-index: 10;
 }
 
+#short-load{
+display: none;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100%;
+  position: absolute;
+  text-align: center;
+  background-color: rgba(0.4, 0.4, 0.4, 0.5);
+  z-index: 10;
+}
+
+.prog{
+  position: absolute !important; 
+  width: 0%; 
+  z-index: 1100;
+  height: 2px; 
+  background-color: #FF0000 !important; 
+}
+
 #canvasarea{
   /* background: white; */
   /* url('../data/gradient.jpg'); */

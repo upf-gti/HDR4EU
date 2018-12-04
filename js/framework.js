@@ -3,16 +3,14 @@
 *   @jxarco 
 */
 
-function IMPprefilter(tex_name, level)
+function IMPprefilter( level )
 {
-    tex_name = tex_name || wScene._environment;
+    var tex_name = wScene._environment;
     var tex = gl.textures[ tex_name ];
-    var shader = "blurTest";
-    if(shader.constructor !== GL.Shader)
-        shader = gl.shaders[ shader ];
-    var result = HDRTool.blur( tex, level || 1, shader );
-    gl.textures['test'] = result;
-    wScene.cubemap.texture = 'test';
+    var shader = gl.shaders[ "blurTest" ];
+
+    $("#short-load").show();
+    HDRTool.deferredBlur( tex, level || 1, shader, ()=>$("#short-load").hide());
 }
 
 function processDrop(e)
@@ -380,25 +378,17 @@ function createGlow( tex, options )
     return final_texture; // ?Â¿?Â¿?Â¿?
 }
 
-
 // https://github.com/jagenjo/litegraph.js/blob/master/src/nodes/gltextures.js @jagenjo 
-function getAverage( input )
+async function getAverage( input )
 {
     var tex = input;
     if(!tex)
-        return;
+        return;    
 
-    var LGraphTextureAverage = LiteGraph.Nodes.LGraphTextureAverage;
+    var shader = gl.shaders['luminance'];
 
-    if(!LGraphTextureAverage._shader)
-    {
-        LGraphTextureAverage._shader = new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, LGraphTextureAverage.pixel_shader);
-        //creates 32 random numbers and stores the, in two mat4 
-        var samples = new Float32Array(32);
-        for(var i = 0; i < 32; ++i)	
-            samples[i] = Math.random();
-        LGraphTextureAverage._shader.uniforms({u_samples_a: samples.subarray(0,16), u_samples_b: samples.subarray(16,32) });
-    }
+    if(!shader)
+        throw("no average shader");
 
     var temp = null;
     var type = gl.UNSIGNED_BYTE;
@@ -408,10 +398,8 @@ function getAverage( input )
     if(!temp || temp.type != type )
         temp = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
 
-    var shader = LGraphTextureAverage._shader;
     var properties = { mipmap_offset: 0, low_precision: false };
-    var uniforms = {};
-    uniforms.u_mipmap_offset = properties.mipmap_offset;
+    var uniforms = { u_mipmap_offset: properties.mipmap_offset };
 
     temp.drawTo(function(){
         tex.toViewport( shader, uniforms );
@@ -428,7 +416,6 @@ function getAverage( input )
         else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
             vec4.scale( v,v, 1/(255*255) ); //is this correct?
 
-        var W = vec3.fromValues(0.2125, 0.7154, 0.0721);
         var renderer = wScene._renderer;
 
         if(!renderer)
@@ -436,5 +423,11 @@ function getAverage( input )
 
         renderer._uniforms['u_average'] = v;
         renderer._uniforms['u_lum'] = (v[0] + v[1] + v[2]) / 3;
+        renderer._uniforms['u_maxLum'] = v[3];
+
+        let dt = 1e-6;
+        let lum_delta = Math.log(renderer._uniforms['u_lum'] + dt);
+
+        renderer._uniforms['u_logMean'] = Math.exp( lum_delta );
     }
 }

@@ -59,6 +59,10 @@ function init()
     renderer._uniforms["u_MieDirection"] = 0.76;
     renderer._uniforms['u_originOffset'] = 0.0;
     renderer._uniforms['u_MieCoeff'] = 21;
+
+    // set param macros
+    default_shader_macros[ 'INPUT_TEX_WIDTH' ] = gl.viewport_data[2];
+    default_shader_macros[ 'INPUT_TEX_HEIGHT' ] = gl.viewport_data[3];
     
     // initialize some global parameters 
     window.glow = true;
@@ -112,7 +116,7 @@ function onread( data )
         // });
         
         wGUI.init(); // init gui
-        wScene.set( textures_folder + "eucalyptus_grove.hdre" );
+        wScene.set( textures_folder + "vondelpark.hdre" );
 
     }, default_shader_macros);
 }
