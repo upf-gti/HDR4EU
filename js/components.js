@@ -60,7 +60,7 @@ WS.Components.PICK.delete = function()
 WS.Components.PICK.render = function()
 {
 	var node = this.selected;
-	var root = wScene._root;
+	var root = CORE._root;
 
 	if(!node)
 	return;

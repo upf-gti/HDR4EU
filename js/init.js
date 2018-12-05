@@ -4,11 +4,12 @@
 */
 
 var default_shader_macros = {
-        "N_SAMPLES": 4096,
-        "GAMMA": 2.2,
+    "N_SAMPLES": 4096,
+    "GAMMA": 2.2,
 };
 
-var LOAD_STEPS  = 6,
+var CORE        = null,
+    LOAD_STEPS  = 6,
     STEPS       = 0,
     textures    = {},
     mainarea    = null,
@@ -19,9 +20,8 @@ function init()
 {
     var last = now = getTime();
 
-    wScene = new WS.WScene();
-    wGUI = wScene._gui;
-    canvas = wScene._renderer.canvas;
+    CORE = new WS.Core();
+    canvas = CORE.getCanvas();
 
     canvas.addEventListener("webglcontextlost", function(event) {
         event.preventDefault();
@@ -32,10 +32,11 @@ function init()
     canvas.ondragend = () => {return false};
     canvas.ondrop = (e) => processDrop(e);
     
-    renderer = wScene._renderer;
-    scene = wScene.scene;
-    light = wScene._light;
-    camera = wScene.controller._camera;
+    gui = CORE._gui;
+    renderer = CORE._renderer;
+    scene = CORE.scene;
+    light = CORE._light;
+    camera = CORE.controller._camera;
     
     // declare renderer uniforms
     renderer._uniforms['u_viewport'] = gl.viewport_data;
@@ -70,30 +71,8 @@ function init()
     window.threshold = 10.0;
     window.intensity = 1.0;
     
-    render_mode = WS.FORWARD;
-    renderer.context.ondraw = () => wScene.render( render_mode );
-    renderer.context.onupdate = (dt) => {
-
-        wScene.update(dt);
-
-    }
-
-    // picker
-   /* var pixelPickerText = document.getElementById('pixelPickerText');
-    var pixelPickerColor = document.getElementById('pixelPickerColor');
-    pixelPickerPos = { x: 0, y: 0 };
-    pixelPickerScheduled = false;
-
-    sample2D = function() {
-        pixelPickerScheduled = false;
-        var x = pixelPickerPos.x;
-        var y = pixelPickerPos.y;
-        var p = ctx2d.getImageData(x, y, 1, 1).data;
-        pixelPickerText.innerHTML =
-            "r:  " + format255(p[0]) + " g:  " + format255(p[1]) + " b:  " + format255(p[2]) +
-            "<br>r: " + (p[0] / 255).toFixed(2) + " g: " + (p[1] / 255).toFixed(2) + " b: " + (p[2] / 255).toFixed(2);
-        pixelPickerColor.style.backgroundColor = 'rgb(' + p[0] + ',' + p[1] + ',' + p[2] + ')';
-    }*/
+    renderer.context.ondraw = () => CORE.render();
+    renderer.context.onupdate = (dt) => CORE.update(dt);
 
     renderer.context.animate();
     window.onresize = resize;
@@ -111,12 +90,9 @@ function onread( data )
     renderer.loadShaders("data/shaders.glsl", function(){
         
         HDRTool.brdf( 'brdfIntegrator');
-        // renderer.loadTexture("data/brdfLUT.png", renderer.default_texture_settings, (tex)=>{
-        //     gl.textures['_brdf_integrator'] = tex;
-        // });
         
-        wGUI.init(); // init gui
-        wScene.set( textures_folder + "vondelpark.hdre" );
+        gui.init(); // init gui
+        CORE.set( textures_folder + "vondelpark.hdre" );
 
     }, default_shader_macros);
 }

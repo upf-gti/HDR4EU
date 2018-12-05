@@ -3,9 +3,29 @@
 *   @jxarco 
 */
 
+function getPixelFromMouse(x, y)
+{
+    if(x == null || y == null) throw('No mouse'); 
+
+    var TEX_WIDTH = CORE._viewport_tex.width;
+    var TEX_HEIGHT = CORE._viewport_tex.height;
+
+    var xratio = TEX_WIDTH / gl.viewport_data[2];
+    var yratio = TEX_HEIGHT / gl.viewport_data[3];
+
+    console.log(xratio, yratio);
+
+    x *= Math.round(xratio);
+    y *= Math.round(yratio);
+
+    console.log(x, y)
+
+    return x * TEX_WIDTH + y;
+}
+
 function IMPprefilter( level )
 {
-    var tex_name = wScene._environment;
+    var tex_name = CORE._environment;
     var tex = gl.textures[ tex_name ];
     var shader = gl.shaders[ "blurTest" ];
 
@@ -17,7 +37,7 @@ function processDrop(e)
 {
     e.preventDefault();
 
-    if(!wGUI._allow_drop || !e.dataTransfer.files.length)
+    if(!gui._allow_drop || !e.dataTransfer.files.length)
         return;
 
     for(var i = 0; i < e.dataTransfer.files.length; i++)
@@ -35,7 +55,7 @@ function processDrop(e)
             return;
         }
         
-        wGUI.onDragFile( file, extension );
+        gui.onDragFile( file, extension );
     }
 }
 
@@ -72,10 +92,10 @@ function resize()
 
     var w = window.innerWidth, h = window.innerHeight;
 
-    if(wGUI)
+    if(gui)
     {
-        w = wGUI._mainarea.root.clientWidth - wGUI._sidepanel.root.clientWidth - 4;
-        h = wGUI._mainarea.root.clientHeight;
+        w = gui._mainarea.root.clientWidth - gui._sidepanel.root.clientWidth - 4;
+        h = gui._mainarea.root.clientHeight;
     }
 
     renderer.canvas.height = h;
@@ -379,7 +399,7 @@ function createGlow( tex, options )
 }
 
 // https://github.com/jagenjo/litegraph.js/blob/master/src/nodes/gltextures.js @jagenjo 
-async function getAverage( input )
+async function getFrameInfo( input )
 {
     var tex = input;
     if(!tex)
@@ -416,7 +436,7 @@ async function getAverage( input )
         else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
             vec4.scale( v,v, 1/(255*255) ); //is this correct?
 
-        var renderer = wScene._renderer;
+        var renderer = CORE._renderer;
 
         if(!renderer)
         return;

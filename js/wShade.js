@@ -83,28 +83,28 @@
         this.hasBump = this.textures['height'] ? true : false;    // true/false
         // this.hasNormal = this.textures['normal'] ? true : false;    // true/false
 
-        if(wScene)
-        wScene.reloadShaders();
+        if(CORE)
+        CORE.reloadShaders();
     }
 
     /**
     * Responsible of configuring scene, 3d nodes and its properties  
-    * @class WScene
+    * @class Core
     * @constructor
     */
-    function WScene( o )
+    function Core( o )
     {
-        if(this.constructor !== WS.WScene)
-            throw("Use new to create WS.WScene");
+        if(this.constructor !== WS.Core)
+            throw("Use new to create WS.Core");
 
         this._ctor();
         if(o)
             this.configure( o );
     }
     
-    WS.WScene = WScene;
+    WS.Core = Core;
     
-    WScene.prototype._ctor = function()
+    Core.prototype._ctor = function()
     {
         this._uid = guidGenerator();
         this._descriptor = "";
@@ -116,7 +116,6 @@
         this._no_repeat = false;
         this.selected_radius = 1; // for wheel speed
         
-        this._nodes = []; // string list
         this._scene = new RD.Scene();
         this._root = this._scene.root;
 
@@ -129,11 +128,9 @@
         cubemap.shader = "skyboxExpo";
         cubemap.flags.depth_test = false;
         cubemap.flags.flip_normals = true;
-        // cubemap.flags.visible = false;
         cubemap.render_priority = RD.PRIORITY_BACKGROUND;
         this._cubemap = cubemap;
         
-        this._nodes.push(cubemap);
         this._root.addChild(cubemap);
 
         this._context = GL.create({width: window.innerWidth, height: window.innerHeight, 
@@ -149,19 +146,36 @@
         var type = gl.HIGH_PRECISION_FORMAT;
         
         this._viewport_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
-        
+        console.log(w, h);
         this._background_color = vec4.fromValues(0.2, 0.2, 0.2,1);
 
-        this._controller = new WS.WController( this._context );
-        this._gui = new WS.WGUI();
+        this._controller = new WS.Controller( this._context );
+        this._gui = new WS.GUI();
+
+        // list of objects (uniforms and all that the tonemapper needs)
+        this._tonemappers = [];
     }
+
+    Core.prototype.getCanvas = function ()
+    {
+        return this._renderer.canvas;
+    }
+
+    Core.prototype.addTonemapp = function( tonemap )
+    {
+        // Control that param has necessary items
+        if(!tonemap || !tonemap.uniforms || !tonemap.name)
+        throw('info missing to add tonemapper');
+
+        this._tonemappers.push( tonemap );
+    } 
     
     /**
-    * Configure this WScene to a state from an object (used with serialize)
+    * Configure this Core to a state from an object (used with serialize)
     * @method configure
-    * @param {Object} o object with the state of a WScene
+    * @param {Object} o object with the state of a Core
     */
-    WScene.prototype.configure = function(o)
+    Core.prototype.configure = function(o)
     {
         //copy to attributes
         for(var i in o)
@@ -184,25 +198,25 @@
         }
     }
     
-    Object.defineProperty(WScene.prototype, 'cubemap', {
+    Object.defineProperty(Core.prototype, 'cubemap', {
         get: function() { return this._cubemap; },
         set: function(v) { this._cubemap = v; this._root.addChild(v); },
         enumerable: true
     });
 
-    Object.defineProperty(WScene.prototype, 'scene', {
+    Object.defineProperty(Core.prototype, 'scene', {
         get: function() { return this._scene; },
         set: function(v) { this._scene = v; },
         enumerable: true
     });
 
-    Object.defineProperty(WScene.prototype, 'controller', {
+    Object.defineProperty(Core.prototype, 'controller', {
         get: function() { return this._controller; },
         set: function(v) { this._controller = v; },
         enumerable: true
     });
     
-    Object.defineProperty(WScene.prototype, 'blur_samples', {
+    Object.defineProperty(Core.prototype, 'blur_samples', {
         get: function() { return this._blur_samples; },
         set: function(v) { this._blur_samples = v; default_shader_macros['N_SAMPLES'] = v; },
         enumerable: true
@@ -212,9 +226,8 @@
     * Render all the scene
     * @method render
     */
-    WScene.prototype.render = function( mode )
+    Core.prototype.render = function()
     {
-        var that = this;
         var renderer = this._renderer;
 
         // no texture, no render
@@ -235,7 +248,7 @@
             createGlow(this._viewport_tex) :
             this._viewport_tex;
 
-        getAverage( render_texture );
+        getFrameInfo( render_texture );
 
         // RENDER SCENE
         render_texture.toViewport( renderer.shaders['fx'], renderer._uniforms );
@@ -252,7 +265,7 @@
     * @method render
     * @param {number} dt
     */
-    WScene.prototype.update = function(dt)
+    Core.prototype.update = function(dt)
     {
         _dt = dt;
 
@@ -269,7 +282,7 @@
     * @param {string} env_path
     * @param {Object} options
     */
-    WScene.prototype.set = function(env_path, options)
+    Core.prototype.set = function(env_path, options)
     {
         if(!this._cubemap)
             throw("create first a cubemap node");
@@ -310,7 +323,7 @@
     * @method display
     * @param {Boolean} no_free_memory
     */
-    WScene.prototype.display = function( no_free_memory )
+    Core.prototype.display = function( no_free_memory )
     {
         // delete previous em (free memory)
         if( !no_free_memory )
@@ -336,7 +349,7 @@
     * @method parse
     * @param {string} name
     */
-    WScene.prototype.parse = function(name)
+    Core.prototype.parse = function(name)
     {
         var toParse = scenes[name];
 
@@ -368,7 +381,7 @@
     * @method loadResources
     * @param {Object} toParse
     */
-    WScene.prototype.loadResources = async function( toParse, name )
+    Core.prototype.loadResources = async function( toParse, name )
     {
         var that = this;
 
@@ -438,10 +451,10 @@
     }
     
     /**
-    * Update nodes with WScene configuration
+    * Update nodes with Core configuration
     * @method update
     */
-    WScene.prototype.updateNodes = function()
+    Core.prototype.updateNodes = function()
     {   
         // update environment map textures
         
@@ -481,7 +494,7 @@
     * Reset scene
     * @method reset
     */
-    WScene.prototype.reset = function()
+    Core.prototype.reset = function()
     {
         this.destroyByName('node');
         this.controller.reset();
@@ -492,7 +505,7 @@
     * @method cubemapToTexture
     * @param {Type} oncomplete
     */
-    WScene.prototype.cubemapToTexture = function(oncomplete)
+    Core.prototype.cubemapToTexture = function(oncomplete)
     {
         var that = this,
             d = this._renderer._camera.position;
@@ -528,7 +541,7 @@
     * reload scene shaders
     * @method reloadShaders
     */
-    WScene.prototype.reloadShaders = async function(macros, callback)
+    Core.prototype.reloadShaders = async function(macros, callback)
     {
         $("#short-load").show();
         macros = macros || {};
@@ -553,7 +566,7 @@
     * @param {Type} uniforms
     * @param {Type} node
     */
-    WScene.prototype.uniforms = function(uniforms, node)
+    Core.prototype.uniforms = function(uniforms, node)
     {
         if(!node)
         {
@@ -569,7 +582,7 @@
     * @method getByName
     * @param {string} name
     */
-    WScene.prototype.getByName = function(name)
+    Core.prototype.getByName = function(name)
     {
         for(var i = 0; i < this._root.children.length; i++)
             if(this._root.children[i].name == name)
@@ -581,7 +594,7 @@
     * @method getByProperty
     * @param {string} property
     */
-    WScene.prototype.getByProperty = function(property, value)
+    Core.prototype.getByProperty = function(property, value)
     {
         let r = [];
         for(var i = 0; i < this._root.children.length; i++)
@@ -595,7 +608,7 @@
     * @method destroyByName
     * @param {string} name
     */
-    WScene.prototype.destroyByName = function( o )
+    Core.prototype.destroyByName = function( o )
     {
         var l;
         if(name.constructor == Array)
@@ -620,7 +633,7 @@
     * @method renderMatrix
     * @param {bool} visible
     */
-    WScene.prototype.renderMatrix = function(visible)
+    Core.prototype.renderMatrix = function(visible)
     {
         var values = [0, 0.16666, 0.33333, 0.5, 0.66666, 0.83333, 1];
         // var values = [0, 0.11111, 0.22222, 0.33333, 0.44444, 0.55555,0.66666,0.7777,0.8888,0.999999];
@@ -655,7 +668,7 @@
     * @param {bool} visible
     * @param {Object} options
     */
-    WScene.prototype.renderSphereScale = function(visible, options)
+    Core.prototype.renderSphereScale = function(visible, options)
     {
         options = options || {};
         if(!options.property)
@@ -704,7 +717,7 @@
     * Add light to the scene
     * @method addLight
     */
-    WScene.prototype.addLight = function()
+    Core.prototype.addLight = function()
     {
         if(light) {
             LiteGUI.alert("Only one light supported");
@@ -732,7 +745,7 @@
     * @method addMesh
     * @param {Mesh} mesh
     */
-    WScene.prototype.addMesh = function(mesh, resource)
+    Core.prototype.addMesh = function(mesh, resource)
     {
         var shader = (this._environment == "no current") ? "phong" : "pbr";
         var mesh_name = `${resource}-${simple_guidGenerator()}`;
@@ -769,7 +782,7 @@
     * @method addPrimitive
     * @param {String} mesh
     */
-    WScene.prototype.addPrimitive = function(mesh)
+    Core.prototype.addPrimitive = function(mesh)
     {
         var shader = (this._environment == "no current") ? "phong" : "pbr";
         
@@ -812,7 +825,7 @@
     * Get node properties needed when exporting
     * @method getProperties
     */
-    WScene.prototype.getProperties = function(node)
+    Core.prototype.getProperties = function(node)
     {
         var properties = {
             name: node.name,
@@ -836,7 +849,7 @@
     * Creates an object of all the scene
     * @method toJSON
     */
-    WScene.prototype.toJSON = function()
+    Core.prototype.toJSON = function()
     {
         let camera = this.controller._camera;
 
@@ -882,7 +895,7 @@
     * @param {Object} o
     * @param {Boolean} only_settings
     */
-    WScene.prototype.fromJSON = function( o, only_settings )
+    Core.prototype.fromJSON = function( o, only_settings )
     {
         var gui = this._gui;
         var o = o || {};
@@ -969,20 +982,20 @@
     
     /**
     * Responsible of the GUI
-    * @class WGUI
+    * @class GUI
     * @constructor
     */
-    function WGUI()
+    function GUI()
     {
-        if(this.constructor !== WS.WGUI)
-            throw("Use new to create WS.WGUI");
+        if(this.constructor !== WS.GUI)
+            throw("Use new to create WS.GUI");
         
         this._ctor();
     }
     
-    WS.WGUI = WGUI;
+    WS.GUI = GUI;
     
-    WGUI.prototype._ctor = function()
+    GUI.prototype._ctor = function()
     {
         // FPS
         this._fps_enable = true;
@@ -1003,14 +1016,14 @@
     * Initialize gui and split areas
     * @method init
     */
-    WGUI.prototype.init = function()
+    GUI.prototype.init = function()
     {
         LiteGUI.init(); 
 
         var mainmenu = new LiteGUI.Menubar("mainmenubar");
         LiteGUI.add( mainmenu );
 
-        this._mainarea = new LiteGUI.Area({id: "mainarea", content_id:"canvasarea", height: "calc( 100% - 25px )", main:true});
+        this._mainarea = new LiteGUI.Area({id: "mainarea", content_id:"canvasarea", height: "calc( 100% - 35px )", main:true});
         LiteGUI.add( this._mainarea );
 
         var canvas = renderer.canvas;
@@ -1031,13 +1044,13 @@
 
         var canvas = document.createElement("canvas");
         canvas.style.position = "relative";
-        canvas.style.width = "6%";
-        canvas.style.height = "6vh";
+        canvas.style.width = "60px";
+        canvas.style.height = "30px";
         this._mainarea.content.appendChild(canvas);
         canvas.style.position = "absolute";
-        canvas.style.bottom = "10px";
+        canvas.style.bottom = "1px";
         canvas.style.borderBottom = "2px solid  rgb(30, 211, 111)";
-
+        
         this._canvas2d = canvas;
 
         //split mainarea
@@ -1059,13 +1072,13 @@
         mainmenu.add("View/Fullscreen", { callback: () => gl.fullscreen()});
 
         mainmenu.add("Actions/Reset all", { callback: () => { 
-            wScene.reset();
+            CORE.reset();
             that.updateSidePanel(that._sidepanel, 'root');
         }});
         
         mainmenu.add("Actions/Allow drop", { type: "checkbox", instance: this, property: "_allow_drop"});
-        mainmenu.add("Actions/Reload shaders", { callback: () => wScene.reloadShaders() });
-        mainmenu.add("Actions/Get Environment (HDRE)", { callback: () => HDRTool.getSkybox( wScene._environment ) });
+        mainmenu.add("Actions/Reload shaders", { callback: () => CORE.reloadShaders() });
+        mainmenu.add("Actions/Get Environment (HDRE)", { callback: () => HDRTool.getSkybox( CORE._environment ) });
         mainmenu.add("Actions/Get Mesh (wBin)", { callback: () => {
             var node = WS.getSelected();
 
@@ -1084,7 +1097,7 @@
         resize(renderer, [w, h], camera);
     }
 
-    WGUI.prototype.createSidePanel = function()
+    GUI.prototype.createSidePanel = function()
     {
         this._mainarea.split("horizontal",[null,300],true);
         var docked = new LiteGUI.Panel("right_panel", {title:'Scene nodes', close: true, scroll: true});
@@ -1095,7 +1108,7 @@
         this.updateSidePanel( docked, 'root' );
     }
 
-    WGUI.prototype.updateSidePanel = function( root, item_selected )
+    GUI.prototype.updateSidePanel = function( root, item_selected )
     {
         if(!item_selected)
         return;
@@ -1128,8 +1141,8 @@
         // update inspector depending on the tree item_selected 
         // put this apart (insane code in one function!!!!!)
 
-        var camera = wScene.controller._camera;
-        var skybox = wScene.cubemap;
+        var camera = CORE.controller._camera;
+        var skybox = CORE.cubemap;
 
         widgets.addInfo("blur back cubemap", null, {name_width: "100%"});
         widgets.addButton(null, "Test blur", {callback: () => IMPprefilter()});
@@ -1138,8 +1151,8 @@
         {
             widgets.addSection("Skybox");
             widgets.addList("Environment", textures, {height: "125px", callback: function(v){
-                wGUI.loading();
-                wScene.set( v.path );
+                gui.loading();
+                CORE.set( v.path );
             }});
             widgets.widgets_per_row = 1;
             widgets.addSeparator();
@@ -1148,9 +1161,9 @@
             widgets.addCheckbox("Visible", skybox.flags.visible, {callback: (v) => skybox.visible = v});
             widgets.addSeparator();
             widgets.addTitle("Sampling");
-            widgets.addComboButtons("Irradiance samples", wScene.blur_samples,{name_width: "40%", values:[512, 1024, 2048, 4096, 8192], callback: async (v) => {
-                wScene.blur_samples = parseInt(v);
-                await wScene.reloadShaders();
+            widgets.addComboButtons("Irradiance samples", CORE.blur_samples,{name_width: "40%", values:[512, 1024, 2048, 4096, 8192], callback: async (v) => {
+                CORE.blur_samples = parseInt(v);
+                await CORE.reloadShaders();
             }});
             widgets.addSeparator();
             widgets.addTitle("Atmospheric scattering");
@@ -1160,14 +1173,14 @@
                 if(!gl.shaders['atmos']) LiteGUI.showMessage("Error: shader missing", {title: "App info"});
                 else
                 {
-                    wScene.cubemap.shader = "atmos";
-                    wScene.cubemapToTexture( () => wScene.set(":atmos", {no_free_memory: true}) );
+                    CORE.cubemap.shader = "atmos";
+                    CORE.cubemapToTexture( () => CORE.set(":atmos", {no_free_memory: true}) );
                 }
             }});
             widgets.addButton(null, "Update", {callback: function(){
                
                 if(!gl.shaders['atmos']) LiteGUI.showMessage("Error: shader missing", {title: "App info"});
-                else wScene.cubemapToTexture( () => wScene.set(":atmos", {no_free_memory: true}) );
+                else CORE.cubemapToTexture( () => CORE.set(":atmos", {no_free_memory: true}) );
             }});
             widgets.addSeparator();
             widgets.addNumber("Sun Position", 0.4, {min: 0,step:0.01, callback: function(v){ renderer._uniforms['u_SunPos'] = v; }});
@@ -1198,13 +1211,13 @@
 
             widgets.widgets_per_row = 1;
             widgets.addSeparator();
-            widgets.addSlider("Mouse Speed", wScene.controller._mouse_speed, {min: 0.01, max: 1, step: 0.01, callback: function(v){
-                wScene.controller._mouse_speed = v;
-                wScene.controller.setBindings(renderer.context);
+            widgets.addSlider("Mouse Speed", CORE.controller._mouse_speed, {min: 0.01, max: 1, step: 0.01, callback: function(v){
+                CORE.controller._mouse_speed = v;
+                CORE.controller.setBindings(renderer.context);
             }});
-            widgets.addSlider("Wheel Speed", wScene.controller._wheel_speed, {min: 0.01, max: 1, step: 0.1, callback: function(v){
-                wScene.controller._wheel_speed = v;
-                wScene.controller.setBindings(renderer.context);
+            widgets.addSlider("Wheel Speed", CORE.controller._wheel_speed, {min: 0.01, max: 1, step: 0.1, callback: function(v){
+                CORE.controller._wheel_speed = v;
+                CORE.controller.setBindings(renderer.context);
             }});
             widgets.addSection("Render");
             widgets.widgets_per_row = 2;
@@ -1233,7 +1246,7 @@
             // widgets.addNumber("Gamma", default_shader_macros['GAMMA'], {min: 2.0, max: 2.4, step: 0.01, callback: function(v){ 
             //     default_shader_macros['GAMMA'] = v;
             // }});
-            // widgets.addButton(null, "Update", {callback: ()=>wScene.reloadShaders()});
+            // widgets.addButton(null, "Update", {callback: ()=>CORE.reloadShaders()});
             widgets.widgets_per_row = 1;
             widgets.addSeparator();
             widgets.addTitle("Glow");
@@ -1266,7 +1279,7 @@
         
         else if(item_selected.includes("scale") || item_selected.includes("matrix"))
         {
-            let node = wScene.getByName(item_selected);
+            let node = CORE.getByName(item_selected);
             widgets.addSection("Transform");
             widgets.addVector3("Position", node.position, {callback: function(v){ node.position = v; }});
             widgets.addNumber("Uniform scale", node.scaling[0], {min: 0.1, callback: function(v){ node.scaling = v; }});
@@ -1282,7 +1295,7 @@
         }
         else if(item_selected.includes("-")) // is a primitive uid
         {
-            let node = wScene.getByName(item_selected);
+            let node = CORE.getByName(item_selected);
            
             widgets.addTitle(node.mesh);
             widgets.addSection("Transform");
@@ -1298,13 +1311,13 @@
                 let result = vec3.create();
                 vec3.transformMat4( result, center, globalMat );
 
-                wScene.controller._camera.lookAt([ 0, radius * 0.5, radius * 2.5 ], result, RD.UP);
+                CORE.controller._camera.lookAt([ 0, radius * 0.5, radius * 2.5 ], result, RD.UP);
             }});
             this.addMaterial(widgets, node);
         }
     }
 
-    WGUI.prototype.addMaterial = function(inspector, node)
+    GUI.prototype.addMaterial = function(inspector, node)
     {
         // Parent node is abstract
         if(node.children.length)
@@ -1345,7 +1358,7 @@
         }
     }
 
-    WGUI.prototype.updateNodeTree = function(root)
+    GUI.prototype.updateNodeTree = function(root)
     {
         var mytree = {'id': "root"};
         let children = [];
@@ -1382,16 +1395,16 @@
     * Export scene dialog
     * @method onExport
     */
-    WGUI.prototype.onExport = function()
+    GUI.prototype.onExport = function()
     {
-        const isInServer = Object.keys(textures).filter(key => textures[key].path.includes( wScene._environment )).length;
+        const isInServer = Object.keys(textures).filter(key => textures[key].path.includes( CORE._environment )).length;
 
         // is not in server
         if(!isInServer) {
             LiteGUI.alert("Files not in server");
             return;
         }
-        let boo = wScene.toJSON ? wScene.toJSON() : {};
+        let boo = CORE.toJSON ? CORE.toJSON() : {};
 
         var inner = (v) => {
             var data = "text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(boo));
@@ -1411,7 +1424,7 @@
     * @method onExport
     * @param {File} file
     */
-    WGUI.prototype.onImport = function(file)
+    GUI.prototype.onImport = function(file)
     {
 
         var id = "Load scene"
@@ -1446,7 +1459,7 @@
                     LiteGUI.showModalBackground(false);
                     //
                     let res = JSON.parse(e.target.result);
-                    wScene.fromJSON(res, only_settings);
+                    CORE.fromJSON(res, only_settings);
                 };
                 reader.readAsText(file ? file : json.file);
                 return false;
@@ -1464,7 +1477,7 @@
     * Renders some GUI things
     * @method render
     */
-    WGUI.prototype.render = function()
+    GUI.prototype.render = function()
     {
         if(this._canvas2d && this._fps_enable)
             this.renderFPS();
@@ -1474,7 +1487,7 @@
     * Hide fps counter
     * @method closeFPS
     */
-    WGUI.prototype.closeFPS = function()
+    GUI.prototype.closeFPS = function()
     {
         this._canvas2d.style.display = "none";
     }
@@ -1484,7 +1497,7 @@
     * @method renderFPS
     * @param {number} padding
     */
-    WGUI.prototype.renderFPS = function(padding)
+    GUI.prototype.renderFPS = function(padding)
     {
         var now = getTime();
         var elapsed = now - this._last_time;
@@ -1501,13 +1514,11 @@
         }
 
         var ctx = this._canvas2d.getContext("2d");
-        ctx.globalAlpha = 0.5;
+        // ctx.globalAlpha = 0.65;
         ctx.clearRect(0,0,canvas.width,canvas.height);
-        // ctx.fillStyle = "#999";
-        // ctx.fillRect(0,0, canvas.width, canvas.height);
         ctx.fillStyle = "#FFF";
-        ctx.font = "50px Arial";
-        ctx.fillText( "FPS: " + this._fps, 50, 85 );
+        ctx.font = "70px Monospace";
+        ctx.fillText( "FPS:" + this._fps, 35, 95 );
     }
     
     /**
@@ -1515,7 +1526,7 @@
     * @method log
     * @param {string} text
     */
-    WGUI.prototype.log = function(text)
+    GUI.prototype.log = function(text)
     {
         if(text == null)
             return;
@@ -1529,7 +1540,7 @@
     * @param {bool} active
     * @param {Function} oncomplete
     */
-    WGUI.prototype.loading = function(disable, oncomplete)
+    GUI.prototype.loading = function(disable, oncomplete)
     {
         if(disable == null)
             $("#modal").fadeIn();
@@ -1542,7 +1553,7 @@
     * @param {File} file
     * @param {String} extension
     */
-    WGUI.prototype.onDragFile = function(file, extension)
+    GUI.prototype.onDragFile = function(file, extension)
     {
         if(!extension)
             throw('file not valid: missing extension');
@@ -1552,10 +1563,10 @@
         switch(extension)
         {
             case 'json':
-                wGUI.onImport(file);
+                gui.onImport(file);
                 break;
             case 'obj':
-                wGUI.onDragMesh( file );
+                gui.onDragMesh( file );
                 break;
             case 'hdre':
             case 'exr':
@@ -1578,7 +1589,7 @@
     * @method onDragEnvironment
     * @param {File} file 
     */
-    WGUI.prototype.onDragEnvironment = function(file)
+    GUI.prototype.onDragEnvironment = function(file)
     {
         var filename = file.name;
 
@@ -1611,14 +1622,14 @@
             widgets.addButton( null, "Load", {width: "100%", name_width: "50%", callback: function(){
                 
                 $("#"+dialog_id).remove();
-                wGUI.loading();
+                gui.loading();
         
                 var reader = new FileReader();
                 reader.onprogress = (e) =>  $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%");
                 reader.onload = function (event) {
                     var data = event.target.result;
                     params['data'] = data;
-                    params['oncomplete'] = () => wScene.set( filename );
+                    params['oncomplete'] = () => CORE.set( filename );
 
                     if(filename.includes(".exr"))
                         HDRTool.prefilter( filename, params);     
@@ -1643,7 +1654,7 @@
     * @param {File} file 
     * @param {base64 string} data 
     */
-    WGUI.prototype.onDragTexture = function(file, data)
+    GUI.prototype.onDragTexture = function(file, data)
     {
         var filename = file.name;
 
@@ -1679,8 +1690,8 @@
                 
                 var node = WS.Components.PICK.selected;
 
-                if(!node && wScene._root.children.length == 2)
-                    node = wScene._root.children[1];
+                if(!node && CORE._root.children.length == 2)
+                    node = CORE._root.children[1];
 
                 if(!node) {
                     LiteGUI.showMessage("select node", {title: "Error"});
@@ -1716,7 +1727,7 @@
     * @param {string} filename
     * @param {..} resource
     */
-    WGUI.prototype.onDragMesh = function(file, resource)
+    GUI.prototype.onDragMesh = function(file, resource)
     {
         var filename = file.name;
 
@@ -1742,7 +1753,7 @@
             widgets.addSeparator();
             widgets.addButton( null, "Load", {width: "100%", name_width: "50%", callback: function(){
                 $("#"+dialog_id).remove();
-                ImporterModule.processFileList([file], {}, (f, res) => wScene.addMesh(res, f));
+                ImporterModule.processFileList([file], {}, (f, res) => CORE.addMesh(res, f));
             }});
         }
 
@@ -1754,21 +1765,21 @@
 
     /**
     * Responsible for camera movement and event bindings
-    * @class WController
+    * @class Controller
     * @constructor
     */
-    function WController(context, o)
+    function Controller(context, o)
     {
-        if(this.constructor !== WS.WController)
-            throw("Use new to create WS.WController");
+        if(this.constructor !== WS.Controller)
+            throw("Use new to create WS.Controller");
         this._ctor(context);
         if(o)
             this.configure(o);
     }
     
-    WS.WController = WController;
+    WS.Controller = Controller;
     
-    WController.prototype._ctor = function( context )
+    Controller.prototype._ctor = function( context )
     {
         this._fov = 45;
         this._near = 0.35;
@@ -1791,7 +1802,7 @@
         this.setBindings();
     }
 
-    WController.prototype.reset = function()
+    Controller.prototype.reset = function()
     {
         this._fov = 45;
         this._near = 0.35;
@@ -1808,10 +1819,10 @@
         // events
         this._mouse_speed = 0.25;
 
-        wGUI.updateSidePanel(null, 'root');
+        gui.updateSidePanel(null, 'root');
     }
     
-    WController.prototype.configure = function(o)
+    Controller.prototype.configure = function(o)
     {
         o = o || {};
         this._camera.perspective( o.fov || this._fov, o.aspect || this._aspect , o.near || this._near, o.far || this._far);
@@ -1825,7 +1836,7 @@
     * @param {vec3} center
     * @param {vec3} up
     */
-    WController.prototype.lookAt = function(eye, center, up)
+    Controller.prototype.lookAt = function(eye, center, up)
     {
         this._camera.lookAt( eye, center, up );
     }
@@ -1834,7 +1845,7 @@
     * Returns controller's camera position
     * @method getCameraPosition
     */
-    WController.prototype.getCameraPosition = function()
+    Controller.prototype.getCameraPosition = function()
     {
         return this._camera.position;
     }
@@ -1844,7 +1855,7 @@
     * @method setBindings
     * @param {WebGLRenderingContext} ctx
     */
-    WController.prototype.setBindings = function()
+    Controller.prototype.setBindings = function()
     {
         var ctx = this._context;
         if(!ctx)
@@ -1858,22 +1869,22 @@
         ctx.onkeydown = function(e)
         {
             if(e.keyCode === 82) // R
-                wScene.reloadShaders(); 
+                CORE.reloadShaders(); 
             if(e.keyCode === 46) // SUPR
             {
                 WS.Components.PICK.delete();
-                wGUI.updateSidePanel(null, "root");
+                gui.updateSidePanel(null, "root");
             }
             if(e.keyCode === 8) // DELETE
             {
                 WS.Components.PICK.delete();
-                wGUI.updateSidePanel(null, "root");
+                gui.updateSidePanel(null, "root");
             }
             if(e.keyCode === 27) // ESC
             {
                 WS.Components.PICK.selected = null;
                 delete gl.meshes['lines'];
-                wGUI.updateSidePanel(null, "root");
+                gui.updateSidePanel(null, "root");
             }
         }
         ctx.captureMouse(true);
@@ -1882,6 +1893,7 @@
         {
             var mouse = [e.canvasx, gl.canvas.height - e.canvasy];
             
+            document.querySelector("#pixelPickerCoord").innerHTML = parseInt(mouse[0])+','+parseInt(mouse[1]);
             /*pixelPickerPos.x = e.pageX - mouse[0];
             pixelPickerPos.y = e.pageY - mouse[1];
             if (!pixelPickerScheduled) {
@@ -1936,7 +1948,7 @@
             {
                 var result = vec3.create();
                 var ray = camera.getRay( e.canvasx, e.canvasy );
-                var node = wScene.scene.testRay( ray, result, undefined, 0x1, true );
+                var node = CORE.scene.testRay( ray, result, undefined, 0x1, true );
                 
                 if(node) 
                 {
@@ -1945,7 +1957,7 @@
                     let name = node.name;
                     if(!name)
                         name = node.parentNode.name;
-                    wGUI.updateSidePanel(null, name);
+                    gui.updateSidePanel(null, name);
                 }
             }
 
@@ -1956,8 +1968,8 @@
 
                 for(let s in scenes)
                     shaded_models.push( {title: scenes[s].name, callback: () => {
-                        wScene.parse( scenes[s].name );
-                        wGUI.updateSidePanel(null, scenes[s].name);
+                        CORE.parse( scenes[s].name );
+                        gui.updateSidePanel(null, scenes[s].name);
                     }});
 
                 var actions = [
@@ -1975,20 +1987,20 @@
                         options: 
                         [{
                             title: "Sphere",
-                            callback: () => wScene.addPrimitive("sphere")
+                            callback: () => CORE.addPrimitive("sphere")
                         },{
                             title: "Plane",
-                            callback: () => wScene.addPrimitive("plane")
+                            callback: () => CORE.addPrimitive("plane")
                         },{
                             title: "Cube",
-                            callback: () => wScene.addPrimitive("cube")
+                            callback: () => CORE.addPrimitive("cube")
                         }]
                     }
                     
                 },
                 {
                     title: "Add light", //text to show
-                    callback: () => wScene.addLight()
+                    callback: () => CORE.addLight()
                 }
                 ];
                 var contextmenu = new LiteGUI.ContextMenu( actions, { event: e });
@@ -2002,13 +2014,13 @@
     * @param {number} dt
     * @param {WebGLRenderingContext} ctx
     */
-    WController.prototype.update = function(dt, ctx)
+    Controller.prototype.update = function(dt, ctx)
     {
         if(!ctx)
             throw('no WebGLRenderingContext');
 
         let w = this._wheel_speed * 25;
-        var s = wScene.selected_radius ? wScene.selected_radius * w : w;
+        var s = CORE.selected_radius ? CORE.selected_radius * w : w;
 
         if(ctx.keys["UP"] || ctx.keys["W"]){            this._camera.moveLocal([0,0,-dt * s]);}
         else if(ctx.keys["DOWN"] || ctx.keys["S"]){     this._camera.moveLocal([0,0,dt * s]);}
