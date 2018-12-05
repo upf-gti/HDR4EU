@@ -136,17 +136,16 @@
         this._context = GL.create({width: window.innerWidth, height: window.innerHeight, 
             // alpha: true, premultipliedAlpha: false
         });
-    
+
         this._renderer = new RD.Renderer( this._context, {
             autoload_assets: true
         });
 
         var w = (gl.canvas.width)|0;
         var h = (gl.canvas.height)|0;
-        var type = gl.HIGH_PRECISION_FORMAT;
+        var type = gl.FLOAT;
         
         this._viewport_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
-        console.log(w, h);
         this._background_color = vec4.fromValues(0.2, 0.2, 0.2,1);
 
         this._controller = new WS.Controller( this._context );
@@ -252,6 +251,7 @@
 
         // RENDER SCENE
         render_texture.toViewport( renderer.shaders['fx'], renderer._uniforms );
+        window.render_tex = render_texture;
 
         // RENDER GUI
         this._gui.render();
@@ -1892,28 +1892,27 @@
         ctx.onmousemove = function(e)
         {
             var mouse = [e.canvasx, gl.canvas.height - e.canvasy];
-            
-            document.querySelector("#pixelPickerCoord").innerHTML = parseInt(mouse[0])+','+parseInt(mouse[1]);
-            /*pixelPickerPos.x = e.pageX - mouse[0];
-            pixelPickerPos.y = e.pageY - mouse[1];
-            if (!pixelPickerScheduled) {
-                pixelPickerScheduled = true;
-                window.requestAnimationFrame(sample2D);
-            }*/
+            let x = parseInt(mouse[0]), y = parseInt(mouse[1]);
+
+            if (ctx.keys["C"]) {
+                document.querySelector("#pixelPickerCoord").innerHTML = `x: ${x} y: ${y}`;
+                var pixelColor = getPixelFromMouse(x, y);
+                document.querySelector("#pixelPickerText").innerHTML = `R: ${pixelColor[0].toFixed(2)} G: ${pixelColor[1].toFixed(2)} B: ${pixelColor[2].toFixed(2)}`;
+                //document.querySelector("#pixelPickerColor").style.backgroundColor = `rgba(${pixelColor[0]},${pixelColor[1]},${pixelColor[2]}, 1)`;
+            }
 
             if(!e.dragging) return;
 
             if (e.leftButton && !ctx.keys["M"]) {
 
-                let last = camera.position.clone();
+                //let last = camera.position.clone();
 
                 camera.orbit(-e.deltax * _dt * s, RD.UP,  camera._target);
                 camera.orbit(-e.deltay * _dt * s, camera._right, camera._target );
 
-                vec3.lerp( camera.position, camera.position, last, 0.2 );
-
+                //vec3.lerp( camera.position, camera.position, last, 0.2 );
             }
-
+            
             if (e.rightButton && ctx.keys["L"]) {
                 camera.moveLocal([-e.deltax * s * 0.75 * _dt, e.deltay * _dt, 0]);
             }

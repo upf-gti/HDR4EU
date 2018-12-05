@@ -7,20 +7,17 @@ function getPixelFromMouse(x, y)
 {
     if(x == null || y == null) throw('No mouse'); 
 
-    var TEX_WIDTH = CORE._viewport_tex.width;
-    var TEX_HEIGHT = CORE._viewport_tex.height;
+    var WIDTH = gl.canvas.width;
+    var HEIGHT = gl.canvas.height;
 
-    var xratio = TEX_WIDTH / gl.viewport_data[2];
-    var yratio = TEX_HEIGHT / gl.viewport_data[3];
+    var pixel = 4 * (y * WIDTH + x);
 
-    console.log(xratio, yratio);
-
-    x *= Math.round(xratio);
-    y *= Math.round(yratio);
-
-    console.log(x, y)
-
-    return x * TEX_WIDTH + y;
+    return [
+        window.render_tex.getPixels()[pixel],
+        window.render_tex.getPixels()[pixel+1],
+        window.render_tex.getPixels()[pixel+2],
+        window.render_tex.getPixels()[pixel+3],
+    ];
 }
 
 function IMPprefilter( level )
@@ -101,6 +98,10 @@ function resize()
     renderer.canvas.height = h;
     renderer.canvas.width = w;
     renderer.context.viewport(0, 0, w, h);
+
+    // change viewport texture properties
+    CORE._viewport_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: gl.FLOAT, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+
     camera.perspective(camera.fov, w / h, camera.near, camera.far);
 }
 
