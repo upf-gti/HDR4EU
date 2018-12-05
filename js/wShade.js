@@ -125,7 +125,7 @@
         let cubemap = new RD.SceneNode();
         cubemap.name = "cubemap";
         cubemap.mesh = "cube";
-        cubemap.shader = "skyboxExpo";
+        cubemap.shader = "skybox";
         cubemap.flags.depth_test = false;
         cubemap.flags.flip_normals = true;
         cubemap.render_priority = RD.PRIORITY_BACKGROUND;
@@ -152,7 +152,7 @@
         this._gui = new WS.GUI();
 
         // list of objects (uniforms and all that the tonemapper needs)
-        this._tonemappers = [];
+        this._tonemappers = {};
     }
 
     Core.prototype.getCanvas = function ()
@@ -160,13 +160,30 @@
         return this._renderer.canvas;
     }
 
-    Core.prototype.addTonemapp = function( tonemap )
+    Core.prototype.registerTonemapper = function( base_class )
     {
         // Control that param has necessary items
-        if(!tonemap || !tonemap.uniforms || !tonemap.name)
-        throw('info missing to add tonemapper');
+        if(!base_class || !base_class.constructor)
+        throw('tonemapper class needed');
 
-        this._tonemappers.push( tonemap );
+        //extend class
+		if(base_class.prototype) //is a class
+            for(var i in Tonemapper.prototype)
+                if(!base_class.prototype[i])
+                    base_class.prototype[i] = Tonemapper.prototype[i];
+
+        var instance = new base_class();
+        var fs_code = instance.injectCode( base_class );
+        var uniforms = instance.uniforms;
+
+        gl.shaders[base_class.name] = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, fs_code );
+        
+        this._tonemappers[base_class.name] =  {
+            uniforms: uniforms
+        };
+
+        if(size(this._tonemappers) == 1)
+            WS.Components.FX.tonemapping = base_class.name;
     } 
     
     /**
@@ -235,6 +252,7 @@
 
         this.cubemap.position = this.controller.getCameraPosition();
 
+        // Render scene to texture
         this._viewport_tex.drawTo( () => {
             renderer.clear( this._background_color );
             renderer.render( this.scene, this.controller._camera );
@@ -242,21 +260,25 @@
         
         gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
 
-        // apply glow and render applying gamma correction, exposure, tone mapping etc
+        // Apply (or not) bloom effect
         let render_texture =  (gl.shaders["glow"] && WS.Components.FX._glow_enable) ? 
             createGlow(this._viewport_tex) :
             this._viewport_tex;
 
+        // Fill renderer uniforms with average, max lum, etc.
         getFrameInfo( render_texture );
 
-        // RENDER SCENE
-        render_texture.toViewport( renderer.shaders['fx'], renderer._uniforms );
+        // Render frame fx (exposure, offset, tonemapping, degamma)
+        let name = WS.Components.FX.tonemapping;
+        let fx = CORE._tonemappers[ name ];
+
+        render_texture.toViewport(renderer.shaders[ name ], Object.assign(renderer._uniforms, fx.uniforms) );
         window.render_tex = render_texture;
 
-        // RENDER GUI
+        // Render gui
         this._gui.render();
         
-        // RENDER PICK COMPONENT
+        // Render node selected
         WS.Components.PICK.render();
     }
 
@@ -304,7 +326,7 @@
         var params = {oncomplete: oncomplete};
 
         if(tex_name != ":atmos")
-            this.cubemap.shader = "skyboxExpo";
+            this.cubemap.shader = "skybox";
 
         if(gl.textures[ "_prem_0_" + this._environment ] && tex_name != ":atmos")
             this.display();
@@ -341,7 +363,7 @@
         // updateSidePanel(null,)
         
         this._gui.loading(false, () => $(".pbar").css("width", "0%"));
-        console.log("%c" + this._environment, 'padding: 3px; background: black; color: #AAF; font-weight: bold;');
+        console.log("%c" + this._environment, 'font-weight: bold;');
     }
     
     /**
@@ -1229,10 +1251,11 @@
             
             widgets.addSection("FX");
             widgets.addTitle("Tonemapping");
-            widgets.addCombo(null, WS.Components["FX"].tonemapping, {values: ["none", "Reinhard", "Uncharted2", "Exp", "Log", "Atmos"], callback: function(v){
-                let values = $(this)[0].options.values;
+
+            let tonemappers = Object.keys(CORE._tonemappers);
+
+            widgets.addCombo(null, WS.Components["FX"].tonemapping, {values: tonemappers, callback: function(v){
                 WS.Components["FX"].tonemapping = v;
-                WS.Components["FX"].n_tonemapping = parseFloat(values.indexOf(v));
             }});
             widgets.addSeparator();
             widgets.addNumber("Exposure", WS.Components["FX"].exposure,{min:-10,max:10,step:0.1,callback: function(v) { 
@@ -1241,12 +1264,6 @@
             widgets.addNumber("Offset", WS.Components["FX"].offset,{min:-0.5,max:0.5,step:0.01,callback: function(v) {
                 WS.Components["FX"].offset = v;
             }});
-            // widgets.addSeparator();
-            // widgets.widgets_per_row = 2;
-            // widgets.addNumber("Gamma", default_shader_macros['GAMMA'], {min: 2.0, max: 2.4, step: 0.01, callback: function(v){ 
-            //     default_shader_macros['GAMMA'] = v;
-            // }});
-            // widgets.addButton(null, "Update", {callback: ()=>CORE.reloadShaders()});
             widgets.widgets_per_row = 1;
             widgets.addSeparator();
             widgets.addTitle("Glow");

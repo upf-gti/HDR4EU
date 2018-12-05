@@ -1,53 +1,121 @@
-/**
-* @class Tonemapper
-* @constructor
-*/
-function Tonemapper( o )
+
+function Tonemapper()
 {
     if(this.constructor !== Tonemapper)
-        throw("Use new to create Tonemapper");
+        throw("Use new");
 
-    this._ctor();
-    if(o)
-        this.configure( o );
+    this.uniforms = {};
 }
 
-Tonemapper.prototype._ctor = function()
+WS.Tonemapper = Tonemapper;
+
+Tonemapper.prototype.injectCode = function( base_class )
 {
-    this.name = "";
-    this.uniforms = "";
+    var fs_code = `
+
+        precision highp float;
+        varying vec2 v_coord;
+        uniform float u_exposure;
+        uniform float u_offset;
+        uniform sampler2D u_color_texture;
+
+        ` + base_class.Uniforms + `
+
+        float C_GAMMA = 2.2;
+
+        void main() {
+
+            vec3 color = texture2D(u_color_texture, v_coord).rgb;
+
+            color *= pow( 2.0, u_exposure );
+            color += vec3(u_offset);
+
+            ` + base_class.Code + `
+
+            #ifdef GAMMA
+                C_GAMMA = GAMMA;
+            #endif
+
+            color = pow(color, vec3(1.0/C_GAMMA));
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+
+    `;
+
+    return fs_code;
 }
 
 /**
- * Configure to a state from an object (used with serialize)
- * @method configure
- * @param {Object} o 
+ * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
  */
-Tonemapper.prototype.configure = function(o)
+
+function None()
 {
-    //copy to attributes
-    for(var i in o)
-    {
-        switch( i )
-        {
-            case "somecase": //special case
-                continue;
-        };
+    if(this.constructor !== None)
+        throw("Use new");
 
-        //default
-        var v = this[i];
-        if(v === undefined)
-            continue;
-
-        if( v && v.constructor === Float32Array )
-            v.set( o[i] );
-        else 
-            this[i] = o[i];
-    }
+    this.uniforms = {};
 }
 
-/*Object.defineProperty(Tonemapper.prototype, '', {
-    get: function() { return this._...; },
-    set: function(v) { this._... = v; },
-    enumerable: true
-});*/
+None.Uniforms = `
+
+
+`;    
+
+None.Code = `
+       
+
+`;
+
+CORE.registerTonemapper( None );
+
+/**
+ * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ */
+
+function Reinhard()
+{
+    if(this.constructor !== Reinhard)
+        throw("Use new");
+
+    this.uniforms = {};
+}
+
+Reinhard.Uniforms = `
+
+    // uniform vec3 u_test; 
+
+`;    
+
+Reinhard.Code = `
+
+    color = color / (color + vec3(1.0)); 
+
+`;
+
+CORE.registerTonemapper( Reinhard );
+
+/**
+ * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ */
+
+function Atmos()
+{
+    if(this.constructor !== Atmos)
+        throw("Use new");
+
+    this.uniforms = {};
+}
+
+Atmos.Uniforms = `
+
+`;    
+
+Atmos.Code = `
+
+    color = 1.0 - exp(-1.0 * color);
+
+`;
+
+CORE.registerTonemapper( Atmos );

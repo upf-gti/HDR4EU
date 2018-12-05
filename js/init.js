@@ -41,7 +41,6 @@ function init()
     // declare renderer uniforms
     renderer._uniforms['u_viewport'] = gl.viewport_data;
     renderer._uniforms["u_rotation"] = 0.0;
-    renderer._uniforms["u_tonemapping"] = 2.0;
     renderer._uniforms["u_exposure"] = 0.0;
     renderer._uniforms["u_offset"] = 0.0;
     renderer._uniforms["u_channel"] = 0.0;
@@ -96,3 +95,7 @@ function onread( data )
 
     }, default_shader_macros);
 }
+
+
+
+init();

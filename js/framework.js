@@ -452,3 +452,8 @@ async function getFrameInfo( input )
         renderer._uniforms['u_logMean'] = Math.exp( lum_delta );
     }
 }
+
+function size( object )
+{
+   return Object.keys(object).length;
+}

@@ -2,13 +2,10 @@
 
 // Basic shaders
 flat default.vs default.fs
-tex default.vs tex.fs
-fx screen_shader.vs exposure.fs
 
 // Cubemap shaders
-skyboxExpo default.vs skyboxExpo.fs
+skybox default.vs skybox.fs
 sphereMap default.vs sphereMap.fs
-mirroredSphere default.vs mirroredSphere.fs
 atmos default.vs atmos.fs
 
 // Cubemap FX Shaders
@@ -26,7 +23,7 @@ brdfIntegrator brdf.vs brdf.fs
 pbr pbr.vs pbr.fs
 
 //
-// Default vertex shader for "almost" every fragment shader
+// Default vertex shader 
 //
 
 \default.vs
@@ -48,7 +45,7 @@ pbr pbr.vs pbr.fs
     }
 
 //
-// Default vertex shader for "almost" every fragment shader
+// Default fragment shader 
 //
 
 \default.fs
@@ -65,19 +62,6 @@ pbr pbr.vs pbr.fs
     }
 
 //
-// Basic texture shader
-//
-
-\tex.fs
-	precision highp float;
-	varying vec2  v_coord;
-	uniform sampler2D u_color_texture;
-	
-	void main(){
-		gl_FragColor = texture2D(u_color_texture, v_coord);
-	}
-
-//
 // Screen shader 
 //
 
@@ -91,59 +75,6 @@ pbr pbr.vs pbr.fs
 		v_coord = a_coord;
 		gl_Position = vec4(a_coord * 2.0 - 1.0, 0.0, 1.0);
 	}
-
-//
-// Exposure shader used only in 2D textures
-//
-
-\exposure.fs
-
-	precision highp float;
-    varying vec2 v_coord;
-
-	uniform float u_tonemapping;
-	uniform float u_exposure;
-	uniform float u_offset;
-    uniform vec4 u_color;
-	uniform sampler2D u_color_texture;
-	uniform sampler2D u_last_frame;
-
-	uniform float u_lum;
-	uniform vec4 u_average;
-	uniform float u_logMean;
-	uniform float u_maxLum;
-
-	#import "tonemap.inc"
-
-    void main() {
-
-       	vec3 color = texture2D(u_color_texture, v_coord).rgb;
-
-		// apply exposure
-		color *= pow( 2.0, u_exposure );
-
-		float v = u_tonemapping; 
-
-		// tone mapping 
-		if(v == 1.0)
-			color = tonemapReinhard( color );
-		else if(v == 2.0)
-			color = tonemapUncharted2( color );
-		else if(v == 3.0) {
-			color = exponential( color, u_logMean );
-		}
-		else if(v == 4.0)
-			color = logTM( color, u_maxLum );
-		else if(v == 5.0)
-			color = atmosTonemap( color );
-
-		// apply offset
-		color += vec3(u_offset);
-		// delinearize
-		color = pow(color, vec3(1.0/GAMMA));
-
-        gl_FragColor = vec4(color, 1.0);
-    }
 
 //
 // Luminance shader
@@ -192,7 +123,7 @@ pbr pbr.vs pbr.fs
 // Shader used to show skybox 
 //
 
-\skyboxExpo.fs
+\skybox.fs
 
 	precision highp float;
 	varying vec3 v_wPosition;
@@ -341,38 +272,6 @@ pbr pbr.vs pbr.fs
 	    vec4 color = texture2D(u_color_texture, spherical_uv);
 
 	    gl_FragColor = color;
-	}
-
-//
-// Reflect environment to an sphere (+ Exposure)
-//
-
-\mirroredSphere.fs
-
-	precision highp float;
-	varying vec3 v_wPosition;
-	varying vec3 v_wNormal;
-	varying vec2 v_coord;
-	uniform vec4 u_color;
-	uniform vec4 background_color;
-	uniform vec3 u_camera_position;
-	uniform samplerCube u_color_texture;
-
-	void main() {
-
-		vec3 E = v_wPosition - u_camera_position;
-		E = normalize(E);
-
-		// r = 2n(n · v) − v
-		vec3 n = normalize(v_wNormal);
-
-		vec3 w0 = E;
-		vec3 wr = 2.0 * dot(n, w0) * n;
-		wr -= w0;
-		wr = normalize(wr);
-
-		vec4 color = textureCube(u_color_texture, wr);
-		gl_FragColor = u_color * color;
 	}
 
 //

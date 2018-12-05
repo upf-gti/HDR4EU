@@ -14,8 +14,7 @@ WS.Components = {
 		_glow_threshold: 25,
 		_glow_iterations: 8,
 
-		_tonemapping: "Uncharted2",
-		_n_tonemapping: 2
+		_tonemapping: "",
 	},
 
 	LIGHT: {
@@ -168,12 +167,6 @@ Object.defineProperty(WS.Components.FX, 'glow_iterations', {
 Object.defineProperty(WS.Components.FX, 'tonemapping', {
 	get: function() { return this._tonemapping; },
 	set: function(v) { this._tonemapping = v; },
-	enumerable: true
-});
-
-Object.defineProperty(WS.Components.FX, 'n_tonemapping', {
-	get: function() { return this._n_tonemapping; },
-	set: function(v) { this._n_tonemapping = v; renderer._uniforms['u_tonemapping'] = v; },
 	enumerable: true
 });
 
