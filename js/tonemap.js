@@ -84,13 +84,11 @@ function Reinhard()
 
 Reinhard.Uniforms = `
 
-    // uniform vec3 u_test; 
-
 `;    
 
 Reinhard.Code = `
 
-    color = color / (color + vec3(1.0)); 
+    color = color / (color + vec3(1.0));
 
 `;
 
