@@ -129,6 +129,15 @@
         cubemap.flags.depth_test = false;
         cubemap.flags.flip_normals = true;
         cubemap.render_priority = RD.PRIORITY_BACKGROUND;
+        
+        cubemap.ready = function() { 
+            let ready = (this.textures['env'] && this.textures['env_1']
+            && this.textures['env_2'] && this.textures['env_3']
+            && this.textures['env_4'] && this.textures['env_5'] ) ? true : false;
+
+            return ready;
+        };
+
         this._cubemap = cubemap;
         
         this._root.addChild(cubemap);
@@ -247,7 +256,7 @@
         var renderer = this._renderer;
 
         // no texture, no render
-        if(!this.cubemap.textures['env'])
+        if(!this.cubemap.ready())
         return;
 
         this.cubemap.position = this.controller.getCameraPosition();
@@ -306,14 +315,17 @@
     */
     Core.prototype.set = function(env_path, options)
     {
-        if(!this._cubemap)
-            throw("create first a cubemap node");
+        console.warn("Setting environment...");
 
+        if(!this._cubemap)
+            throw("Create first a cubemap node");
+
+        // set this to allow perform another prefilter 
+        // HDRTool.FIRST_PASS = true; 
         var tex_name = HDRTool.getName( env_path );
         var options = options || {};
 
-        if(this._environment == tex_name && tex_name != ":atmos")
-        {
+        if(this._environment == tex_name && tex_name != ":atmos") {
             this._gui.loading(0);
             return;
         }

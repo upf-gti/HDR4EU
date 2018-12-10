@@ -3,31 +3,18 @@
 *   @jxarco 
 */
 
-function getPixelFromMouse(x, y)
-{
-    if(x == null || y == null) throw('No mouse'); 
-
-    var WIDTH = gl.canvas.width;
-    var HEIGHT = gl.canvas.height;
-
-    var pixel = 4 * (y * WIDTH + x);
-
-    return [
-        window.render_tex.getPixels()[pixel],
-        window.render_tex.getPixels()[pixel+1],
-        window.render_tex.getPixels()[pixel+2],
-        window.render_tex.getPixels()[pixel+3],
-    ];
-}
-
 function IMPprefilter( level )
 {
     var tex_name = CORE._environment;
     var tex = gl.textures[ tex_name ];
-    var shader = gl.shaders[ "blurTest" ];
+    var shader = gl.shaders[ "defblur" ];
 
     $("#short-load").show();
-    HDRTool.deferredBlur( tex, level || 1, shader, ()=>$("#short-load").hide());
+    HDRTool.deferredBlur( tex, level || 1, shader, (result) => {
+        $("#short-load").hide();
+        gl.textures['blurred'] = result;
+        CORE.cubemap.texture = 'blurred';
+    });
 }
 
 function processDrop(e)
@@ -77,6 +64,23 @@ function includes(str, find)
     for(var i = 0; i < find.length; i++)
         if( str.toLowerCase().includes(find[i]) )
             return true;
+}
+
+function getPixelFromMouse(x, y)
+{
+    if(x == null || y == null) throw('No mouse'); 
+
+    var WIDTH = gl.canvas.width;
+    var HEIGHT = gl.canvas.height;
+
+    var pixel = 4 * (y * WIDTH + x);
+
+    return [
+        window.render_tex.getPixels()[pixel],
+        window.render_tex.getPixels()[pixel+1],
+        window.render_tex.getPixels()[pixel+2],
+        window.render_tex.getPixels()[pixel+3],
+    ];
 }
 
 function resize()

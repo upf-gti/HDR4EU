@@ -9,8 +9,8 @@ sphereMap default.vs sphereMap.fs
 atmos default.vs atmos.fs
 
 // Cubemap FX Shaders
-cubemapBlur cubemapBlur.vs cubemapBlur.fs
-blurTest blurTest.vs blurTest.fs
+blur blur.vs blur.fs
+defblur defblur.vs defblur.fs
 fromSphere screen_shader.vs fromSphere.fs
 fromPanoramic screen_shader.vs fromPanoramic.fs
 
@@ -278,7 +278,7 @@ pbr pbr.vs pbr.fs
 // Blur cubemap depending on the roughness
 //
 
-\cubemapBlur.vs
+\blur.vs
 
 	precision highp float;
     attribute vec2 a_coord;
@@ -295,7 +295,7 @@ pbr pbr.vs pbr.fs
 		gl_Position = vec4(vec3(a_coord * 2.0 - 1.0, 0.5), 1.0);
 	}
 
-\cubemapBlur.fs
+\blur.fs
 
 	precision highp float;
 
@@ -331,15 +331,16 @@ pbr pbr.vs pbr.fs
 
 			// get 3d vector
 			vec3 H = (importanceSampleGGX(Xi, u_roughness, N));
+			vec3 L = 2.0 * dot( N, H ) * H - N;
 
-			// its an hemisphere so only vecs with pos NdotH
-			float NdotH = max( dot(H, N), 0.0 );
+			// its an hemisphere so only vecs with pos NdotL
+			float NdotL = max( dot(L, N), 0.0 );
 
 			// get pixel color from direction H and add it
-			if(NdotH > 0.0) {
-				vec4 Li = textureCube(u_color_texture, H);
-	            prefiltered += NdotH * Li;
-				TotalWeight += NdotH;
+			if(NdotL > 0.0) {
+				vec4 Li = textureCube(u_color_texture, L);
+	            prefiltered += NdotL * Li;
+				TotalWeight += NdotL;
         	}
 		}
 
@@ -347,7 +348,7 @@ pbr pbr.vs pbr.fs
 		gl_FragColor = prefiltered / TotalWeight;
 	}
 
-\blurTest.vs
+\defblur.vs
 
 	precision highp float;
     attribute vec2 a_coord;
@@ -369,7 +370,7 @@ pbr pbr.vs pbr.fs
 		gl_Position = vec4(vec3(a_coord * 2.0 - 1.0, 0.5), 1.0);
 	}
 
-\blurTest.fs
+\defblur.fs
 
 	precision highp float;
 
@@ -389,7 +390,7 @@ pbr pbr.vs pbr.fs
 
 	void main() {
 
-		vec3 V = normalize( u_rotation * v_dir ); // V
+		vec3 N = normalize( u_rotation * v_dir );
 
 		vec4 color = vec4(0.0);
 		float TotalWeight = 0.0;
@@ -405,18 +406,19 @@ pbr pbr.vs pbr.fs
 			// Get pixel
 			vec2 r_coord = vec2(i, j) / vec2(size, size);
 			// Get 3d vector
-			vec3 direction = vec3( r_coord - vec2(0.5), 0.5 );
+			vec3 dir = vec3( r_coord - vec2(0.5), 0.5 );
 
 			// Use all faces
-			for(int f = 0; f < 6; f++) {
+			for(int f = 0; f < 1; f++) {
 
-				mat3 _camera_rotation = u_cameras[f];
-				vec3 N = normalize( _camera_rotation * direction );
+				/*mat3 _camera_rotation = u_cameras[f];
+				vec3 Nf = normalize( _camera_rotation * dir );*/
+
 				vec3 H = importanceSampleGGX(r_coord, u_roughness, N);
 				vec3 L = 2.0 * dot( N, H ) * H - N;
-				float weight = max( dot(V, L), 0.0);
+				float weight = abs(dot(L, N));
 
-				if(weight > 0.99) {
+				if(weight > 0.0) {
 					color += textureCube(u_color_texture, L) * weight;
 					TotalWeight += weight;
 					samples ++;
@@ -425,7 +427,6 @@ pbr pbr.vs pbr.fs
 		}
 
 		gl_FragColor = color / TotalWeight;
-		// gl_FragColor = textureCube(u_color_texture, V);
 	}
 
 //
