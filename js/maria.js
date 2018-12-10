@@ -1,11 +1,11 @@
 
 /**
- * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ * xxxxxxxxx LOGARITHMIC TONE MAPPER xxxxxxxxxxx
  */
 
-function LogTM()
+function Logarithmic()
 {
-    if(this.constructor !== LogTM)
+    if(this.constructor !== Logarithmic)
         throw("Use new");
 
     this.uniforms = {
@@ -13,7 +13,7 @@ function LogTM()
     };
 }
 
-LogTM.Uniforms = `
+Logarithmic.Uniforms = `
     uniform float u_maxLum;
 
     float log10( float x ) {
@@ -23,7 +23,7 @@ LogTM.Uniforms = `
     }
 `;    
 
-LogTM.Code = `
+Logarithmic.Code = `
 
     float lum = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
     float lum_TM = log10(1.0+lum)/log10(1.0+u_maxLum);
@@ -31,26 +31,26 @@ LogTM.Code = `
     color = color.rgb * lum_TM/lum;
 `;
 
-CORE.registerTonemapper( LogTM );
+CORE.registerTonemapper( Logarithmic );
 
 
 /**
- * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ * xxxxxxxxx EXPONENTIAL TONE MAPPER xxxxxxxxxxx
  */
 
-function ExpTM()
+function Exponential()
 {
-    if(this.constructor != ExpTM)
+    if(this.constructor != Exponential)
         throw("Use new");
 
     this.uniforms = {};
 }
 
-ExpTM.Uniforms = `
+Exponential.Uniforms = `
     uniform float u_logMean;
 `;
 
-ExpTM.Code = `
+Exponential.Code = `
 
     float lum = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
     float lum_TM = 1.0 - exp( -0.35 * lum/u_logMean );
@@ -58,4 +58,38 @@ ExpTM.Code = `
     color = color.rgb * lum_TM/lum;
 `;
 
-CORE.registerTonemapper( ExpTM );
+CORE.registerTonemapper( Exponential );
+
+/**
+ * xxxxxx PHOTOGRAPHIC TONE REPRODUCTION xxxxxxxx
+ */
+
+function PTR()
+{
+    if(this.constructor != PTR)
+        throw("Use new");
+
+    this.uniforms = {};
+}
+
+PTR.Uniforms = `
+    uniform float u_logMean;
+    uniform float u_maxLum; 
+`;
+
+PTR.Code = `
+
+    float a = 0.18;
+    float scale = a/u_logMean;
+
+    float lum = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
+    float lum_scaled = lum * scale;
+
+    //float lum_TM = lum_scaled * (1.0 + lum_scaled/(u_maxLum * u_maxLum)) / (1.0 + lum_scaled) ;
+    float lum_TM = lum_scaled / (1.0+lum_scaled);
+
+    color = color.rgb * lum_TM/lum;
+`;
+
+CORE.registerTonemapper( PTR );
+
