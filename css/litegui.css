@@ -284,6 +284,7 @@
 	overflow: hidden;
 	white-space:nowrap;
 	width: 80px;
+	margin-top: 3px;
 }
 
 .inspector.one_line .wname 

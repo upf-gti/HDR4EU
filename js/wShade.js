@@ -183,12 +183,12 @@
 
         var instance = new base_class();
         var fs_code = instance.injectCode( base_class );
-        var uniforms = instance.uniforms;
 
         gl.shaders[base_class.name] = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, fs_code );
         
         this._tonemappers[base_class.name] =  {
-            uniforms: uniforms
+            uniforms: instance.uniforms,
+            params: instance.params
         };
 
         if(size(this._tonemappers) == 1)
@@ -1262,22 +1262,41 @@
             widgets.addSlider("IBL", renderer._uniforms["u_ibl_intensity"], {min:0.0, max: 10,callback: (v) => renderer._uniforms["u_ibl_intensity"] = v });
             
             widgets.addSection("FX");
-            widgets.addTitle("Tonemapping");
 
-            let tonemappers = Object.keys(CORE._tonemappers);
-
-            widgets.addCombo(null, WS.Components["FX"].tonemapping, {values: tonemappers, callback: function(v){
-                WS.Components["FX"].tonemapping = v;
-            }});
-            widgets.addSeparator();
             widgets.addNumber("Exposure", WS.Components["FX"].exposure,{min:-10,max:10,step:0.1,callback: function(v) { 
                 WS.Components["FX"].exposure = v;
             }});
             widgets.addNumber("Offset", WS.Components["FX"].offset,{min:-0.5,max:0.5,step:0.01,callback: function(v) {
                 WS.Components["FX"].offset = v;
             }});
-            widgets.widgets_per_row = 1;
+
+            widgets.addTitle("Tonemapping");
+
+            let tonemappers = Object.keys(CORE._tonemappers);
+            let selected_tonemapper_name = WS.Components["FX"].tonemapping;
+            let selected_tonemapper = CORE._tonemappers[ selected_tonemapper_name ];
+
+            widgets.addCombo(null, selected_tonemapper_name, {values: tonemappers, callback: function(v){
+                WS.Components["FX"].tonemapping = v;
+                window.last_scroll = root.content.scrollTop;
+                that.updateSidePanel( that._sidepanel, 'root' );
+            }});
+            
+            if(selected_tonemapper && selected_tonemapper.params)
+                for( let p in selected_tonemapper.params )
+                {
+                    let tm = selected_tonemapper.params[p];
+                    let options = tm.options || {};
+
+                    renderer._uniforms[ `u_${p}` ] = tm.value; 
+
+                    widgets.addSlider(p, tm.value, {min:options.min || 0,max:options.max||1,step:options.step||0.1,name_width: '50%', callback: function(v) {  
+                        renderer._uniforms[ `u_${p}` ] = v; 
+                    }});
+                }
+            
             widgets.addSeparator();
+            widgets.widgets_per_row = 1;
             widgets.addTitle("Glow");
             widgets.addCheckbox("Enable", WS.Components["FX"].glow_enable, {callback: function(v) { WS.Components["FX"].glow_enable = v; } });
             widgets.addSlider("Intensity", WS.Components["FX"].glow_intensity, {min:1,max:2,step:0.1,callback: function(v) {  WS.Components["FX"].glow_intensity = v; }});
@@ -1287,7 +1306,7 @@
             widgets.widgets_per_row = 1;
             widgets.addSeparator();
             widgets.addSeparator();
-            widgets.addSeparator();
+            //widgets.addSeparator();
         }
         else if(item_selected == 'light')
         {
@@ -1344,6 +1363,10 @@
             }});
             this.addMaterial(widgets, node);
         }
+
+        // update scroll position
+        root.content.scrollTop = window.last_scroll || 0;
+        window.last_scroll = 0;
     }
 
     GUI.prototype.addMaterial = function(inspector, node)

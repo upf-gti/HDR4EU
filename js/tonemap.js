@@ -1,4 +1,16 @@
 
+/*
+    this.params = {
+        'param_name': {
+            value: value,
+            options: {
+                min: min_value,
+                max: max_value,
+                step: step_value
+            }
+        }
+*/
+
 function Tonemapper()
 {
     if(this.constructor !== Tonemapper)
@@ -60,7 +72,6 @@ function None()
 
 None.Uniforms = `
 
-
 `;    
 
 None.Code = `
@@ -104,15 +115,22 @@ function Atmos()
         throw("Use new");
 
     this.uniforms = {};
+    this.params = {
+        'scale': {
+            value: 1
+        }
+    };
 }
 
 Atmos.Uniforms = `
+    
+    uniform float u_scale;
 
 `;    
 
 Atmos.Code = `
 
-    color = 1.0 - exp(-1.0 * color);
+    color = 1.0 - exp(-1.0 * max(u_scale, 0.01) * color);
 
 `;
 
