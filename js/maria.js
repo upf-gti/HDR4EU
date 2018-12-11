@@ -44,16 +44,28 @@ function Exponential()
         throw("Use new");
 
     this.uniforms = {};
+    this.params = {
+        'Brightness': {
+            value: 0.35,
+            options: {
+                min: 0.01,
+                max: 1.5,
+                step: 0.1
+            }
+        }
+    };
 }
 
 Exponential.Uniforms = `
     uniform float u_logMean;
+    uniform float u_Brightness;
 `;
 
 Exponential.Code = `
 
     float lum = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
-    float lum_TM = 1.0 - exp( -0.35 * lum/u_logMean );
+    //float lum_TM = 1.0 - exp( -0.35 * lum/u_logMean );
+    float lum_TM = 1.0 - exp( -u_Brightness * lum/u_logMean );
 
     color = color.rgb * lum_TM/lum;
 `;
@@ -70,16 +82,27 @@ function PTR()
         throw("Use new");
 
     this.uniforms = {};
+    this.params = {
+        'GrayValue': {
+            value: 0.18,
+            options: {
+                min: 0.01,
+                max: 1.5,
+                step: 0.01
+            }
+        }
+    };
 }
 
 PTR.Uniforms = `
     uniform float u_logMean;
-    uniform float u_maxLum; 
+    uniform float u_maxLum;
+    uniform float u_GrayValue;
 `;
 
 PTR.Code = `
 
-    float a = 0.18;
+    float a = u_GrayValue;
     float scale = a/u_logMean;
 
     float lum = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
