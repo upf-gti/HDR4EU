@@ -383,10 +383,13 @@ pbr pbr.vs pbr.fs
 	varying vec3 v_dir;
 	varying vec2 v_coord;
 
-	const float size = 256.0;
+	const float PI = 3.1415926535897932384626433832795;
+
+	#ifdef EM_SIZE
+		const float size = float(EM_SIZE);
+	#endif
 
 	#import "brdf.inc"
-	#define PI 3.1415926535897932384626433832795
 
 	void main() {
 
@@ -395,13 +398,14 @@ pbr pbr.vs pbr.fs
 		vec4 color = vec4(0.0);
 		float TotalWeight = 0.0;
 		float samples = 0.0;
-		float alphaRoughness = u_roughness * u_roughness;
-		float roughnessSq = alphaRoughness * alphaRoughness;
+		float roughness = min(0.95, u_roughness);
+		float alphaRoughness = roughness * roughness;
 
 		// (gl_FragCoord.xy) / vec2(size, size) = v_coord
-
-		for(float i = 0.5; i < size; i++)
-		for(float j = 0.5; j < size; j++) {
+		const float step = size > 256.0 ? 2.0 : 1.0;
+	
+		for(float i = 0.5; i < size; i+=step)
+		for(float j = 0.5; j < size; j+=step) {
 
 			// Get pixel
 			vec2 r_coord = vec2(i, j) / vec2(size, size);
@@ -409,20 +413,20 @@ pbr pbr.vs pbr.fs
 			vec3 dir = vec3( r_coord - vec2(0.5), 0.5 );
 
 			// Use all faces
-			for(int f = 0; f < 1; f++) {
+			for(int f = 0; f < 6; f++) {
 
-				/*mat3 _camera_rotation = u_cameras[f];
-				vec3 Nf = normalize( _camera_rotation * dir );*/
+				mat3 _camera_rotation = u_cameras[f];
+				vec3 NF = normalize( _camera_rotation * dir );
 
-				vec3 H = importanceSampleGGX(r_coord, u_roughness, N);
-				vec3 L = 2.0 * dot( N, H ) * H - N;
-				float weight = abs(dot(L, N));
+				float weight = max(0.0, dot(N, NF));
+				float pow_weight = pow(weight, 1.0 + 8.0 * (1.0 - alphaRoughness));
 
-				if(weight > 0.0) {
-					color += textureCube(u_color_texture, L) * weight;
-					TotalWeight += weight;
+				if(weight > 0.0 ) {
+					color += textureCube(u_color_texture, NF) * pow_weight;
+					TotalWeight += pow_weight;
 					samples ++;
 				}
+				
 			}
 		}
 

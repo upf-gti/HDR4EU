@@ -77,11 +77,11 @@
 
         // Uncommon properties
 
-        this.isEmissive = this.textures['emissive'] ? true : false;    // true/false
-        this.hasAlpha = this.textures['opacity'] ? true : false;    // true/false
-        this.hasAO = this.textures['ao'] ? true : false;    // true/false
-        this.hasBump = this.textures['height'] ? true : false;    // true/false
-        // this.hasNormal = this.textures['normal'] ? true : false;    // true/false
+        this.isEmissive = this.textures['emissive'] ? true : false; 
+        this.hasAlpha = this.textures['opacity'] ? true : false;
+        this.hasAO = this.textures['ao'] ? true : false; 
+        this.hasBump = this.textures['height'] ? true : false; 
+        // this.hasNormal = this.textures['normal'] ? true : false; 
 
         if(CORE)
         CORE.reloadShaders();
@@ -155,6 +155,7 @@
         var type = gl.FLOAT;
         
         this._viewport_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+		this._fx_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
         this._background_color = vec4.fromValues(0.2, 0.2, 0.2,1);
 
         this._controller = new WS.Controller( this._context );
@@ -191,8 +192,8 @@
             params: instance.params
         };
 
-        if(size(this._tonemappers) == 1)
-            WS.Components.FX.tonemapping = base_class.name;
+        /*if(size(this._tonemappers) == 1)
+            WS.Components.FX.tonemapping = base_class.name;*/
     } 
     
     /**
@@ -269,20 +270,39 @@
         
         gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
 
-        // Apply (or not) bloom effect
-        let render_texture =  (gl.shaders["glow"] && WS.Components.FX._glow_enable) ? 
-            createGlow(this._viewport_tex) :
-            this._viewport_tex;
+		// Fill renderer uniforms with average, max lum, etc.
+        getFrameInfo( this._viewport_tex );
 
-        // Fill renderer uniforms with average, max lum, etc.
-        getFrameInfo( render_texture );
+        // Apply (or not) bloom effect
+        var render_texture = this._viewport_tex; 
+
+		if( WS.Components.FX._glow_enable )
+			render_texture = createGlow( this._viewport_tex );
+
+		// myToneMapper.apply( input, output ) **********
 
         // Render frame fx (exposure, offset, tonemapping, degamma)
-        let name = WS.Components.FX.tonemapping;
-        let fx = CORE._tonemappers[ name ];
+        var name = WS.Components.FX.tonemapping;
+        var fx_data = this._tonemappers[ name ];
+		var shader = gl.shaders[ name ]; 
+		var uniforms = Object.assign(renderer._uniforms, fx_data.uniforms);
 
-        render_texture.toViewport(renderer.shaders[ name ], Object.assign(renderer._uniforms, fx.uniforms) );
-        window.render_tex = render_texture;
+		this._fx_tex.drawTo(function(){
+
+			render_texture.bind(0);
+			shader.toViewport( uniforms );
+		});
+
+		// **********************************************
+
+		// fxaa (antialiasing)
+		if( WS.Components.FX._fxaa ) {
+			var fxaa_shader = Shader.getFXAAShader();
+			fxaa_shader.setup();
+			this._fx_tex.toViewport( fxaa_shader );
+		}
+		else
+			this._fx_tex.toViewport();
 
         // Render gui
         this._gui.render();
@@ -320,8 +340,6 @@
         if(!this._cubemap)
             throw("Create first a cubemap node");
 
-        // set this to allow perform another prefilter 
-        // HDRTool.FIRST_PASS = true; 
         var tex_name = HDRTool.getName( env_path );
         var options = options || {};
 
@@ -350,6 +368,9 @@
             else // Load and prefilter exr files
                 HDRTool.prefilter( env_path, params );
         }
+
+		// set this to allow perform another prefilter 
+        HDRTool.FIRST_PASS = true; 
     }
  
     /**
@@ -371,9 +392,8 @@
         
         // config scene
         this._cubemap.texture = this._environment;
-        // this._cubemap.visible = true;
-        // updateSidePanel(null,)
         
+		// gui
         this._gui.loading(false, () => $(".pbar").css("width", "0%"));
         console.log("%c" + this._environment, 'font-weight: bold;');
     }
@@ -577,7 +597,6 @@
     */
     Core.prototype.reloadShaders = async function(macros, callback)
     {
-        $("#short-load").show();
         macros = macros || {};
         // assign default macros
         Object.assign(default_shader_macros, macros);
@@ -585,8 +604,7 @@
         return new Promise( resolve => {
             this._renderer.loadShaders("data/shaders.glsl", ()=>{
                 
-                console.log("Shaders reloaded");
-                $("#short-load").hide();
+                console.log("Shaders reloaded!", default_shader_macros);
                 if(callback)
                     callback();
                 resolve();
@@ -1254,15 +1272,14 @@
                 CORE.controller.setBindings(renderer.context);
             }});
             widgets.addSection("Render");
-            widgets.widgets_per_row = 2;
-            widgets.addCheckbox("AO",  renderer._uniforms["u_enable_ao"], {callback: (v) =>  renderer._uniforms["u_enable_ao"] = v });
-            widgets.addCheckbox("Fix Albedo",  renderer._uniforms["u_correctAlbedo"], {callback: (v) =>  renderer._uniforms["u_correctAlbedo"] = v });
-            
-            widgets.widgets_per_row = 1;
-            widgets.addSlider("IBL", renderer._uniforms["u_ibl_intensity"], {min:0.0, max: 10,callback: (v) => renderer._uniforms["u_ibl_intensity"] = v });
+            widgets.addCheckbox("Ambient occlusion",  renderer._uniforms["u_enable_ao"], {name_width: '50%', callback: (v) =>  renderer._uniforms["u_enable_ao"] = v });
+			widgets.addCheckbox("FXAA",  WS.Components["FX"]._fxaa, {name_width: '50%', callback: (v) =>  WS.Components["FX"]._fxaa = v });
+            widgets.addCheckbox("Correct Albedo",  renderer._uniforms["u_correctAlbedo"], {name_width: '50%', callback: (v) =>  renderer._uniforms["u_correctAlbedo"] = v });
+            widgets.addSlider("IBL Scale", renderer._uniforms["u_ibl_intensity"], {min:0.0, max: 10,name_width: '50%', callback: (v) => renderer._uniforms["u_ibl_intensity"] = v });
             
             widgets.addSection("FX");
 
+			widgets.addTitle("Frame");
             widgets.addNumber("Exposure", WS.Components["FX"].exposure,{min:-10,max:10,step:0.1,callback: function(v) { 
                 WS.Components["FX"].exposure = v;
             }});
@@ -1678,10 +1695,13 @@
         
                 var reader = new FileReader();
                 reader.onprogress = (e) =>  $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%");
-                reader.onload = function (event) {
+                reader.onload = async function (event) {
                     var data = event.target.result;
                     params['data'] = data;
                     params['oncomplete'] = () => CORE.set( filename );
+
+					default_shader_macros['EM_SIZE'] = params["size"];
+					await CORE.reloadShaders();
 
                     if(filename.includes(".exr"))
                         HDRTool.prefilter( filename, params);     
@@ -1947,10 +1967,9 @@
             let x = parseInt(mouse[0]), y = parseInt(mouse[1]);
 
             if (ctx.keys["C"]) {
-                document.querySelector("#pixelPickerCoord").innerHTML = `x: ${x} y: ${y}`;
+                //document.querySelector("#pixelPickerCoord").innerHTML = `x: ${x} y: ${y}`;
                 var pixelColor = getPixelFromMouse(x, y);
-                document.querySelector("#pixelPickerText").innerHTML = `R: ${pixelColor[0].toFixed(2)} G: ${pixelColor[1].toFixed(2)} B: ${pixelColor[2].toFixed(2)}`;
-                //document.querySelector("#pixelPickerColor").style.backgroundColor = `rgba(${pixelColor[0]},${pixelColor[1]},${pixelColor[2]}, 1)`;
+                document.querySelector("#pixelPickerText").innerHTML = `R: ${pixelColor[0].toFixed(4)} G: ${pixelColor[1].toFixed(4)} B: ${pixelColor[2].toFixed(4)}`;
             }
 
             if(!e.dragging) return;

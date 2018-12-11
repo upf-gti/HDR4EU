@@ -63,6 +63,7 @@ function init()
     // set param macros
     default_shader_macros[ 'INPUT_TEX_WIDTH' ] = gl.viewport_data[2];
     default_shader_macros[ 'INPUT_TEX_HEIGHT' ] = gl.viewport_data[3];
+	default_shader_macros[ 'EM_SIZE' ] = 1; // no parsing at initialization
     
     // initialize some global parameters 
     window.glow = true;

@@ -12,15 +12,17 @@
 </head>
 <body>
 
+	
+
 	<div id="modal">
 
-		<div style="margin-top: 40vh; width: 100%;">
+		<div id="xhr-load" style="width: 0%; height: 4px; background-color: rgb(30, 211, 111) !important;"></div>
+		<div class="pbar" style="width: 0%; height: 4px; background-color: #AAF !important;"></div>
 
-			<img src="data/title.png" style="width: 260px;">
-			<div style="width: 260px; margin-left: calc( 50% - 130px );">
-				<div id="xhr-load" style="width: 0%; height: 4px; background-color: rgb(30, 211, 111) !important; margin-top: 2px;"></div>
-				<div class="pbar" style="width: 0%; height: 4px; background-color: #AAF !important; margin-top: 1px;"></div>
-			</div>
+		<div style="margin-top: 25vh; width: 100%;">
+
+			<img src="data/title.png" style="width: 50%;">
+			
 						
 		</div>
 
@@ -29,7 +31,7 @@
 	<div class="pixelPicker">
 		<!--<span id="pixelPickerColor"></span>-->
 		<span id="pixelPickerText"></span>
-		<span id="pixelPickerCoord"></span>
+		<span id="pixelPickerCoord">RGB</span>
 
 	</div>
 
@@ -38,12 +40,6 @@
 	<div class="progress_bar" id="prog_2"></div>
 	<div class="progress_bar" id="prog_3"></div>
 	<div class="progress_bar" id="prog_4"></div>
-
-	<div id="short-load">
-
-		<img src="https://media.giphy.com/media/3o7TKtnuHOHHUjR38Y/source.gif" style="margin-top: 45vh; width: 75px;">
-
-	</div>
 
 	<div id="log"></div>
 	

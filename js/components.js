@@ -14,7 +14,9 @@ WS.Components = {
 		_glow_threshold: 25,
 		_glow_iterations: 8,
 
-		_tonemapping: "",
+		_fxaa: true,
+
+		_tonemapping: "Reinhard",
 	},
 
 	LIGHT: {

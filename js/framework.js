@@ -70,16 +70,18 @@ function getPixelFromMouse(x, y)
 {
     if(x == null || y == null) throw('No mouse'); 
 
-    var WIDTH = gl.canvas.width;
-    var HEIGHT = gl.canvas.height;
+    var WIDTH = CORE._viewport_tex.width;
+    var HEIGHT = CORE._viewport_tex.height;
+
+	y = HEIGHT - y;
 
     var pixel = 4 * (y * WIDTH + x);
 
     return [
-        window.render_tex.getPixels()[pixel],
-        window.render_tex.getPixels()[pixel+1],
-        window.render_tex.getPixels()[pixel+2],
-        window.render_tex.getPixels()[pixel+3],
+        CORE._viewport_tex.getPixels()[pixel],
+        CORE._viewport_tex.getPixels()[pixel+1],
+        CORE._viewport_tex.getPixels()[pixel+2],
+        CORE._viewport_tex.getPixels()[pixel+3],
     ];
 }
 
@@ -282,7 +284,7 @@ function getDate()
 // glow effect (litegraph.js @javiagenjo) (https://github.com/jagenjo/litegraph.js/blob/master/src/nodes/gltextures.js )
 function createGlow( tex, options )
 {
-    if(!tex)
+    if(!tex || gl.shaders["glow"])
         return;	
 
     options = options || {
