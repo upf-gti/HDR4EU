@@ -1,3 +1,24 @@
+.canvas-message{
+
+	position: absolute;
+	left: 40px;
+	top: 80px;
+	background-color: rgba( 0, 0, 0, 0.4 );
+	padding: 10px;
+    font-weight: bold;
+    font-size: 14px;
+	color: rgb(200, 200, 200);
+}
+
+.canvas-message-bar{
+
+	width: 50%;
+	padding: 10px;
+	color: rgb(200, 200, 200);
+	background-color: rgba( 77, 166, 65, 1 );
+	white-space: nowrap;
+}
+
 #log{
   width: 30%;
   height: 15vh;
@@ -24,12 +45,12 @@
 }
 
 #short-load{
-display: none;
+  display: none;
   top: 0; left: 0; right: 0; bottom: 0;
   width: 100%;
   position: absolute;
   text-align: center;
-  background-color: rgba(0.4, 0.4, 0.4, 0.5);
+  background-color: rgba(0, 0, 0, 0.5);
   z-index: 10;
 }
 
@@ -38,26 +59,26 @@ display: none;
   width: 0%; 
   z-index: 1096;
   height: 3px; 
-  background-color: #AAF !important; 
+  background-color: #FFF !important; 
 }
 
 #prog_1{
-  background-color: #88D !important; 
+  background-color: #DDD !important; 
   z-index: 1097;
 }
 
 #prog_2{
-  background-color: #66C !important; 
+  background-color: #BBB !important; 
   z-index: 1098;
 }
 
 #prog_3{
-  background-color: #44A !important; 
+  background-color: #999 !important; 
   z-index: 1099;
 }
 
 #prog_4{
-  background-color: #228 !important; 
+  background-color: #777 !important; 
   z-index: 1100;
 }
 

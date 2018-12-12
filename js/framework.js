@@ -406,7 +406,7 @@ function createGlow( tex, options )
 }
 
 // https://github.com/jagenjo/litegraph.js/blob/master/src/nodes/gltextures.js @jagenjo 
-async function getFrameInfo( input )
+function getFrameInfo( input )
 {
     var tex = input;
     if(!tex)
@@ -448,15 +448,44 @@ async function getFrameInfo( input )
         if(!renderer)
         return;
 
-        renderer._uniforms['u_average'] = v;
-        renderer._uniforms['u_lum'] = (v[0] + v[1] + v[2]) / 3;
-        renderer._uniforms['u_maxLum'] = v[3];
-
-        let dt = 1e-6;
-        let lum_delta = Math.log(renderer._uniforms['u_lum'] + dt);
-
-        renderer._uniforms['u_logMean'] = Math.exp( lum_delta );
+		var logLumAvg = v[0];
+		var maxLum = v[3];
+		
+        renderer._uniforms['u_maxLum'] = maxLum;
+        renderer._uniforms['u_logMean'] = Math.exp( logLumAvg );
     }
+}
+
+/*
+	Down sample frame and get average 
+*/
+function DS_Frame( input )
+{
+    var tex = input;
+    if(!tex)
+        return;    
+
+    var shader = gl.shaders['luminance'];
+
+    if(!shader)
+        throw("no average shader");
+
+    var temp = null;
+    var type = gl.UNSIGNED_BYTE;
+    if(tex.type != type) //force floats, half floats cannot be read with gl.readPixels
+        type = gl.FLOAT;
+
+    if(!temp || temp.type != type )
+        temp = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
+
+    var properties = { mipmap_offset: 0, low_precision: false };
+    var uniforms = { u_mipmap_offset: properties.mipmap_offset };
+
+    temp.drawTo(function(){
+        tex.toViewport( shader, uniforms );
+    });
+
+    
 }
 
 function size( object )

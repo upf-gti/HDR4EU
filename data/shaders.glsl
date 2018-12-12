@@ -88,8 +88,10 @@ pbr pbr.vs pbr.fs
 	varying vec2 v_coord;
 	
 	void main() {
-		vec4 color = vec4(0.0);
+		
 		int k = 0;
+		const float delta = 0.000001;
+		float sum = 0.0;
 		float maxLum = -1.0;
 		
 		#ifdef INPUT_TEX_WIDTH
@@ -100,23 +102,25 @@ pbr pbr.vs pbr.fs
 		#endif
 
 		for(float i = 0.5; i < width; i+=30.0)
-			for(float j = 0.5; j < height; j+=30.0)
-			{
-				vec2 coord = vec2(i, j) / vec2(width, height);
-				vec4 pixelColor = texture2D(u_texture, coord );
-				color += pixelColor;
-				k++;
+		for(float j = 0.5; j < height; j+=30.0)
+		{
+			vec2 coord = vec2(i, j) / vec2(width, height);
+			vec4 pixelColor = texture2D(u_texture, coord );
+			
+			float lum = 0.2126 * pixelColor.r + 0.7152 * pixelColor.g + 0.0722 * pixelColor.b;
+			float logLum = log( lum + delta);
+			sum += logLum;
+			
+			if(lum > maxLum)
+				maxLum = lum;
 
-				float lum = 0.2126*pixelColor.r + 0.7152*pixelColor.g + 0.0722*pixelColor.b;
-				
-				if(lum > maxLum)
-					maxLum = lum;
-			}
+			k++;
+		}
 
-		vec4 averageColor = color/float(k);
-		averageColor.a = maxLum;
+		vec4 color = vec4(sum) / float(k);
+		color.a = maxLum;
 
-		gl_FragColor = averageColor;
+		gl_FragColor = color;
 	}
 
 //

@@ -184,16 +184,12 @@
 
         var instance = new base_class();
         var fs_code = instance.injectCode( base_class );
+		var name = base_class.Name;
 
-        gl.shaders[base_class.name] = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, fs_code );
+		instance.shader = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, fs_code );
+        //gl.shaders[name] = new GL.Shader( Shader.SCREEN_VERTEX_SHADER, fs_code );
         
-        this._tonemappers[base_class.name] =  {
-            uniforms: instance.uniforms,
-            params: instance.params
-        };
-
-        /*if(size(this._tonemappers) == 1)
-            WS.Components.FX.tonemapping = base_class.name;*/
+        this._tonemappers[name] = instance;
     } 
     
     /**
@@ -256,10 +252,10 @@
     {
         var renderer = this._renderer;
 
-        // no texture, no render
         if(!this.cubemap.ready())
         return;
 
+		// Update cubemap position
         this.cubemap.position = this.controller.getCameraPosition();
 
         // Render scene to texture
@@ -275,27 +271,16 @@
 
         // Apply (or not) bloom effect
         var render_texture = this._viewport_tex; 
-
 		if( WS.Components.FX._glow_enable )
 			render_texture = createGlow( this._viewport_tex );
 
-		// myToneMapper.apply( input, output ) **********
+		// Get tonemapper and apply ********************
+		// (exposure, offset, tonemapping, degamma)
+		var name = WS.Components.FX.tonemapping;
+		var myToneMapper = this._tonemappers[ name ];
+		myToneMapper.apply( render_texture, this._fx_tex ); 
 
-        // Render frame fx (exposure, offset, tonemapping, degamma)
-        var name = WS.Components.FX.tonemapping;
-        var fx_data = this._tonemappers[ name ];
-		var shader = gl.shaders[ name ]; 
-		var uniforms = Object.assign(renderer._uniforms, fx_data.uniforms);
-
-		this._fx_tex.drawTo(function(){
-
-			render_texture.bind(0);
-			shader.toViewport( uniforms );
-		});
-
-		// **********************************************
-
-		// fxaa (antialiasing)
+		// Apply antialiasing (FXAA)
 		if( WS.Components.FX._fxaa ) {
 			var fxaa_shader = Shader.getFXAAShader();
 			fxaa_shader.setup();
@@ -304,7 +289,7 @@
 		else
 			this._fx_tex.toViewport();
 
-        // Render gui
+        // Render GUI
         this._gui.render();
         
         // Render node selected
@@ -1604,6 +1589,33 @@
     }
     
     /**
+    * Shows message on canvas
+    * @method canvasMessage 
+	* @param {string} text
+    */
+    GUI.prototype.canvasMessage = function(text, options)
+    {
+        var element = document.createElement('div');
+		element.className = "canvas-message";
+		element.innerHTML = text;
+		document.body.appendChild( element );
+
+		if(options && options.load_bar) {
+			
+			var sub = document.createElement('div');
+			sub.className = "canvas-message-bar";
+			// sub text location
+			element.style.padding = "0px";
+			element.innerHTML = '';
+			sub.innerHTML = text;
+			// 
+			element.appendChild( sub );
+		}
+		
+		return element;
+    }
+
+	/**
     * Shows loading image on screen
     * @method loading
     * @param {bool} active

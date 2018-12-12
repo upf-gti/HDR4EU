@@ -3,9 +3,9 @@
  * xxxxxxxxx LOGARITHMIC TONE MAPPER xxxxxxxxxxx
  */
 
-function Logarithmic()
+function LogarithmicTonemapper()
 {
-    if(this.constructor !== Logarithmic)
+    if(this.constructor !== LogarithmicTonemapper)
         throw("Use new");
 
     this.uniforms = {
@@ -13,7 +13,10 @@ function Logarithmic()
     };
 }
 
-Logarithmic.Uniforms = `
+LogarithmicTonemapper.Name = 'Logarithmic';
+
+LogarithmicTonemapper.Uniforms = `
+
     uniform float u_maxLum;
 
     float log10( float x ) {
@@ -23,7 +26,7 @@ Logarithmic.Uniforms = `
     }
 `;    
 
-Logarithmic.Code = `
+LogarithmicTonemapper.Code = `
 
     float lum = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
     float lum_TM = log10(1.0+lum)/log10(1.0+u_maxLum);
@@ -31,16 +34,16 @@ Logarithmic.Code = `
     color = color.rgb * lum_TM/lum;
 `;
 
-CORE.registerTonemapper( Logarithmic );
+CORE.registerTonemapper( LogarithmicTonemapper );
 
 
 /**
  * xxxxxxxxx EXPONENTIAL TONE MAPPER xxxxxxxxxxx
  */
 
-function Exponential()
+function ExponentialTonemapper()
 {
-    if(this.constructor != Exponential)
+    if(this.constructor != ExponentialTonemapper)
         throw("Use new");
 
     this.uniforms = {};
@@ -56,12 +59,14 @@ function Exponential()
     };
 }
 
-Exponential.Uniforms = `
+ExponentialTonemapper.Name = 'Exponential';
+
+ExponentialTonemapper.Uniforms = `
     uniform float u_logMean;
     uniform float u_Brightness;
 `;
 
-Exponential.Code = `
+ExponentialTonemapper.Code = `
 
     float lum = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
     //float lum_TM = 1.0 - exp( -0.35 * lum/u_logMean );
@@ -70,15 +75,15 @@ Exponential.Code = `
     color = color.rgb * lum_TM/lum;
 `;
 
-CORE.registerTonemapper( Exponential );
+CORE.registerTonemapper( ExponentialTonemapper );
 
 /**
  * xxxxxx PHOTOGRAPHIC TONE REPRODUCTION xxxxxxxx
  */
 
-function PTR()
+function PTRTonemapper()
 {
-    if(this.constructor != PTR)
+    if(this.constructor != PTRTonemapper)
         throw("Use new");
 
     this.uniforms = {};
@@ -94,13 +99,15 @@ function PTR()
     };
 }
 
-PTR.Uniforms = `
+PTRTonemapper.Name = 'PTR';
+
+PTRTonemapper.Uniforms = `
     uniform float u_logMean;
     uniform float u_maxLum;
     uniform float u_GrayValue;
 `;
 
-PTR.Code = `
+PTRTonemapper.Code = `
 
     float a = u_GrayValue;
     float scale = a/u_logMean;
@@ -114,5 +121,5 @@ PTR.Code = `
     color = color.rgb * lum_TM/lum;
 `;
 
-CORE.registerTonemapper( PTR );
+CORE.registerTonemapper( PTRTonemapper );
 

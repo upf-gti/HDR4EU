@@ -21,6 +21,22 @@ function Tonemapper()
 
 WS.Tonemapper = Tonemapper;
 
+Tonemapper.prototype.apply = function(input, output)
+{
+	var shader = this.shader;
+
+	if(!shader)
+	throw('Shader missing');	
+
+    // Join renderer uniforms with own uniforms
+	var uniforms = Object.assign(renderer._uniforms, this.uniforms);
+
+	output.drawTo(function(){
+		input.bind(0);
+		shader.toViewport( uniforms );
+	});
+}
+
 Tonemapper.prototype.injectCode = function( base_class )
 {
     var fs_code = `
@@ -62,56 +78,60 @@ Tonemapper.prototype.injectCode = function( base_class )
  * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
  */
 
-function None()
+function No_Tonemapper()
 {
-    if(this.constructor !== None)
+    if(this.constructor !== No_Tonemapper)
         throw("Use new");
 
     this.uniforms = {};
 }
 
-None.Uniforms = `
+No_Tonemapper.Name = "None";
+
+No_Tonemapper.Uniforms = `
 
 `;    
 
-None.Code = `
+No_Tonemapper.Code = `
        
 
 `;
 
-CORE.registerTonemapper( None );
+CORE.registerTonemapper( No_Tonemapper );
 
 /**
  * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
  */
 
-function Reinhard()
+function ReinhardTonemapper()
 {
-    if(this.constructor !== Reinhard)
+    if(this.constructor !== ReinhardTonemapper)
         throw("Use new");
 
-    this.uniforms = {};
+	this.uniforms = {};
 }
 
-Reinhard.Uniforms = `
+ReinhardTonemapper.Name = "Reinhard";
+
+ReinhardTonemapper.Uniforms = `
 
 `;    
 
-Reinhard.Code = `
+ReinhardTonemapper.Code = `
 
     color = color / (color + vec3(1.0));
 
 `;
 
-CORE.registerTonemapper( Reinhard );
+CORE.registerTonemapper( ReinhardTonemapper );
 
 /**
  * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
  */
 
-function Atmos()
+function AtmosTonemapper()
 {
-    if(this.constructor !== Atmos)
+    if(this.constructor !== AtmosTonemapper)
         throw("Use new");
 
     this.uniforms = {};
@@ -122,16 +142,18 @@ function Atmos()
     };
 }
 
-Atmos.Uniforms = `
+AtmosTonemapper.Name = "Atmos";
+
+AtmosTonemapper.Uniforms = `
     
     uniform float u_scale;
 
 `;    
 
-Atmos.Code = `
+AtmosTonemapper.Code = `
 
     color = 1.0 - exp(-1.0 * max(u_scale, 0.01) * color);
 
 `;
 
-CORE.registerTonemapper( Atmos );
+CORE.registerTonemapper( AtmosTonemapper );
