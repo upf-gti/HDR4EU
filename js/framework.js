@@ -3,20 +3,6 @@
 *   @jxarco 
 */
 
-function IMPprefilter( level )
-{
-    var tex_name = CORE._environment;
-    var tex = gl.textures[ tex_name ];
-    var shader = gl.shaders[ "defblur" ];
-
-    $("#short-load").show();
-    HDRTool.deferredBlur( tex, level || 1, shader, (result) => {
-        $("#short-load").hide();
-        gl.textures['blurred'] = result;
-        CORE.cubemap.texture = 'blurred';
-    });
-}
-
 function processDrop(e)
 {
     e.preventDefault();
@@ -415,7 +401,7 @@ function getFrameInfo( input )
     var shader = gl.shaders['luminance'];
 
     if(!shader)
-        throw("no average shader");
+        throw("no luminance shader");
 
     var temp = null;
     var type = gl.UNSIGNED_BYTE;
@@ -459,33 +445,86 @@ function getFrameInfo( input )
 /*
 	Down sample frame and get average 
 */
-function DS_Frame( input )
+function DS_Frame( input, use_mipmap )
 {
-    var tex = input;
-    if(!tex)
+    if(!input)
         return;    
 
-    var shader = gl.shaders['luminance'];
-
-    if(!shader)
-        throw("no average shader");
-
     var temp = null;
-    var type = gl.UNSIGNED_BYTE;
-    if(tex.type != type) //force floats, half floats cannot be read with gl.readPixels
-        type = gl.FLOAT;
+    var type = gl.FLOAT;
 
-    if(!temp || temp.type != type )
-        temp = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
+	var input_width = input.width;
+	var input_height = input.height;
+		
+	// manual downsampling
+	if( !use_mipmap ) {
 
-    var properties = { mipmap_offset: 0, low_precision: false };
-    var uniforms = { u_mipmap_offset: properties.mipmap_offset };
+		var shader = gl.shaders['average'];
 
-    temp.drawTo(function(){
-        tex.toViewport( shader, uniforms );
-    });
+		if(!shader)
+			throw('no average shader');
 
-    
+		var blockSize = getMagicNumber( input_width );
+		var blocks = input_width / blockSize;
+		
+		if(!temp || temp.type != type )
+			temp = new GL.Texture( blocks, input_height, { type: type, format: gl.RGBA, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+
+		var uniforms = {};
+
+		temp.drawTo(function(){
+			input.bind(0);
+			shader.toViewport( uniforms );
+		});
+
+		window.temp = temp;
+
+	}
+	
+	// mipmap version
+	else {
+	
+		var input_width = input.width;
+		var size = Math.pow(2, Math.floor(Math.log(input_width)/Math.log(2)));
+
+		if(!temp || temp.type != type )
+			temp = new GL.Texture( size, size, { type: type, format: gl.RGBA, minFilter: gl.LINEAR_MIPMAP_LINEAR });
+
+		temp.drawTo(function(){
+			input.toViewport();
+		});
+
+		temp.bind(0);
+		gl.generateMipmap(gl.TEXTURE_2D);
+		temp.unbind(0);
+
+		var a = input.getPixels();
+		var b = temp.getPixels(0, 1);
+		console.log(a);
+		console.log(b);
+		window.temp = temp;
+
+	}
+
+	return temp;
+}
+
+function getMagicNumber( n )
+{
+	var min_size = 8;
+	var begin = n < min_size ? n : min_size;
+
+	for(var i = begin; i <= n; i++) {
+		if( n % i == 0 )
+			return i;
+	}
+
+	for(var i = 2; i <= n; i++) {
+		if( n % i == 0 )
+			return i;
+	}
+
+	return 1;
 }
 
 function size( object )

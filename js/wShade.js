@@ -65,12 +65,12 @@
 
     RD.SceneNode.prototype.setTextureProperties = function()
     {
-        let values = ['albedo', 'roughness', 'metalness', 'normal'];
+        var values = ['albedo', 'roughness', 'metalness', 'normal'];
 
         for( v in values )
         {
-            let value = values[v];
-            let macro = `HAS_${value.toUpperCase()}_MAP`;
+            var value = values[v];
+            var macro = 'HAS_'+value.toUpperCase()+'_MAP';
             if(this.textures[ value ]) default_shader_macros[ macro ] = true;
             else delete default_shader_macros[ macro ];
         }
@@ -122,7 +122,7 @@
         light = null;
 
         // important nodes
-        let cubemap = new RD.SceneNode();
+        var cubemap = new RD.SceneNode();
         cubemap.name = "cubemap";
         cubemap.mesh = "cube";
         cubemap.shader = "skybox";
@@ -131,7 +131,7 @@
         cubemap.render_priority = RD.PRIORITY_BACKGROUND;
         
         cubemap.ready = function() { 
-            let ready = (this.textures['env'] && this.textures['env_1']
+            var ready = (this.textures['env'] && this.textures['env_1']
             && this.textures['env_2'] && this.textures['env_3']
             && this.textures['env_4'] && this.textures['env_5'] ) ? true : false;
 
@@ -251,6 +251,7 @@
     Core.prototype.render = function()
     {
         var renderer = this._renderer;
+		var that = this;
 
         if(!this.cubemap.ready())
         return;
@@ -259,9 +260,9 @@
         this.cubemap.position = this.controller.getCameraPosition();
 
         // Render scene to texture
-        this._viewport_tex.drawTo( () => {
-            renderer.clear( this._background_color );
-            renderer.render( this.scene, this.controller._camera );
+        this._viewport_tex.drawTo( function() {
+            renderer.clear( that._background_color );
+            renderer.render( that.scene, that.controller._camera );
         });
         
         gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
@@ -294,6 +295,9 @@
         
         // Render node selected
         WS.Components.PICK.render();
+
+		if(window.temp)
+		window.temp.toViewport();
     }
 
     /**
@@ -337,7 +341,7 @@
         this._environment = tex_name;
                 
         var that = this;
-        var oncomplete = () => { that.display( options.no_free_memory ); if(options.onImport) options.onImport(); };
+        var oncomplete = function() { that.display( options.no_free_memory ); if(options.onImport) options.onImport(); };
         var params = {oncomplete: oncomplete};
 
         if(tex_name != ":atmos")
@@ -379,7 +383,7 @@
         this._cubemap.texture = this._environment;
         
 		// gui
-        this._gui.loading(false, () => $(".pbar").css("width", "0%"));
+        this._gui.loading(false, function() { $(".pbar").css("width", "0%")});
         console.log("%c" + this._environment, 'font-weight: bold;');
     }
     
@@ -397,8 +401,8 @@
 
         if(toParse.camera)
         {
-            let eye = toParse.camera['eye'] || [0, 0, 5];
-            let target = toParse.camera['target'] || [0, 0, 0];
+            var eye = toParse.camera['eye'] || [0, 0, 5];
+            var target = toParse.camera['target'] || [0, 0, 0];
             this.controller.lookAt(eye, target, RD.UP );
         }
 
@@ -429,7 +433,7 @@
 
         for(var i = 0; i < meshes.length; i++)
         {
-            let resource = meshes[i];
+            var resource = meshes[i];
 
             var node = new RD.SceneNode();
             node.mesh = resource;
@@ -464,18 +468,18 @@
                 throw( "No mesh loaded" );
     
                 // update target from bb
-                let bb = gl.meshes[resource].getBoundingBox();
-                let center = BBox.getCenter(bb);
+                var bb = gl.meshes[resource].getBoundingBox();
+                var center = BBox.getCenter(bb);
                 that.selected_radius = BBox.getRadius(bb);
 
-                let globalMat = node.getGlobalMatrix();
-                let result = vec3.create();
+                var globalMat = node.getGlobalMatrix();
+                var result = vec3.create();
                 vec3.transformMat4( result, center, globalMat );
 
                 if(toParse.camera && toParse.camera.target)
                     result = toParse.camera.target;
                 
-                let eye = [0, that.selected_radius * 0.5, that.selected_radius * 2.5];
+                var eye = [0, that.selected_radius * 0.5, that.selected_radius * 2.5];
 
                 if(toParse.camera && toParse.camera.eye)
                     eye = toParse.camera.eye;
@@ -499,7 +503,7 @@
         
         for (var i = 0; i < this._root.children.length; i++)
         {
-            let node = this._root.children[i];
+            var node = this._root.children[i];
 
             if(!node) continue;
 
@@ -516,7 +520,7 @@
 
             for (var j = 0; j < node.children.length;  j++)
             {
-                let child = node.children[j];
+                var child = node.children[j];
 
                 child.textures['brdf'] = "_brdf_integrator";
                 child.textures['env'] = this._environment;
@@ -582,17 +586,19 @@
     */
     Core.prototype.reloadShaders = async function(macros, callback)
     {
+		var that = this;
         macros = macros || {};
         // assign default macros
         Object.assign(default_shader_macros, macros);
         
-        return new Promise( resolve => {
-            this._renderer.loadShaders("data/shaders.glsl", ()=>{
+        return new Promise( function(resolve) {
+            that._renderer.loadShaders("data/shaders.glsl", function() {
                 
                 console.log("Shaders reloaded!", default_shader_macros);
                 if(callback)
                     callback();
                 resolve();
+
             }, default_shader_macros);
         } );
     }
@@ -633,7 +639,7 @@
     */
     Core.prototype.getByProperty = function(property, value)
     {
-        let r = [];
+        var r = [];
         for(var i = 0; i < this._root.children.length; i++)
             if(this._root.children[i][property] == value)
                 r.push(this._root.children[i]);
@@ -785,7 +791,7 @@
     Core.prototype.addMesh = function(mesh, resource)
     {
         var shader = (this._environment == "no current") ? "phong" : "pbr";
-        var mesh_name = `${resource}-${simple_guidGenerator()}`;
+        var mesh_name = resource+'-'+simple_guidGenerator();
         gl.meshes[mesh_name] = mesh;
         
         var d = this.controller._camera.target,
@@ -798,12 +804,12 @@
         node._uniforms["u_roughness"] = 0.5;
         node._uniforms["u_metalness"] = 0.75;
 
-        let bb = mesh.getBoundingBox();
-        let center = BBox.getCenter(bb);
+        var bb = mesh.getBoundingBox();
+        var center = BBox.getCenter(bb);
         this.selected_radius = radius = BBox.getRadius(bb);
 
-        let globalMat = node.getGlobalMatrix();
-        let result = vec3.create();
+        var globalMat = node.getGlobalMatrix();
+        var result = vec3.create();
         vec3.transformMat4( result, center, globalMat );
 
         this.controller._camera.lookAt([ 0, radius * 0.5, radius * 3 ], result, RD.UP);
@@ -826,17 +832,17 @@
         if(this._environment == 'no current')
             shader = "phong";
         
-        let node = new RD.SceneNode({
+        var node = new RD.SceneNode({
                 mesh: mesh,
                 shader: shader
             });
 
-        let bb = gl.meshes[node.mesh].getBoundingBox();
-        let center = BBox.getCenter(bb);
-        let radius = BBox.getRadius(bb);
+        var bb = gl.meshes[node.mesh].getBoundingBox();
+        var center = BBox.getCenter(bb);
+        var radius = BBox.getRadius(bb);
 
-        let globalMat = node.getGlobalMatrix();
-        let result = vec3.create();
+        var globalMat = node.getGlobalMatrix();
+        var result = vec3.create();
         vec3.transformMat4( result, center, globalMat );
 
         this.controller._camera.lookAt([ 0, radius * 0.5, radius * 2.5 ], result, RD.UP);
@@ -888,7 +894,7 @@
     */
     Core.prototype.toJSON = function()
     {
-        let camera = this.controller._camera;
+        var camera = this.controller._camera;
 
         var boo = {
             uid: this._uid,
@@ -912,14 +918,14 @@
         }
 
         // export cubemap without textures
-        let cubemap = this._root.children[0].clone();
+        var cubemap = this._root.children[0].clone();
         cubemap.textures = {};
         boo['nodes'].push( JSON.stringify(cubemap) );
 
         // skip cubemap
         for(var i = 1; i < this._root.children.length; i++) {
             // boo['nodes'].push( this.getProperties(this._root.children[i]) );
-            let tmp = this._root.children[i].clone();
+            var tmp = this._root.children[i].clone();
             boo['nodes'].push( JSON.stringify(tmp) );
         }
 
@@ -1003,7 +1009,7 @@
                     break;
                 default:
                     // create node and apply properties
-                    let new_node = new RD.SceneNode();
+                    var new_node = new RD.SceneNode();
                     new_node.name = "tmp";
                     new_node.configure(node_properties);
                     new_node.setTextureProperties();
@@ -1063,15 +1069,17 @@
         this._mainarea = new LiteGUI.Area({id: "mainarea", content_id:"canvasarea", height: "calc( 100% - 35px )", main:true});
         LiteGUI.add( this._mainarea );
 
+		var that = this;
+
         var canvas = renderer.canvas;
         this._mainarea.onresize = function() {
-            let w = this._mainarea.root.clientWidth - this._sidepanel.root.clientWidth - 4;
-            let h = this._mainarea.root.clientHeight;
+            var w = that._mainarea.root.clientWidth - that._sidepanel.root.clientWidth - 4;
+            var h = that._mainarea.root.clientHeight;
             resize(renderer, [w, h], camera);
         };
         this._mainarea.content.appendChild(canvas);
         
-        let push = document.createElement('div');
+        var push = document.createElement('div');
         push.id = "push";
         push.style.position = "absolute";
 
@@ -1095,28 +1103,28 @@
 
         var that = this;
 
-        mainmenu.add("File/Save scene", { callback: () => this.onExport()});
-        mainmenu.add("File/Load scene", { callback: () => this.onImport()});
+        mainmenu.add("File/Save scene", { callback: function() { this.onExport() } });
+        mainmenu.add("File/Load scene", { callback: function() { this.onImport() } });
 
-        mainmenu.add("View/FPS counter", { type: "checkbox", instance: this, property: "_fps_enable", callback: () => { 
-            if(!this._fps_enable) this.closeFPS();
-            else this._canvas2d.style.display = "block";
+        mainmenu.add("View/FPS counter", { type: "checkbox", instance: this, property: "_fps_enable", callback: function() { 
+            if(!that._fps_enable) that.closeFPS();
+            else that._canvas2d.style.display = "block";
         }});
         mainmenu.add("View/Log", { type: "checkbox", instance: this, property: "_enable_log", callback: function(){ 
             if(that._enable_log) $("#log").show();
             else $("#log").hide();
         }});
-        mainmenu.add("View/Fullscreen", { callback: () => gl.fullscreen()});
+        mainmenu.add("View/Fullscreen", { callback: function() { gl.fullscreen() } });
 
-        mainmenu.add("Actions/Reset all", { callback: () => { 
+        mainmenu.add("Actions/Reset all", { callback: function() { 
             CORE.reset();
             that.updateSidePanel(that._sidepanel, 'root');
         }});
         
         mainmenu.add("Actions/Allow drop", { type: "checkbox", instance: this, property: "_allow_drop"});
-        mainmenu.add("Actions/Reload shaders", { callback: () => CORE.reloadShaders() });
-        mainmenu.add("Actions/Get Environment (HDRE)", { callback: () => HDRTool.getSkybox( CORE._environment ) });
-        mainmenu.add("Actions/Get Mesh (wBin)", { callback: () => {
+        mainmenu.add("Actions/Reload shaders", { callback: function() { CORE.reloadShaders() } });
+        mainmenu.add("Actions/Get Environment (HDRE)", { callback: function() { HDRTool.getSkybox( CORE._environment ) } });
+        mainmenu.add("Actions/Get Mesh (wBin)", { callback: function() {
             var node = WS.getSelected();
 
             if(!node)
@@ -1126,11 +1134,11 @@
             downloadBinary( mesh, "wbin" );
         } });
 
-        mainmenu.add("Help/Version", { callback: () => LiteGUI.showMessage("wShade v" + WS.version, {title: "App Info"})});
-        mainmenu.add("Help/Github page", { callback: () => LiteGUI.showMessage("https://github.com/jxarco", {title: "App Info"})});
+        mainmenu.add("Help/Version", { callback: function() { LiteGUI.showMessage("wShade v" + WS.version, {title: "App Info"}) } });
+        mainmenu.add("Help/Github page", { callback: function() { LiteGUI.showMessage("https://github.com/jxarco", {title: "App Info"}) } });
         
-        let w = this._mainarea.root.clientWidth - this._sidepanel.root.clientWidth - 4;
-        let h = this._mainarea.root.clientHeight;
+        var w = this._mainarea.root.clientWidth - this._sidepanel.root.clientWidth - 4;
+        var h = this._mainarea.root.clientHeight;
         resize(renderer, [w, h], camera);
     }
 
@@ -1156,7 +1164,7 @@
 
         var litetree = new LiteGUI.Tree(mytree, {id: "tree", allow_rename:true});
 
-        let that = this;
+        var that = this;
 
         // litetree.root.addEventListener("item_dblclicked", function(e){
             
@@ -1180,9 +1188,6 @@
 
         var camera = CORE.controller._camera;
         var skybox = CORE.cubemap;
-
-        widgets.addInfo("blur back cubemap", null, {name_width: "100%"});
-        widgets.addButton(null, "Test blur", {callback: () => IMPprefilter()});
 
         if(item_selected == 'root')
         {
@@ -1252,10 +1257,10 @@
                 CORE.controller._mouse_speed = v;
                 CORE.controller.setBindings(renderer.context);
             }});
-            widgets.addSlider("Wheel Speed", CORE.controller._wheel_speed, {min: 0.01, max: 1, step: 0.1, callback: function(v){
+            /*widgets.addSlider("Wheel Speed", CORE.controller._wheel_speed, {min: 0.01, max: 1, step: 0.1, callback: function(v){
                 CORE.controller._wheel_speed = v;
                 CORE.controller.setBindings(renderer.context);
-            }});
+            }});*/
             widgets.addSection("Render");
             widgets.addCheckbox("Ambient occlusion",  renderer._uniforms["u_enable_ao"], {name_width: '50%', callback: (v) =>  renderer._uniforms["u_enable_ao"] = v });
 			widgets.addCheckbox("FXAA",  WS.Components["FX"]._fxaa, {name_width: '50%', callback: (v) =>  WS.Components["FX"]._fxaa = v });
@@ -1274,9 +1279,9 @@
 
             widgets.addTitle("Tonemapping");
 
-            let tonemappers = Object.keys(CORE._tonemappers);
-            let selected_tonemapper_name = WS.Components["FX"].tonemapping;
-            let selected_tonemapper = CORE._tonemappers[ selected_tonemapper_name ];
+            var tonemappers = Object.keys(CORE._tonemappers);
+            var selected_tonemapper_name = WS.Components["FX"].tonemapping;
+            var selected_tonemapper = CORE._tonemappers[ selected_tonemapper_name ];
 
             widgets.addCombo(null, selected_tonemapper_name, {values: tonemappers, callback: function(v){
                 WS.Components["FX"].tonemapping = v;
@@ -1285,15 +1290,15 @@
             }});
             
             if(selected_tonemapper && selected_tonemapper.params)
-                for( let p in selected_tonemapper.params )
+                for( var p in selected_tonemapper.params )
                 {
-                    let tm = selected_tonemapper.params[p];
-                    let options = tm.options || {};
+                    var tm = selected_tonemapper.params[p];
+                    var options = tm.options || {};
 
-                    renderer._uniforms[ `u_${p}` ] = tm.value; 
+                    renderer._uniforms[ 'u_'+p ] = tm.value; 
 
                     widgets.addSlider(p, tm.value, {min:options.min || 0,max:options.max||1,step:options.step||0.1,name_width: '50%', callback: function(v) {  
-                        renderer._uniforms[ `u_${p}` ] = v; 
+                        renderer._uniforms[ 'u_'+p ] = v; 
                     }});
                 }
             
@@ -1329,7 +1334,7 @@
         
         else if(item_selected.includes("scale") || item_selected.includes("matrix"))
         {
-            let node = CORE.getByName(item_selected);
+            var node = CORE.getByName(item_selected);
             widgets.addSection("Transform");
             widgets.addVector3("Position", node.position, {callback: function(v){ node.position = v; }});
             widgets.addNumber("Uniform scale", node.scaling[0], {min: 0.1, callback: function(v){ node.scaling = v; }});
@@ -1345,7 +1350,7 @@
         }
         else if(item_selected.includes("-")) // is a primitive uid
         {
-            let node = CORE.getByName(item_selected);
+            var node = CORE.getByName(item_selected);
            
             widgets.addTitle(node.mesh);
             widgets.addSection("Transform");
@@ -1353,12 +1358,12 @@
             widgets.addNumber("Uniform scale", node.scaling[0], {step: 0.01, min: 0.1, callback: function(v){ node.scaling = v; }});
             widgets.addButton(null, "Set camera", {callback: ()=> {
 
-                let bb = gl.meshes[node.mesh].getBoundingBox();
-                let center = BBox.getCenter(bb);
-                let radius = BBox.getRadius(bb);
+                var bb = gl.meshes[node.mesh].getBoundingBox();
+                var center = BBox.getCenter(bb);
+                var radius = BBox.getRadius(bb);
 
-                let globalMat = node.getGlobalMatrix();
-                let result = vec3.create();
+                var globalMat = node.getGlobalMatrix();
+                var result = vec3.create();
                 vec3.transformMat4( result, center, globalMat );
 
                 CORE.controller._camera.lookAt([ 0, radius * 0.5, radius * 2.5 ], result, RD.UP);
@@ -1400,6 +1405,7 @@
 
         inspector.widgets_per_row = 2;
 
+		// OJO CON ESTE
         for(let t in filtered) {
             inspector.addString( t, node.textures[t], {width: "85%"});
             inspector.addButton( null, '<i style="font-size: 16px;" class="material-icons">delete_forever</i>', {micro: true, width: "15%", callback: () => { 
@@ -1415,22 +1421,22 @@
     GUI.prototype.updateNodeTree = function(root)
     {
         var mytree = {'id': "root"};
-        let children = [];
+        var children = [];
 
         for(var i = 1; i < root.children.length; i++)
         {
-            let node = root.children[i];
-            let child = {};
+            var node = root.children[i];
+            var child = {};
             if(node.name == "lines") continue;
             child['id'] = node.name;
             if(node.children.length)
             {
-                let children_ = [];
+                var children_ = [];
 
                 for(var j = 0; j < node.children.length; j++)
                 {
-                    let node_ = node.children[j];
-                    let child_ = {};
+                    var node_ = node.children[j];
+                    var child_ = {};
                     child_['id'] = node_.name;
                     children_.push(child_);
                 }
@@ -1458,13 +1464,14 @@
             LiteGUI.alert("Files not in server");
             return;
         }
-        let boo = CORE.toJSON ? CORE.toJSON() : {};
+        
+		var boo = CORE.toJSON ? CORE.toJSON() : {};
 
-        var inner = (v) => {
+        var inner = function(v) {
             var data = "text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(boo));
             var element = document.createElement('a');
             element.href = 'data:' + data;
-            element.download = v !== "" ? `${v}.json` : `noname-${getDate()}.json`;
+            element.download = v !== "" ? v+'.json' : 'noname-'+getDate()+'.json';
             element.style.display = 'none';
             $(document.body).append(element);
             element.click();
@@ -1502,17 +1509,17 @@
                 widgets.addTitle( file.name );
             widgets.widgets_per_row = 2;
             widgets.addCheckbox("Only settings", only_settings, {width: "65%", name_width: "50%", callback: (v)=>only_settings = v});
-            widgets.addButton( null, "Import all scene", {width: "35%", callback:()=> {
+            widgets.addButton( null, "Import all scene", {width: "35%", callback: function() {
                 
                 if(!json && !file) 
                     return;
                 var reader = new FileReader();
                 reader.onload = function (e) {
                     // gui
-                    $(`#${dialog_id}`).remove();
+                    $('#'+dialog_id).remove();
                     LiteGUI.showModalBackground(false);
                     //
-                    let res = JSON.parse(e.target.result);
+                    var res = JSON.parse(e.target.result);
                     CORE.fromJSON(res, only_settings);
                 };
                 reader.readAsText(file ? file : json.file);
@@ -1742,7 +1749,7 @@
     {
         var filename = file.name;
 
-        var id = `Texture Drop ${simple_guidGenerator()}`;
+        var id = 'Texture Drop '+simple_guidGenerator();
         var dialog_id = replaceAll(id, ' ', '').toLowerCase();
         var w = 400, that = this;
         var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", title: id, close: true, width: w, draggable: true });
@@ -1783,7 +1790,7 @@
                 }
 
                 var texture_name = filename;
-                var texture = new Texture.fromURL(data, {}, async (tex, url) => {
+                var texture = new Texture.fromURL(data, {}, async function(tex, url) {
                     gl.textures[ texture_name ] = tex;
                     node.textures[ type ] = texture_name;
                     node.setTextureProperties();
@@ -1795,7 +1802,7 @@
                 if(!texture)
                 console.error('texture not loaded!!');
                 
-                $(`#${dialog_id}`).remove();
+                $('#'+dialog_id).remove();
             }});
         }
     
@@ -1829,10 +1836,10 @@
             widgets.addSeparator();
             widgets.addTitle("Select textures", {collapsed: true});
             widgets.widgets_per_row = 2;
-            widgets.addFile( "Albedo", "", {callback: (d)=>console.log(d)} );
-            widgets.addFile( "Normal", "", {callback: (d)=>console.log(d)} );
-            widgets.addFile( "Roughness", "", {callback: (d)=>console.log(d)} );
-            widgets.addFile( "Metalness", "", {callback: (d)=>console.log(d)} );
+            widgets.addFile( "Albedo", ""  );
+            widgets.addFile( "Normal", "" );
+            widgets.addFile( "Roughness", "" );
+            widgets.addFile( "Metalness", "" );
             widgets.widgets_per_row = 1;
             widgets.addSeparator();
             widgets.addButton( null, "Load", {width: "100%", name_width: "50%", callback: function(){
@@ -1945,9 +1952,9 @@
         if(!ctx)
             throw('no WebGLRenderingContext');
 
-        let camera = this._camera;
-        let s = this._mouse_speed;
-        let w = this._wheel_speed;
+        var camera = this._camera;
+        var s = this._mouse_speed;
+        var w = this._wheel_speed;
 
         ctx.captureKeys(true);
         ctx.onkeydown = function(e)
@@ -1976,24 +1983,19 @@
         ctx.onmousemove = function(e)
         {
             var mouse = [e.canvasx, gl.canvas.height - e.canvasy];
-            let x = parseInt(mouse[0]), y = parseInt(mouse[1]);
+            var x = parseInt(mouse[0]), y = parseInt(mouse[1]);
 
             if (ctx.keys["C"]) {
-                //document.querySelector("#pixelPickerCoord").innerHTML = `x: ${x} y: ${y}`;
                 var pixelColor = getPixelFromMouse(x, y);
-                document.querySelector("#pixelPickerText").innerHTML = `R: ${pixelColor[0].toFixed(4)} G: ${pixelColor[1].toFixed(4)} B: ${pixelColor[2].toFixed(4)}`;
+                document.querySelector("#pixelPickerText").innerHTML = 'R: '+pixelColor[0].toFixed(4)+' G: '+pixelColor[1].toFixed(4)+' B: '+pixelColor[2].toFixed(4);
             }
 
             if(!e.dragging) return;
 
             if (e.leftButton && !ctx.keys["M"]) {
 
-                //let last = camera.position.clone();
-
                 camera.orbit(-e.deltax * _dt * s, RD.UP,  camera._target);
                 camera.orbit(-e.deltay * _dt * s, camera._right, camera._target );
-
-                //vec3.lerp( camera.position, camera.position, last, 0.2 );
             }
             
             if (e.rightButton && ctx.keys["L"]) {
@@ -2002,13 +2004,13 @@
 
             if (e.leftButton && ctx.keys["M"]) {
                 
-                let dx = e.deltax * _dt;
-                let dy = -e.deltay * _dt;
-                let node = WS.Components.PICK.selected;
+                var dx = e.deltax * _dt;
+                var dy = -e.deltay * _dt;
+                var node = WS.Components.PICK.selected;
 
                 if(!node) return;
 
-                let delta = vec3.fromValues(dx, dy, -(dx+dy));
+                var delta = vec3.fromValues(dx, dy, -(dx+dy));
                 node.translate(delta);
 
                 if(node.name === 'light')
@@ -2036,7 +2038,7 @@
                 {
                     WS.Components.PICK.select(node);
                     // parent is not the scene root
-                    let name = node.name;
+                    var name = node.name;
                     if(!name)
                         name = node.parentNode.name;
                     gui.updateSidePanel(null, name);
@@ -2048,8 +2050,9 @@
 
                 var shaded_models = [];
 
+				// OJO CON ESTE
                 for(let s in scenes)
-                    shaded_models.push( {title: scenes[s].name, callback: () => {
+                    shaded_models.push( {title: scenes[s].name, callback: function() {
                         CORE.parse( scenes[s].name );
                         gui.updateSidePanel(null, scenes[s].name);
                     }});
@@ -2069,20 +2072,20 @@
                         options: 
                         [{
                             title: "Sphere",
-                            callback: () => CORE.addPrimitive("sphere")
+                            callback: function() { CORE.addPrimitive("sphere") }
                         },{
                             title: "Plane",
-                            callback: () => CORE.addPrimitive("plane")
+                            callback: function() { CORE.addPrimitive("plane") }
                         },{
                             title: "Cube",
-                            callback: () => CORE.addPrimitive("cube")
+                            callback: function() { CORE.addPrimitive("cube") }
                         }]
                     }
                     
                 },
                 {
                     title: "Add light", //text to show
-                    callback: () => CORE.addLight()
+                    callback: function() { CORE.addLight() }
                 }
                 ];
                 var contextmenu = new LiteGUI.ContextMenu( actions, { event: e });
@@ -2101,7 +2104,7 @@
         if(!ctx)
             throw('no WebGLRenderingContext');
 
-        let w = this._wheel_speed * 25;
+        var w = this._wheel_speed * 25;
         var s = CORE.selected_radius ? CORE.selected_radius * w : w;
 
         if(ctx.keys["UP"] || ctx.keys["W"]){            this._camera.moveLocal([0,0,-dt * s]);}

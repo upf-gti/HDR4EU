@@ -17,6 +17,7 @@ fromPanoramic screen_shader.vs fromPanoramic.fs
 // Texture FX Shaders
 glow screen_shader.vs glow.fs
 luminance screen_shader.vs luminance.fs
+average screen_shader.vs average.fs
 
 // PBR Shaders
 brdfIntegrator brdf.vs brdf.fs
@@ -29,20 +30,20 @@ pbr pbr.vs pbr.fs
 \default.vs
 
 	precision highp float;
-    attribute vec3 a_vertex;
+	attribute vec3 a_vertex;
 	attribute vec3 a_normal;
-    attribute vec2 a_coord;
+	attribute vec2 a_coord;
 	varying vec3 v_wPosition;
 	varying vec3 v_wNormal;
-    varying vec2 v_coord;
-    uniform mat4 u_mvp;
-    uniform mat4 u_model;
-    void main() {
+	varying vec2 v_coord;
+	uniform mat4 u_mvp;
+	uniform mat4 u_model;
+	void main() {
 		v_wPosition = (u_model * vec4(a_vertex, 1.0)).xyz;
 		v_wNormal = (u_model * vec4(a_normal, 0.0)).xyz;
-        v_coord = a_coord;
-        gl_Position = u_mvp * vec4(a_vertex, 1.0);
-    }
+		v_coord = a_coord;
+		gl_Position = u_mvp * vec4(a_vertex, 1.0);
+	}
 
 //
 // Default fragment shader 
@@ -53,13 +54,13 @@ pbr pbr.vs pbr.fs
 	precision highp float;
 	varying vec3 v_wPosition;
 	varying vec3 v_wNormal;
-    varying vec2 v_coord;
+	varying vec2 v_coord;
 	uniform vec4 u_color;
 
-    void main() {
+	void main() {
 
 		gl_FragColor = u_color;
-    }
+	}
 
 //
 // Screen shader 
@@ -71,6 +72,7 @@ pbr pbr.vs pbr.fs
 	attribute vec3 a_vertex;
 	attribute vec2 a_coord;
 	varying vec2 v_coord;
+
 	void main() {
 		v_coord = a_coord;
 		gl_Position = vec4(a_coord * 2.0 - 1.0, 0.0, 1.0);
@@ -108,7 +110,7 @@ pbr pbr.vs pbr.fs
 			vec4 pixelColor = texture2D(u_texture, coord );
 			
 			float lum = 0.2126 * pixelColor.r + 0.7152 * pixelColor.g + 0.0722 * pixelColor.b;
-			float logLum = log( lum + delta);
+			float logLum = log( lum + delta );
 			sum += logLum;
 			
 			if(lum > maxLum)
@@ -119,6 +121,46 @@ pbr pbr.vs pbr.fs
 
 		vec4 color = vec4(sum) / float(k);
 		color.a = maxLum;
+
+		gl_FragColor = color;
+	}
+
+//
+// Average shader manual Downsampling version 
+//
+
+\average.fs
+
+	precision highp float;
+	
+	uniform sampler2D u_texture;
+	uniform float u_blocks;
+
+	varying vec2 v_coord;
+	
+	#ifdef INPUT_TEX_WIDTH
+		const float width = float(INPUT_TEX_WIDTH);
+	#endif
+
+	#ifdef INPUT_TEX_HEIGHT
+		const float height = float(INPUT_TEX_HEIGHT);
+	#endif
+
+	void main() {
+
+		vec4 color;
+		
+		/*for(int i = 0; i < width; i++)
+		for(int j = 0; j < height; j++)
+		{
+			float block = floor( i / (width/u_blocks) );
+
+			if(width/block)
+			continue;
+
+			vec2 coord = vec2(i+0.5, j+0.5) / vec2(width, height);
+			vec4 pixelColor = texture2D(u_texture, coord );
+		}*/
 
 		gl_FragColor = color;
 	}
@@ -148,18 +190,18 @@ pbr pbr.vs pbr.fs
 		float oc = 1.0 - c;
 		
 		return mat4(oc*axis.x*axis.x+c,oc*axis.x*axis.y-axis.z*s,oc*axis.z*axis.x+axis.y*s,0.0,
-					oc*axis.x*axis.y+axis.z*s,oc*axis.y*axis.y+c,oc*axis.y*axis.z-axis.x*s,0.0,
-					oc*axis.z*axis.x-axis.y*s,oc*axis.y*axis.z+axis.x*s,oc*axis.z*axis.z+c,0.0,
-					0.0,0.0,0.0,1.0);
+			oc*axis.x*axis.y+axis.z*s,oc*axis.y*axis.y+c,oc*axis.y*axis.z-axis.x*s,0.0,
+			oc*axis.z*axis.x-axis.y*s,oc*axis.y*axis.z+axis.x*s,oc*axis.z*axis.z+c,0.0,
+			0.0,0.0,0.0,1.0);
 	}
 
 	void main() {
-	    vec3 E = normalize(u_camera_position - v_wPosition);
+		vec3 E = normalize(u_camera_position - v_wPosition);
 		E = (rotationMatrix(vec3(0.0,1.0,0.0),u_rotation) * vec4(E,1.0)).xyz;
 
-	    vec4 color = textureCube(u_color_texture, E);
+		vec4 color = textureCube(u_color_texture, E);
 		// color = pow(color, vec4(2.2));
-	    gl_FragColor = color;
+		gl_FragColor = color;
 	}
 
 //
@@ -180,13 +222,13 @@ pbr pbr.vs pbr.fs
 		{
 			dir = normalize(dir);
 			dir = -dir;
-            float d = sqrt(dir.x * dir.x + dir.y * dir.y);
+			float d = sqrt(dir.x * dir.x + dir.y * dir.y);
 			float r = 0.0;
 
 			if(d > 0.0)
 				r = 0.159154943 * acos(dir.z) / d;
 
-	    	float u = 0.5 + dir.x * (r);
+	    		float u = 0.5 + dir.x * (r);
 			float v = 0.5 + dir.y * (r);
 
 			return vec2(u, v);
@@ -202,7 +244,7 @@ pbr pbr.vs pbr.fs
 			// use dir to calculate spherical uvs
 			vec2 spherical_uv = getSphericalUVs( dir );
 			vec4 color = texture2D(u_color_texture, spherical_uv);
-		    gl_FragColor = color;
+			gl_FragColor = color;
 		}
 
 //
@@ -225,7 +267,7 @@ pbr pbr.vs pbr.fs
 		{
 			dir = -normalize(dir);
 
-	    	float u = 1.0 + (atan(dir.x, -dir.z) / PI);
+	    		float u = 1.0 + (atan(dir.x, -dir.z) / PI);
 			float v = acos(-dir.y) / PI;
 
 			return vec2(u/2.0, v);
@@ -239,7 +281,7 @@ pbr pbr.vs pbr.fs
 
 			vec2 panoramic_uv = getPanoramicUVs( dir );
 			vec4 color = texture2D(u_color_texture, panoramic_uv);
-		    gl_FragColor = color;
+			gl_FragColor = color;
 		}
 
 //
@@ -355,7 +397,7 @@ pbr pbr.vs pbr.fs
 \defblur.vs
 
 	precision highp float;
-    attribute vec2 a_coord;
+	attribute vec2 a_coord;
 	uniform float u_ioffset;
 	uniform float u_blocks;
 	varying vec3 v_dir;
