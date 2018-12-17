@@ -75,7 +75,7 @@ WS.Components.PICK.render = function()
 	// Transform points
 	for(var i = 0; i < corners.length; i++)
 	{
-		let res = vec3.create(),
+		var res = vec3.create(),
 			p = corners[i];
 
 		vec3.transformMat4( res, p, globalMat );
@@ -179,7 +179,7 @@ Object.defineProperty(WS.Components.LIGHT, 'color', {
 		renderer._uniforms['u_light_color'] = v;
 		if(!light)
 			return;
-		let i = this.intensity;
+		var i = this.intensity;
 		light.color = [v[0]*i, v[1]*i, v[2]*i];
 	},
 	enumerable: true
@@ -198,7 +198,7 @@ Object.defineProperty(WS.Components.LIGHT, 'intensity', {
 		renderer._uniforms['u_light_intensity'] = v;
 		if(!light)
 			return;
-		let color = this.color;
+		var color = this.color;
 		light.color = [color[0]*v, color[1]*v, color[2]*v];
 	},
 	enumerable: true

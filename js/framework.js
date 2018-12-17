@@ -262,7 +262,7 @@ function getDate()
     if(h<10) h = '0'+h
     if(mins<10) mins = '0'+mins
 
-    today = `${mm}${dd}-${h}${mins}`;//mm + '-' + dd + '-' + h + ;
+    today = h+'a'+mins;
     return today;
 }
   

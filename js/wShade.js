@@ -848,8 +848,8 @@
         this.controller._camera.lookAt([ 0, radius * 0.5, radius * 2.5 ], result, RD.UP);
 
         node.name = "node-" + simple_guidGenerator();
-        node._uniforms["u_roughness"] = 0.15;
-        node._uniforms["u_metalness"] = 0.85;
+        node._uniforms["u_roughness"] = 0.0;
+        node._uniforms["u_metalness"] = 1.0;
         // node.flags.depth_test = false;
         
         if(mesh == "plane") 
@@ -1103,8 +1103,8 @@
 
         var that = this;
 
-        mainmenu.add("File/Save scene", { callback: function() { this.onExport() } });
-        mainmenu.add("File/Load scene", { callback: function() { this.onImport() } });
+        mainmenu.add("File/Save scene", { callback: function() { that.onExport() } });
+        mainmenu.add("File/Load scene", { callback: function() { that.onImport() } });
 
         mainmenu.add("View/FPS counter", { type: "checkbox", instance: this, property: "_fps_enable", callback: function() { 
             if(!that._fps_enable) that.closeFPS();
@@ -1199,11 +1199,11 @@
             widgets.widgets_per_row = 1;
             widgets.addSeparator();
             widgets.addTitle("Properties");
-            widgets.addNumber("Rotation", renderer._uniforms["u_rotation"], {min:-720*DEG2RAD,max:720*DEG2RAD,step:0.05, callback: (v)=>renderer._uniforms["u_rotation"] = v});
-            widgets.addCheckbox("Visible", skybox.flags.visible, {callback: (v) => skybox.visible = v});
+            widgets.addNumber("Rotation", renderer._uniforms["u_rotation"], {min:-720*DEG2RAD,max:720*DEG2RAD,step:0.05, callback: function(v){ renderer._uniforms["u_rotation"] = v}});
+            widgets.addCheckbox("Visible", skybox.flags.visible, {callback: function(v) { skybox.visible = v}});
             widgets.addSeparator();
             widgets.addTitle("Sampling");
-            widgets.addComboButtons("Irradiance samples", CORE.blur_samples,{name_width: "40%", values:[512, 1024, 2048, 4096, 8192], callback: async (v) => {
+            widgets.addComboButtons("Irradiance samples", CORE.blur_samples,{name_width: "40%", values:[512, 1024, 2048, 4096, 8192], callback: async function(v) {
                 CORE.blur_samples = parseInt(v);
                 await CORE.reloadShaders();
             }});
@@ -1216,13 +1216,13 @@
                 else
                 {
                     CORE.cubemap.shader = "atmos";
-                    CORE.cubemapToTexture( () => CORE.set(":atmos", {no_free_memory: true}) );
+                    CORE.cubemapToTexture( function() { CORE.set(":atmos", {no_free_memory: true}) });
                 }
             }});
             widgets.addButton(null, "Update", {callback: function(){
                
                 if(!gl.shaders['atmos']) LiteGUI.showMessage("Error: shader missing", {title: "App info"});
-                else CORE.cubemapToTexture( () => CORE.set(":atmos", {no_free_memory: true}) );
+                else CORE.cubemapToTexture( function() { CORE.set(":atmos", {no_free_memory: true}) });
             }});
             widgets.addSeparator();
             widgets.addNumber("Sun Position", 0.4, {min: 0,step:0.01, callback: function(v){ renderer._uniforms['u_SunPos'] = v; }});
@@ -1249,7 +1249,7 @@
                 camera.far = v;
             }});
             widgets.addSeparator();
-            widgets.addButton(null, "Get current", {callback: () => this.updateSidePanel(this._sidepanel, 'root')});
+            widgets.addButton(null, "Get current", {callback: function() { that.updateSidePanel(that._sidepanel, 'root')}});
 
             widgets.widgets_per_row = 1;
             widgets.addSeparator();
@@ -1262,10 +1262,10 @@
                 CORE.controller.setBindings(renderer.context);
             }});*/
             widgets.addSection("Render");
-            widgets.addCheckbox("Ambient occlusion",  renderer._uniforms["u_enable_ao"], {name_width: '50%', callback: (v) =>  renderer._uniforms["u_enable_ao"] = v });
-			widgets.addCheckbox("FXAA",  WS.Components["FX"]._fxaa, {name_width: '50%', callback: (v) =>  WS.Components["FX"]._fxaa = v });
-            widgets.addCheckbox("Correct Albedo",  renderer._uniforms["u_correctAlbedo"], {name_width: '50%', callback: (v) =>  renderer._uniforms["u_correctAlbedo"] = v });
-            widgets.addSlider("IBL Scale", renderer._uniforms["u_ibl_intensity"], {min:0.0, max: 10,name_width: '50%', callback: (v) => renderer._uniforms["u_ibl_intensity"] = v });
+            widgets.addCheckbox("Ambient occlusion",  renderer._uniforms["u_enable_ao"], {name_width: '50%', callback: function(v){  renderer._uniforms["u_enable_ao"] = v }});
+			widgets.addCheckbox("FXAA",  WS.Components["FX"]._fxaa, {name_width: '50%', callback: function(v){  WS.Components["FX"]._fxaa = v }});
+            widgets.addCheckbox("Correct Albedo",  renderer._uniforms["u_correctAlbedo"], {name_width: '50%', callback: function(v){  renderer._uniforms["u_correctAlbedo"] = v }});
+            widgets.addSlider("IBL Scale", renderer._uniforms["u_ibl_intensity"], {min:0.0, max: 10,name_width: '50%', callback: function(v){ renderer._uniforms["u_ibl_intensity"] = v }});
             
             widgets.addSection("FX");
 
@@ -1319,8 +1319,8 @@
         {
             widgets.addSection("Light");
             widgets.widgets_per_row = 2;
-            widgets.addCheckbox("Show node", light.visible, {callback: (v) => light.visible = v });
-            widgets.addNumber("Size", light.scaling[0], {step: 0.01, callback: (v) => light.scaling = v });
+            widgets.addCheckbox("Show node", light.visible, {callback: function(v){ light.visible = v }});
+            widgets.addNumber("Size", light.scaling[0], {step: 0.01, callback: function(v){ light.scaling = v }});
             widgets.widgets_per_row = 1;
             widgets.addColor("Color", WS.Components.LIGHT.color, {callback: function(color){ 
                 WS.Components.LIGHT.color = color;
@@ -1328,8 +1328,8 @@
             widgets.addSlider("Scale", WS.Components.LIGHT.intensity, {min:0,max:10,step:0.1,callback: function(v) {  
                 WS.Components.LIGHT.intensity = v; 
             }});
-            widgets.addVector3("Position", WS.Components.LIGHT.position, { callback: (v) => WS.Components.LIGHT.position = v });
-            widgets.addButton(null, "Get position", {callback: () => this.updateSidePanel(this._sidepanel, 'light')});
+            widgets.addVector3("Position", WS.Components.LIGHT.position, { callback: function(v){ WS.Components.LIGHT.position = v }});
+            widgets.addButton(null, "Get position", {callback: function(){ that.updateSidePanel(that._sidepanel, 'light')}});
         }
         
         else if(item_selected.includes("scale") || item_selected.includes("matrix"))
@@ -1356,7 +1356,7 @@
             widgets.addSection("Transform");
             widgets.addVector3("Position", node.position, {callback: function(v){ node.position = v; }});
             widgets.addNumber("Uniform scale", node.scaling[0], {step: 0.01, min: 0.1, callback: function(v){ node.scaling = v; }});
-            widgets.addButton(null, "Set camera", {callback: ()=> {
+            widgets.addButton(null, "Set camera", {callback: function() {
 
                 var bb = gl.meshes[node.mesh].getBoundingBox();
                 var center = BBox.getCenter(bb);
@@ -1384,20 +1384,20 @@
 
         inspector.addSection("Material");
         inspector.addTitle("PBR properties");
-        inspector.addColor("Base color", node._uniforms["u_albedo"], {callback: color => node._uniforms["u_albedo"] = color });
-        inspector.addSlider("Roughness", node._uniforms['u_roughness'],{min:0,max:1,step:0.01,callback: v => node._uniforms['u_roughness'] = v });
-        inspector.addSlider("Metalness", node._uniforms['u_metalness'],{min:0,max:1,step:0.01,callback: v => node._uniforms['u_metalness'] = v });
+        inspector.addColor("Base color", node._uniforms["u_albedo"], {callback: function(color){ node._uniforms["u_albedo"] = color }});
+        inspector.addSlider("Roughness", node._uniforms['u_roughness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_roughness'] = v }});
+        inspector.addSlider("Metalness", node._uniforms['u_metalness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_metalness'] = v }});
         
         inspector.addTitle("Textures")
-        inspector.addNumber("Bump scale", node._uniforms['u_bumpScale'],{name_width: "50%", min:0,max:5,step:0.01, callback: v => node._uniforms['u_bumpScale'] = v });
-        inspector.addNumber("Emissive scale", node._uniforms['u_emissiveScale'],{name_width: "50%", min:0,max:100,step:0.05, callback: v => node._uniforms['u_emissiveScale'] = v });
+        inspector.addNumber("Bump scale", node._uniforms['u_bumpScale'],{name_width: "50%", min:0,max:5,step:0.01, callback: function(v){ node._uniforms['u_bumpScale'] = v }});
+        inspector.addNumber("Emissive scale", node._uniforms['u_emissiveScale'],{name_width: "50%", min:0,max:100,step:0.05, callback: function(v){ node._uniforms['u_emissiveScale'] = v }});
         inspector.addSeparator();
 
-        // TODO: añadir solo si hay!!!
+        var that = this;
 
         const filtered = Object.keys(node.textures)
-            .filter(key => !key.includes("env") && !key.includes("brdf"))
-            .reduce((obj, key) => {
+            .filter(function(key){ return !key.includes("env") && !key.includes("brdf") })
+            .reduce(function(obj, key){
                 obj[key] = node.textures[key];
                 return obj;
             }, {});
@@ -1406,15 +1406,17 @@
         inspector.widgets_per_row = 2;
 
 		// OJO CON ESTE
-        for(let t in filtered) {
+        for(var t in filtered) {
             inspector.addString( t, node.textures[t], {width: "85%"});
-            inspector.addButton( null, '<i style="font-size: 16px;" class="material-icons">delete_forever</i>', {micro: true, width: "15%", callback: () => { 
+            inspector.addButton( null, '<i data-texture='+ t +' style="font-size: 16px;" class="material-icons">delete_forever</i>', {micro: true, width: "15%", callback: function(v) { 
+
+				var t = $(v).data('texture');
 
                 delete gl.textures[ node.textures[t] ]; 
                 delete node.textures[t]; 
-                // update properties
                 node.setTextureProperties();              
-                this.updateSidePanel(null, node.name) }});
+                that.updateSidePanel(null, node.name);
+			}});
         }
     }
 
@@ -1457,7 +1459,7 @@
     */
     GUI.prototype.onExport = function()
     {
-        const isInServer = Object.keys(textures).filter(key => textures[key].path.includes( CORE._environment )).length;
+        const isInServer = Object.keys(textures).filter(function(key){ return textures[key].path.includes( CORE._environment )}).length;
 
         // is not in server
         if(!isInServer) {
@@ -1503,12 +1505,12 @@
 
             widgets.clear();
             if(!file) {
-                widgets.addFile( "Scene", "", {callback: (v) => json = v });
+                widgets.addFile( "Scene", "", {callback: function(v){ json = v }});
                 widgets.addSeparator();
             }else
                 widgets.addTitle( file.name );
             widgets.widgets_per_row = 2;
-            widgets.addCheckbox("Only settings", only_settings, {width: "65%", name_width: "50%", callback: (v)=>only_settings = v});
+            widgets.addCheckbox("Only settings", only_settings, {width: "65%", name_width: "50%", callback: function(v){only_settings = v}});
             widgets.addButton( null, "Import all scene", {width: "35%", callback: function() {
                 
                 if(!json && !file) 
@@ -1663,7 +1665,7 @@
             case 'png':
             case 'jpg':
                 var reader = new FileReader();
-                reader.onprogress = (e) =>  $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%");
+                reader.onprogress = function(e){  $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%") };
                 reader.onload = function (event) {
                     that.onDragTexture(file, event.target.result);
                 };
@@ -1713,11 +1715,11 @@
                 gui.loading();
         
                 var reader = new FileReader();
-                reader.onprogress = (e) =>  $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%");
+                reader.onprogress = function(e){ $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%") };
                 reader.onload = async function (event) {
                     var data = event.target.result;
                     params['data'] = data;
-                    params['oncomplete'] = () => CORE.set( filename );
+                    params['oncomplete'] = function(){ CORE.set( filename ) };
 
 					default_shader_macros['EM_SIZE'] = params["size"];
 					await CORE.reloadShaders();
@@ -1774,7 +1776,7 @@
             widgets.clear();
             widgets.addString( "File", filename );
             widgets.addCombo( "Use as", params.texture_type,{width: "60%", name_width: "50%", values: ["Albedo","Normal","Roughness","Metalness", "AO", "Emissive", "Height"],
-                callback: (v) => params["texture_type"] = v
+                callback: function(v){ params["texture_type"] = v; }
             });
             widgets.addSeparator();
             widgets.addButton( null, "Apply", {width: "100%", name_width: "50%", callback: function(){
@@ -1844,7 +1846,7 @@
             widgets.addSeparator();
             widgets.addButton( null, "Load", {width: "100%", name_width: "50%", callback: function(){
                 $("#"+dialog_id).remove();
-                ImporterModule.processFileList([file], {}, (f, res) => CORE.addMesh(res, f));
+                ImporterModule.processFileList([file], {}, function(f, res){ CORE.addMesh(res, f)});
             }});
         }
 
@@ -2051,10 +2053,10 @@
                 var shaded_models = [];
 
 				// OJO CON ESTE
-                for(let s in scenes)
-                    shaded_models.push( {title: scenes[s].name, callback: function() {
-                        CORE.parse( scenes[s].name );
-                        gui.updateSidePanel(null, scenes[s].name);
+                for(var s in scenes)
+                    shaded_models.push( {title: scenes[s].name, callback: function(v) {
+						CORE.parse( v.title );
+                        gui.updateSidePanel(null, v.title );
                     }});
 
                 var actions = [
