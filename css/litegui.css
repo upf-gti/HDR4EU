@@ -488,10 +488,11 @@
 .inspector .wcontent .checkbox.on {
 	background-color: #AAF;
 	color: #AAF;/* black */
+/*	border-radius: 50%;*/
 }
 
 .inspector .wcontent .flag {
-	font-size: 0.65em;
+	font-size: 0.8em;
 	margin-left: 5px;
 	user-select: none;
 	-moz-user-select: none;

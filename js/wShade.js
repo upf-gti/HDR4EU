@@ -97,6 +97,8 @@
         if(this.constructor !== WS.Core)
             throw("Use new to create WS.Core");
 
+		this.browser = this.browser();
+
         this._ctor();
         if(o)
             this.configure( o );
@@ -220,6 +222,47 @@
         }
     }
     
+	Core.prototype.browser = function()
+	{
+		if(isSafari && isSafari())
+			return 'safari';
+		if(isOpera && isOpera())
+			return 'opera';
+		if(isChrome && isChrome())
+			return 'chrome';
+		if(isFirefox && isFirefox())
+			return 'firefox';
+	}
+
+	window.browser = Core.prototype.browser;
+
+	var userAgent = (navigator && navigator.userAgent || '').toLowerCase();
+    var vendor = (navigator && navigator.vendor || '').toLowerCase();
+
+	var isSafari = function()
+	{
+		var match = userAgent.match(/version\/(\d+).+?safari/);
+        return match !== null;
+	}
+
+	var isOpera = function()
+	{
+		var match = userAgent.match(/(?:^opera.+?version|opr)\/(\d+)/);
+        return match !== null;
+	}
+
+	var isChrome = function()
+	{
+		var match = /google inc/.test(vendor) ? userAgent.match(/(?:chrome|crios)\/(\d+)/) : null;
+        return match !== null && !isOpera();
+	}
+
+	var isFirefox = function()
+	{
+		var match = userAgent.match(/(?:firefox|fxios)\/(\d+)/);
+        return match !== null;
+	}
+
     Object.defineProperty(Core.prototype, 'cubemap', {
         get: function() { return this._cubemap; },
         set: function(v) { this._cubemap = v; this._root.addChild(v); },
@@ -415,7 +458,7 @@
             case "Metalness scale":
                 this.renderSphereScale( true, { property: 'metalness', aux_prop: 0.5 } ); break;
             default:
-                this.loadResources( toParse, name ); break
+                this.loadResources( toParse, name ); break;
         }
     }
 
