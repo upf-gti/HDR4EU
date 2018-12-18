@@ -110,6 +110,7 @@
     {
         this._uid = guidGenerator();
         this._descriptor = "";
+		this._errors = {};
         
         this._uniforms = {};
         this._environment = "no current";
@@ -159,6 +160,9 @@
         this._viewport_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
 		this._fx_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
         this._background_color = vec4.fromValues(0.2, 0.2, 0.2,1);
+
+		this.fxaa_shader = Shader.getFXAAShader();
+		this.fxaa_shader.setup();
 
         this._controller = new WS.Controller( this._context );
         this._gui = new WS.GUI();
@@ -311,7 +315,20 @@
         gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
 
 		// Fill renderer uniforms with average, max lum, etc.
-        getFrameInfo( this._viewport_tex );
+		try
+		{
+			if (info_check())
+			{
+				perblock_getmax();
+				downsampled_getaverage();
+			}
+		}
+		catch (e)
+		{
+			if(!this._errors[e])
+			this._errors[e] = 1;
+		}
+
 
         // Apply (or not) bloom effect
         var render_texture = this._viewport_tex; 
@@ -320,16 +337,12 @@
 
 		// Get tonemapper and apply ********************
 		// (exposure, offset, tonemapping, degamma)
-		var name = WS.Components.FX.tonemapping;
-		var myToneMapper = this._tonemappers[ name ];
+		var myToneMapper = this._tonemappers[ WS.Components.FX.tonemapping ];
 		myToneMapper.apply( render_texture, this._fx_tex ); 
 
 		// Apply antialiasing (FXAA)
-		if( WS.Components.FX._fxaa ) {
-			var fxaa_shader = Shader.getFXAAShader();
-			fxaa_shader.setup();
-			this._fx_tex.toViewport( fxaa_shader );
-		}
+		if( WS.Components.FX._fxaa )
+			this._fx_tex.toViewport( this.fxaa_shader );
 		else
 			this._fx_tex.toViewport();
 
@@ -339,8 +352,8 @@
         // Render node selected
         WS.Components.PICK.render();
 
-		if(window.temp)
-		window.temp.toViewport();
+		if(window.tempTex)
+		window.tempTex.toViewport();
     }
 
     /**
@@ -367,7 +380,7 @@
     */
     Core.prototype.set = function(env_path, options)
     {
-        console.warn("Setting environment...");
+//         console.log("Setting environment...");
 
         if(!this._cubemap)
             throw("Create first a cubemap node");
@@ -426,7 +439,7 @@
         this._cubemap.texture = this._environment;
         
 		// gui
-        this._gui.loading(false, function() { $(".pbar").css("width", "0%")});
+        this._gui.loading(0);
         console.log("%c" + this._environment, 'font-weight: bold;');
     }
     
@@ -1237,7 +1250,7 @@
             widgets.addSection("Skybox");
             widgets.addList("Environment", textures, {height: "125px", callback: function(v){
                 gui.loading();
-                CORE.set( v.path );
+				CORE.set( v.path );
             }});
             widgets.widgets_per_row = 1;
             widgets.addSeparator();
@@ -1320,32 +1333,36 @@
                 WS.Components["FX"].offset = v;
             }});
 
-            widgets.addTitle("Tonemapping");
+			if(CORE.browser !== 'safari')
+			{
+				widgets.addTitle("Tonemapping");
 
-            var tonemappers = Object.keys(CORE._tonemappers);
-            var selected_tonemapper_name = WS.Components["FX"].tonemapping;
-            var selected_tonemapper = CORE._tonemappers[ selected_tonemapper_name ];
+				var tonemappers = Object.keys(CORE._tonemappers);
+				var selected_tonemapper_name = WS.Components["FX"].tonemapping;
+				var selected_tonemapper = CORE._tonemappers[ selected_tonemapper_name ];
 
-            widgets.addCombo(null, selected_tonemapper_name, {values: tonemappers, callback: function(v){
-                WS.Components["FX"].tonemapping = v;
-                window.last_scroll = root.content.scrollTop;
-                that.updateSidePanel( that._sidepanel, 'root' );
-            }});
+				widgets.addCombo(null, selected_tonemapper_name, {values: tonemappers, callback: function(v){
+					WS.Components["FX"].tonemapping = v;
+					window.last_scroll = root.content.scrollTop;
+					that.updateSidePanel( that._sidepanel, 'root' );
+				}});
+				
+				if(selected_tonemapper && selected_tonemapper.params)
+					for( var p in selected_tonemapper.params )
+					{
+						var tm = selected_tonemapper.params[p];
+						var options = tm.options || {};
+
+						renderer._uniforms[ 'u_'+p ] = tm.value; 
+
+						widgets.addSlider(p, tm.value, {min:options.min || 0,max:options.max||1,step:options.step||0.1,name_width: '50%', callback: function(v) {  
+							renderer._uniforms[ 'u_'+p ] = v; 
+						}});
+					}
+				
+				widgets.addSeparator();
+			}
             
-            if(selected_tonemapper && selected_tonemapper.params)
-                for( var p in selected_tonemapper.params )
-                {
-                    var tm = selected_tonemapper.params[p];
-                    var options = tm.options || {};
-
-                    renderer._uniforms[ 'u_'+p ] = tm.value; 
-
-                    widgets.addSlider(p, tm.value, {min:options.min || 0,max:options.max||1,step:options.step||0.1,name_width: '50%', callback: function(v) {  
-                        renderer._uniforms[ 'u_'+p ] = v; 
-                    }});
-                }
-            
-            widgets.addSeparator();
             widgets.widgets_per_row = 1;
             widgets.addTitle("Glow");
             widgets.addCheckbox("Enable", WS.Components["FX"].glow_enable, {callback: function(v) { WS.Components["FX"].glow_enable = v; } });
@@ -1663,6 +1680,12 @@
 			// 
 			element.appendChild( sub );
 		}
+
+		setTimeout( function(){
+			
+			$(element).remove();
+				
+		}, 2000 );
 		
 		return element;
     }
@@ -1676,9 +1699,19 @@
     GUI.prototype.loading = function(disable, oncomplete)
     {
         if(disable == null)
-            $("#modal").fadeIn();
+            $("#modal").show();
         else
-            $("#modal").fadeOut( oncomplete );        
+		{
+			$("#modal").hide( function(){
+			
+				$(".pbar").css('width', "0%");
+				$("#xhr-load").css('width', "0%");
+
+				if(oncomplete)
+					oncomplete();
+			} );        
+		}
+            
     }
     
     /**
@@ -1740,6 +1773,32 @@
             size: 256,
             max: false,
         };
+	
+		var inner = function()
+		{
+			$("#"+dialog_id).remove();
+        
+			var reader = new FileReader();
+			reader.onprogress = function(e){ $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%") };
+			reader.onload = async function (event) {
+				var data = event.target.result;
+				params['data'] = data;
+				params['oncomplete'] = function(){
+					CORE.set( filename );
+				};
+
+				default_shader_macros['EM_SIZE'] = params["size"];
+				await CORE.reloadShaders();
+
+				if(filename.includes(".exr"))
+					HDRTool.prefilter( filename, params);     
+				else
+					HDRTool.load( filename, params); 
+			};
+	
+			reader.readAsArrayBuffer(file);
+		}
+
 
         widgets.on_refresh = function(){
 
@@ -1754,27 +1813,9 @@
             widgets.addSeparator();
             widgets.addButton( null, "Load", {width: "100%", name_width: "50%", callback: function(){
                 
-                $("#"+dialog_id).remove();
-                gui.loading();
-        
-                var reader = new FileReader();
-                reader.onprogress = function(e){ $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%") };
-                reader.onload = async function (event) {
-                    var data = event.target.result;
-                    params['data'] = data;
-                    params['oncomplete'] = function(){ CORE.set( filename ) };
-
-					default_shader_macros['EM_SIZE'] = params["size"];
-					await CORE.reloadShaders();
-
-                    if(filename.includes(".exr"))
-                        HDRTool.prefilter( filename, params);     
-                    else
-                        HDRTool.load( filename, params); 
-                };
-        
-                reader.readAsArrayBuffer(file);
-                return false;
+				gui.loading();
+				inner();
+				return false;
             }});
         }
     

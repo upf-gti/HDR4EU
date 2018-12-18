@@ -28,6 +28,9 @@ Tonemapper.prototype.apply = function(input, output)
 	if(!shader)
 	throw('Shader missing');	
 
+	if(!input)
+	throw('Input texture missing');	
+
     // Join renderer uniforms with own uniforms
 	var uniforms = Object.assign(renderer._uniforms, this.uniforms);
 

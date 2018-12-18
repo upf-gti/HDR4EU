@@ -39,7 +39,6 @@ function init()
     camera = CORE.controller._camera;
     
     // declare renderer uniforms
-    renderer._uniforms['u_viewport'] = gl.viewport_data;
     renderer._uniforms["u_rotation"] = 0.0;
     renderer._uniforms["u_exposure"] = 0.0;
     renderer._uniforms["u_offset"] = 0.0;
@@ -63,22 +62,23 @@ function init()
     // set param macros
     default_shader_macros[ 'INPUT_TEX_WIDTH' ] = gl.viewport_data[2];
     default_shader_macros[ 'INPUT_TEX_HEIGHT' ] = gl.viewport_data[3];
+	default_shader_macros[ 'PIXEL_OFFSET' ] = 30;
 	default_shader_macros[ 'EM_SIZE' ] = 1; // no parsing at initialization
-    
+
     // initialize some global parameters 
     window.glow = true;
     window.iterations = 8;
     window.threshold = 10.0;
     window.intensity = 1.0;
     
-    renderer.context.ondraw = () => CORE.render();
-    renderer.context.onupdate = (dt) => CORE.update(dt);
+    renderer.context.ondraw = function(){ CORE.render() };
+    renderer.context.onupdate = function(dt){ CORE.update(dt) };
 
     renderer.context.animate();
     window.onresize = resize;
 
     // get response from files.php and init app
-    $.get("files.php", (data) => onread(data));
+    $.get("files.php", function(data){ onread(data) });
 }
 
 function onread( data )
@@ -92,7 +92,7 @@ function onread( data )
         HDRTool.brdf( 'brdfIntegrator');
         
         gui.init(); // init gui
-        CORE.set( textures_folder + "vondelpark.hdre" );
+        CORE.set( textures_folder + "whipple_creek.hdre" );
 
     }, default_shader_macros);
 }

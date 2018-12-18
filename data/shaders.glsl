@@ -16,12 +16,15 @@ fromPanoramic screen_shader.vs fromPanoramic.fs
 
 // Texture FX Shaders
 glow screen_shader.vs glow.fs
+maxlumtest screen_shader.vs maxlumtest.fs
+liteluminance screen_shader.vs liteluminance.fs
 luminance screen_shader.vs luminance.fs
 average screen_shader.vs average.fs
 
 // PBR Shaders
 brdfIntegrator brdf.vs brdf.fs
 pbr pbr.vs pbr.fs
+	
 
 //
 // Default vertex shader 
@@ -82,7 +85,83 @@ pbr pbr.vs pbr.fs
 // Luminance shader
 //
 
+\maxlumtest.fs
+
+precision highp float;
+	
+	uniform sampler2D u_texture;
+	varying vec2 v_coord;
+	
+	#ifdef INPUT_TEX_WIDTH
+		const float width = float(INPUT_TEX_WIDTH);
+	#endif
+	#ifdef INPUT_TEX_HEIGHT
+		const float height = float(INPUT_TEX_HEIGHT);
+	#endif
+
+	const float blockSize = 16.0;
+
+	void main() {
+		
+		float max = -1.0;
+		
+		for(float i = 0.5; i < width; i+=20.0)
+		for(float j = 0.5; j < height; j+=20.0)
+		{
+			vec2 coord = vec2(i, j) / vec2(width, height);
+			vec4 pixelColor = texture2D(u_texture, coord );
+			
+			float lum = 0.2126 * pixelColor.r + 0.7152 * pixelColor.g + 0.0722 * pixelColor.b;
+			
+			if(lum > max)
+				max = lum;
+		}
+
+		vec4 color = vec4(max,0.0, 0.0, 0.0);
+		gl_FragColor = color;
+	}
+
 \luminance.fs
+
+	precision highp float;
+	
+	uniform sampler2D u_texture;
+	uniform float u_mipmap_offset;
+	varying vec2 v_coord;
+	
+	void main() {
+		
+		int k = 0;
+		const float delta = 0.000001;
+		float sum = 0.0;
+		float maxLum = -1.0;
+		
+		const float width = float(256);
+		const float height = float(256);
+		
+		for(float i = 0.5; i < width; i++)
+		for(float j = 0.5; j < height; j++)
+		{
+			vec2 coord = vec2(i, j) / vec2(width, height);
+			vec4 pixelColor = texture2D(u_texture, coord);
+			
+			float lum = 0.2126 * pixelColor.r + 0.7152 * pixelColor.g + 0.0722 * pixelColor.b;
+			float logLum = log( lum + delta );
+			sum += logLum;
+			
+			if(lum > maxLum)
+				maxLum = lum;
+
+			k++;
+		}
+
+		vec4 color = vec4(sum) / float(k);
+		color.a = 1.0;//maxLum;*/
+
+		gl_FragColor = color;
+	}
+
+\liteluminance.fs
 
 	precision highp float;
 	
@@ -103,8 +182,12 @@ pbr pbr.vs pbr.fs
 			const float height = float(INPUT_TEX_HEIGHT);
 		#endif
 
-		for(float i = 0.5; i < width; i+=30.0)
-		for(float j = 0.5; j < height; j+=30.0)
+		#ifdef PIXEL_OFFSET
+			const float offset = float(PIXEL_OFFSET);
+		#endif
+
+		for(float i = 0.5; i < width; i+=offset)
+		for(float j = 0.5; j < height; j+=offset)
 		{
 			vec2 coord = vec2(i, j) / vec2(width, height);
 			vec4 pixelColor = texture2D(u_texture, coord );

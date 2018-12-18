@@ -3,6 +3,10 @@
 *   @jxarco 
 */
 
+var MAX_LUM_VALUES = [];
+var LOG_MEAN_VALUES = [];
+var SMOOTH_SHIFT = 100;
+
 function processDrop(e)
 {
     e.preventDefault();
@@ -71,7 +75,7 @@ function getPixelFromMouse(x, y)
     ];
 }
 
-function resize()
+async function resize()
 {
     if(!renderer)
     throw("no renderer: cannot set new dimensions");
@@ -95,6 +99,10 @@ function resize()
     CORE._viewport_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: gl.FLOAT, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
 
     camera.perspective(camera.fov, w / h, camera.near, camera.far);
+	
+	renderer._uniforms['u_viewport'] = gl.viewport_data;
+	default_shader_macros[ 'INPUT_TEX_WIDTH' ] = gl.viewport_data[2];
+    default_shader_macros[ 'INPUT_TEX_HEIGHT' ] = gl.viewport_data[3];
 }
 
 function guidGenerator( more ) {
@@ -270,7 +278,7 @@ function getDate()
 // glow effect (litegraph.js @javiagenjo) (https://github.com/jagenjo/litegraph.js/blob/master/src/nodes/gltextures.js )
 function createGlow( tex, options )
 {
-    if(!tex || gl.shaders["glow"])
+    if(!tex || !gl.shaders["glow"])
         return;	
 
     options = options || {
@@ -394,11 +402,18 @@ function createGlow( tex, options )
 // https://github.com/jagenjo/litegraph.js/blob/master/src/nodes/gltextures.js @jagenjo 
 function getFrameInfo( input )
 {
+	// check browser compatibility 
+	if (CORE && CORE.browser == 'safari')
+		throw( 'using safari' );
+
+	if(!input)
+        input = CORE._viewport_tex || null;
+
     var tex = input;
     if(!tex)
         return;    
 
-    var shader = gl.shaders['luminance'];
+    var shader = gl.shaders['liteluminance'];
 
     if(!shader)
         throw("no luminance shader");
@@ -434,22 +449,38 @@ function getFrameInfo( input )
         if(!renderer)
         return;
 
-		var logLumAvg = v[0];
-		var maxLum = v[3];
+		var logMean = Math.exp( v[0] );
+		var maxLum = v[3];			
+
+		MAX_LUM_VALUES.push( maxLum );
+		LOG_MEAN_VALUES.push( logMean );
+
+		var k = MAX_LUM_VALUES.length;
+
+		var smooth_maxlum = MAX_LUM_VALUES.reduce( function(e, r){ return e + r } ) / k;
+		var smooth_logmean = LOG_MEAN_VALUES.reduce( function(e, r){ return e + r } ) / k;
 		
-        renderer._uniforms['u_maxLum'] = maxLum;
-        renderer._uniforms['u_logMean'] = Math.exp( logLumAvg );
+		renderer._uniforms['u_maxLum'] = smooth_maxlum;
+        renderer._uniforms['u_logMean'] = smooth_logmean;
     }
 }
 
 /*
 	Down sample frame and get average 
 */
-function DS_Frame( input, use_mipmap )
+function downsampled_getaverage( input, use_mipmap )
 {
-    if(!input)
-        return;    
+	// check browser compatibility 
+	if (CORE && CORE.browser == 'safari')
+		throw( 'using safari' );
 
+    if(!input)
+        input = CORE._viewport_tex || null;
+	
+	if(!input)
+		throw('no valid input');
+
+	var use_mipmap = true;//use_mipmap !== null ? use_mipmap : true;
     var temp = null;
     var type = gl.FLOAT;
 
@@ -459,13 +490,15 @@ function DS_Frame( input, use_mipmap )
 	// manual downsampling
 	if( !use_mipmap ) {
 
-		var shader = gl.shaders['average'];
+		/*var shader = gl.shaders['average'];
 
 		if(!shader)
 			throw('no average shader');
 
 		var blockSize = getMagicNumber( input_width );
 		var blocks = input_width / blockSize;
+
+		console.log(blockSize, blocks);
 		
 		if(!temp || temp.type != type )
 			temp = new GL.Texture( blocks, input_height, { type: type, format: gl.RGBA, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
@@ -475,17 +508,22 @@ function DS_Frame( input, use_mipmap )
 		temp.drawTo(function(){
 			input.bind(0);
 			shader.toViewport( uniforms );
-		});
-
-		window.temp = temp;
+		});*/
 
 	}
 	
 	// mipmap version
 	else {
 	
+		var mipmap_level = 2;
 		var input_width = input.width;
-		var size = Math.pow(2, Math.floor(Math.log(input_width)/Math.log(2)));
+		var size = Math.pow(2, Math.floor(Math.log(input_width)/Math.log(2))) / Math.pow(2, mipmap_level);
+		size = 256;
+
+		var shader = gl.shaders['luminance'];
+
+		if(!shader)
+			throw("no luminance shader");
 
 		if(!temp || temp.type != type )
 			temp = new GL.Texture( size, size, { type: type, format: gl.RGBA, minFilter: gl.LINEAR_MIPMAP_LINEAR });
@@ -498,15 +536,45 @@ function DS_Frame( input, use_mipmap )
 		gl.generateMipmap(gl.TEXTURE_2D);
 		temp.unbind(0);
 
-		var a = input.getPixels();
-		var b = temp.getPixels(0, 1);
-		console.log(a);
-		console.log(b);
-		window.temp = temp;
+		var pixelColor = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
 
+		var properties = { mipmap_offset: 0, low_precision: false };
+		var uniforms = { u_mipmap_offset: properties.mipmap_offset };
+
+		pixelColor.drawTo(function(){
+			temp.toViewport( shader, uniforms );
+		});
+
+		var pixel = pixelColor.getPixels();
+		if(pixel)
+		{
+			var v = new Float32Array(4);
+			var type = temp.type;
+			v.set( pixel );
+			if(type == gl.UNSIGNED_BYTE)
+				vec4.scale( v,v, 1/255 );
+			else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
+				vec4.scale( v,v, 1/(255*255) ); //is this correct?
+
+			var renderer = CORE._renderer;
+
+			if(!renderer)
+			return;
+
+			var logMean = Math.exp( v[0] );
+			LOG_MEAN_VALUES.push( logMean );
+
+			var k = LOG_MEAN_VALUES.length;
+
+			if(k > SMOOTH_SHIFT)
+			LOG_MEAN_VALUES.shift();
+
+			var smooth_logmean = LOG_MEAN_VALUES.reduce( function(e, r){ return e + r } ) / k;
+			renderer._uniforms['u_logMean'] = smooth_logmean;
+		}
+		
 	}
 
-	return temp;
 }
 
 function getMagicNumber( n )
@@ -525,6 +593,86 @@ function getMagicNumber( n )
 	}
 
 	return 1;
+}
+
+/*
+	Frame per blocks and get max
+*/
+function perblock_getmax( input )
+{
+	// check browser compatibility 
+	if (CORE && CORE.browser == 'safari')
+		throw( 'using safari' );
+
+    if(!input)
+        input = CORE._viewport_tex || null;
+	
+	if(!input)
+		throw('no valid input');
+
+    var temp = null;
+    var type = gl.FLOAT;
+
+	var input_width = input.width;
+	var input_height = input.height;
+	var blockSize = 16;
+
+	var shader = gl.shaders['maxlumtest'];
+
+	if(!shader)
+		throw("no max luminance shader");
+
+	if(!temp || temp.type != type )
+		temp = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
+
+	var uniforms = {};
+
+	temp.drawTo(function(){
+		input.toViewport(shader, uniforms);
+	});
+
+	var pixel = temp.getPixels();
+	if(pixel)
+	{	
+		var v = new Float32Array(4);
+		var type = temp.type;
+		v.set( pixel );
+		if(type == gl.UNSIGNED_BYTE)
+			vec4.scale( v,v, 1/255 );
+		else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
+			vec4.scale( v,v, 1/(255*255) ); //is this correct?
+
+		var renderer = CORE._renderer;
+
+		if(!renderer)
+		return;
+
+		var maxLum = v[0];			
+		MAX_LUM_VALUES.push( maxLum );
+
+		var k = MAX_LUM_VALUES.length;
+
+		if(k > SMOOTH_SHIFT)
+		MAX_LUM_VALUES.shift();
+	
+		var smooth_maxlum = MAX_LUM_VALUES.reduce( function(e, r){ return e + r } ) / k;
+		renderer._uniforms['u_maxLum'] = smooth_maxlum;
+	}
+
+}
+
+function info_check()
+{
+	var myToneMapper = CORE._tonemappers[ WS.Components.FX.tonemapping ];
+	var fs = myToneMapper.constructor.Uniforms;
+
+
+	if (fs.includes('u_maxLum') || fs.includes('u_logMean'))
+	{
+		return true;
+	}
+
+	return false;
 }
 
 function size( object )
