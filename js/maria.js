@@ -49,7 +49,7 @@ function ExponentialTonemapper()
     this.uniforms = {};
     this.params = {
         'Brightness': {
-            value: 0.35,
+            value: 0.15,
             options: {
                 min: 0.01,
                 max: 1.5,
