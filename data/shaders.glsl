@@ -13,6 +13,7 @@ blur blur.vs blur.fs
 defblur defblur.vs defblur.fs
 fromSphere screen_shader.vs fromSphere.fs
 fromPanoramic screen_shader.vs fromPanoramic.fs
+mirror default.vs mirroredSphere.fs
 
 // Texture FX Shaders
 glow screen_shader.vs glow.fs
@@ -246,6 +247,36 @@ precision highp float;
 		}*/
 
 		gl_FragColor = color;
+	}
+
+//
+// Reflect environment to an sphere (+ Exposure)
+//
+
+\mirroredSphere.fs
+
+	precision highp float;
+	varying vec3 v_wPosition;
+	varying vec3 v_wNormal;
+	uniform vec4 u_color;
+	uniform vec3 u_camera_position;
+	uniform samplerCube u_color_texture;
+
+	void main() {
+
+		vec3 E = v_wPosition - u_camera_position;
+		E = normalize(E);
+
+		// r = 2n(n · v) − v
+		vec3 n = normalize(v_wNormal);
+
+		vec3 w0 = E;
+		vec3 wr = 2.0 * dot(n, w0) * n;
+		wr -= w0;
+		wr = normalize(wr);
+
+		vec4 color = textureCube(u_color_texture, wr);
+		gl_FragColor = u_color * color;
 	}
 
 //

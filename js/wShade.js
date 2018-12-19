@@ -612,7 +612,8 @@
         var tex = new GL.Texture(512,512,{
             texture_type: gl.TEXTURE_CUBE_MAP,
             filter: gl.LINEAR,
-            format: gl.RGB
+            format: gl.RGB,
+			type: gl.FLOAT
         });
 
         tex.drawTo(function(f, l) {
@@ -633,7 +634,7 @@
         gl.textures[":atmos"] = tex;
 
         if(oncomplete)
-            oncomplete();
+           oncomplete();
     }
 
     /**
@@ -1271,8 +1272,10 @@
                 if(!gl.shaders['atmos']) LiteGUI.showMessage("Error: shader missing", {title: "App info"});
                 else
                 {
+					var old_shader = CORE.cubemap.shader;
                     CORE.cubemap.shader = "atmos";
                     CORE.cubemapToTexture( function() { CORE.set(":atmos", {no_free_memory: true}) });
+					CORE.cubemap.shader = old_shader;
                 }
             }});
             widgets.addButton(null, "Update", {callback: function(){
@@ -1352,10 +1355,12 @@
 					{
 						var tm = selected_tonemapper.params[p];
 						var options = tm.options || {};
+						var value = tm.value;
 
-						renderer._uniforms[ 'u_'+p ] = tm.value; 
+						if(!renderer._uniforms[ 'u_'+p ])
+							renderer._uniforms[ 'u_'+p ] = value; 
 
-						widgets.addSlider(p, tm.value, {min:options.min || 0,max:options.max||1,step:options.step||0.1,name_width: '50%', callback: function(v) {  
+						widgets.addSlider(p, renderer._uniforms[ 'u_'+p ], {min:options.min || 0,max:options.max||1,step:options.step||0.1,name_width: '50%', callback: function(v) {  
 							renderer._uniforms[ 'u_'+p ] = v; 
 						}});
 					}
