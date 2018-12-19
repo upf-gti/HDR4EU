@@ -238,6 +238,12 @@
 			return 'firefox';
 	}
 
+	Core.prototype.mobile = function()
+	{
+		if(isMobile)
+			return isMobile();
+	}
+
 	window.browser = Core.prototype.browser;
 
 	var userAgent = (navigator && navigator.userAgent || '').toLowerCase();
@@ -265,6 +271,11 @@
 	{
 		var match = userAgent.match(/(?:firefox|fxios)\/(\d+)/);
         return match !== null;
+	}
+
+	var isMobile = function()
+	{
+        return /android/.test(userAgent) || /mobile/.test(userAgent);
 	}
 
     Object.defineProperty(Core.prototype, 'cubemap', {
@@ -1162,6 +1173,10 @@
 
         mainmenu.add("File/Save scene", { callback: function() { that.onExport() } });
         mainmenu.add("File/Load scene", { callback: function() { that.onImport() } });
+		mainmenu.add("File/Allow drop", { type: "checkbox", instance: this, property: "_allow_drop"});
+
+		mainmenu.add("Scene/Add Primitive/Sphere", { callback: function() { CORE.addPrimitive('sphere'); } });
+		mainmenu.add("Scene/Add Primitive/Cube", { callback: function() { CORE.addPrimitive('cube'); } });
 
         mainmenu.add("View/FPS counter", { type: "checkbox", instance: this, property: "_fps_enable", callback: function() { 
             if(!that._fps_enable) that.closeFPS();
@@ -1178,7 +1193,6 @@
             that.updateSidePanel(that._sidepanel, 'root');
         }});
         
-        mainmenu.add("Actions/Allow drop", { type: "checkbox", instance: this, property: "_allow_drop"});
         mainmenu.add("Actions/Reload shaders", { callback: function() { CORE.reloadShaders() } });
         mainmenu.add("Actions/Get Environment (HDRE)", { callback: function() { HDRTool.getSkybox( CORE._environment ) } });
         mainmenu.add("Actions/Get Mesh (wBin)", { callback: function() {
@@ -1237,8 +1251,6 @@
         //side panel widget
         var widgets = new LiteGUI.Inspector();
         $(root.content).append(widgets.root);
-
-        widgets.addSeparator();
 
         // update inspector depending on the tree item_selected 
         // put this apart (insane code in one function!!!!!)
@@ -2109,6 +2121,9 @@
             }
         }
 
+		ctx.captureTouch(true);
+
+
         ctx.onmousewheel = function(e)
         {
             if(!e.wheel)
@@ -2117,6 +2132,7 @@
             var amount =  (1 + e.delta * -w);
             changeCameraDistance(amount, camera);
         }
+
         ctx.onmousedown = function(e){
         
             if(e.leftButton )

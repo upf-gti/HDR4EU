@@ -2,6 +2,8 @@
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<meta name="viewport" 
+  content="width=device-width, initial-scale=1.0, user-scalable=no">
 
 <title>GTI-UPF/HDR4EU Demo</title>
 <!-- <link rel="stylesheet" href="css/bootstrap.min.css"> -->
@@ -46,6 +48,21 @@
 </body>
 
     
+	<script>
+		
+		var userAgent = (navigator && navigator.userAgent || '').toLowerCase();
+		if(!/android/.test(userAgent) && !/mobile/.test(userAgent))
+		{
+			var script = document.createElement( 'script' );
+			script.type = 'text/javascript';
+			script.src = 'js/lib/tinyexr.js';
+			document.body.appendChild( script ); 
+		}
+		
+		
+	</script>
+
+
 	<!-- Libs -->
 	<script type="text/javascript" src="js/lib/jquery.min.js"></script>
 	<script type="text/javascript" src="js/lib/bootstrap.min.js"></script>
@@ -58,7 +75,7 @@
 	<script type="text/javascript" src="js/lib/litegraph.js"></script>
 	<script type="text/javascript" src="js/lib/importer.js"></script>
     <script type="text/javascript" src="js/lib/dat.gui.min.js"></script>
-	<script type="text/javascript" src="js/lib/tinyexr.js"></script>
+	<!--<script type="text/javascript" src="js/lib/tinyexr.js"></script> -->
 	<script type="text/javascript" src="js/lib/rendeer.js"></script>
 	<script type="text/javascript" src="https://webglstudio.org/users/arodriguez/libs/HDRTool.js"></script>
 	<script type="text/javascript" src="https://webglstudio.org/users/arodriguez/libs/hdre.js"></script>

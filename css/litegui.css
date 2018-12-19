@@ -12,6 +12,12 @@
 	-moz-user-select: none;
 	-webkit-user-select: none;
 	*/
+	height: calc( 100% - 25px );
+	overflow: scroll;
+}
+
+.inspector::-webkit-scrollbar {
+display: none;
 }
 
 .inspector.one_line {
@@ -799,7 +805,10 @@ div {
 
 .litepanel .content::-webkit-scrollbar { 
     display: none !important; 
+	/*width: 4px;
+	border-radius: 4px;*/
 }
+
 
 .litedialog {
 	position: absolute;
@@ -839,9 +848,9 @@ div {
 	-moz-user-select: none;  
 	-webkit-user-select: none;  
 	user-select: none; 
-	overflow: hidden;
+	/*overflow: hidden;*/
 	padding: 6px;
-	border-top: 2px solid #aaaaff;
+	/*border-top: 2px solid #aaaaff;*/
 }
 
 .litepanel .panel-header button, .litedialog .panel-header button {
@@ -865,8 +874,8 @@ div {
 }
 
 .litepanel .content {
-	/*overflow: auto; */
-	height: calc( 100% - 20px );
+	overflow: hidden !important;
+	height: calc( 100% - 15px );
 }
 
 
@@ -1344,6 +1353,11 @@ a:hover {
 
 #menu-bar {
 	background-color: #3d3d3d; 
+}	
+
+#mainmenubar {
+	background-color: #3d3d3d; 
+	/*border-bottom: 1px solid #afafaf;*/
 }
 
 .litemenubar ul {
@@ -1689,6 +1703,17 @@ button.litebutton.close-button {
 
 /**** LiteTree ***/
 
+.litetree{
+
+	height: 125px;
+	overflow: scroll;
+}
+
+.litetree::-webkit-scrollbar{
+
+	display: none;
+}
+
 li.ltreeitem {
 	list-style-type: none;
 	cursor: pointer;
@@ -1956,7 +1981,7 @@ ul.file-list li.file-item span.info {
 }
 
 .litesplitbar {
-	background-color: #222;
+	background-color: #8a8a8a;
 	display: inline-block;
 }
 
@@ -1969,8 +1994,9 @@ ul.file-list li.file-item span.info {
 
 .litesplitbar.horizontal {
 	cursor: e-resize;
-	width: 2px;
+	width: 5px !important;
 	height: 100%;
+/*	border-left: 1px solid #afafaf;*/
 }
 
 .litesplitbar.vertical {

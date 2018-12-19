@@ -1,3 +1,8 @@
+#canvasarea{
+	
+	border-top: 1px solid #8a8a8a;
+}
+
 .canvas-message{
 
 	position: absolute;
@@ -52,34 +57,6 @@
   text-align: center;
   background-color: rgba(0, 0, 0, 0.5);
   z-index: 10;
-}
-
-#prog_0, #prog_1, #prog_2, #prog_3, #prog_4{
-  position: absolute !important; 
-  width: 0%; 
-  z-index: 1096;
-  height: 3px; 
-  background-color: #FFF !important; 
-}
-
-#prog_1{
-  background-color: #DDD !important; 
-  z-index: 1097;
-}
-
-#prog_2{
-  background-color: #BBB !important; 
-  z-index: 1098;
-}
-
-#prog_3{
-  background-color: #999 !important; 
-  z-index: 1099;
-}
-
-#prog_4{
-  background-color: #777 !important; 
-  z-index: 1100;
 }
 
 #canvasarea{
