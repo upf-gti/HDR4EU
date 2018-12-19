@@ -92,7 +92,7 @@ function onread( data )
         HDRTool.brdf( 'brdfIntegrator');
         
         gui.init(); // init gui
-        CORE.set( textures_folder + "whipple_creek.hdre" );
+        CORE.set( textures_folder + "fireplace.hdre" );
 
     }, default_shader_macros);
 }
