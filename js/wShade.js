@@ -1141,7 +1141,7 @@
 
         var canvas = renderer.canvas;
         this._mainarea.onresize = function() {
-            var w = that._mainarea.root.clientWidth - that._sidepanel.root.clientWidth - 4;
+            var w = that._mainarea.root.clientWidth - that._sidepanel.root.clientWidth - 3;
             var h = that._mainarea.root.clientHeight;
             resize(renderer, [w, h], camera);
         };
@@ -1215,8 +1215,8 @@
 
     GUI.prototype.createSidePanel = function()
     {
-        this._mainarea.split("horizontal",[null,300],true);
-        var docked = new LiteGUI.Panel("right_panel", {title:'Scene nodes', close: true, scroll: true});
+        this._mainarea.split("horizontal",[null,350],true);
+        var docked = new LiteGUI.Panel("right_panel", {title:'Scene nodes', scroll: true});
         this._mainarea.getSection(1).add( docked );
         $(docked).bind("closed", function() { this._mainarea.merge(); });
         this._sidepanel = docked;

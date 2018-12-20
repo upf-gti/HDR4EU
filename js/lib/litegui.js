@@ -2786,7 +2786,7 @@ LiteGUI.Console = Console;
 	Area.VERTICAL = "vertical";
 	Area.HORIZONTAL = "horizontal";
 
-	Area.splitbar_size = 4;
+	Area.splitbar_size = 6;
 
 	/* get container of the section */
 	Area.prototype.getSection = function(num)
@@ -2897,7 +2897,7 @@ LiteGUI.Console = Console;
 		var dynamic_section = null;
 		if(editable)
 		{
-			splitinfo = " - " + (Area.splitbar_size + 2) +"px"; //2 px margin �?
+			splitinfo = " - " + (Area.splitbar_size) +"px"; //2 px margin �?
 			splitbar = document.createElement("div");
 			splitbar.className = "litesplitbar " + direction;
 			if(direction == "vertical")

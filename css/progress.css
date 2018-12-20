@@ -1,6 +1,7 @@
 #canvasarea{
 	
 	border-top: 1px solid #8a8a8a;
+	border-left: 1px solid #8a8a8a;
 }
 
 .canvas-message{
