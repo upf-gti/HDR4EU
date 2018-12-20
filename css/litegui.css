@@ -1704,7 +1704,7 @@ button.litebutton.close-button {
 
 .litetree{
 
-	height: 125px;
+	/*height: 125px;*/
 	overflow: scroll;
 }
 

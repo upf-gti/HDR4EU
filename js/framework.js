@@ -100,7 +100,7 @@ async function resize()
 
     camera.perspective(camera.fov, w / h, camera.near, camera.far);
 	
-	renderer._uniforms['u_viewport'] = gl.viewport_data;
+	CORE.setUniform('u_viewport', gl.viewport_data);
 	default_shader_macros[ 'INPUT_TEX_WIDTH' ] = gl.viewport_data[2];
     default_shader_macros[ 'INPUT_TEX_HEIGHT' ] = gl.viewport_data[3];
 }
@@ -444,9 +444,7 @@ function getFrameInfo( input )
         else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
             vec4.scale( v,v, 1/(255*255) ); //is this correct?
 
-        var renderer = CORE._renderer;
-
-        if(!renderer)
+        if(!CORE)
         return;
 
 		var logMean = Math.exp( v[0] );
@@ -460,8 +458,8 @@ function getFrameInfo( input )
 		var smooth_maxlum = MAX_LUM_VALUES.reduce( function(e, r){ return e + r } ) / k;
 		var smooth_logmean = LOG_MEAN_VALUES.reduce( function(e, r){ return e + r } ) / k;
 		
-		renderer._uniforms['u_maxLum'] = smooth_maxlum;
-        renderer._uniforms['u_logMean'] = smooth_logmean;
+		CORE.setUniform('u_maxLum', smooth_maxlum);
+        CORE.setUniform('u_logMean', smooth_logmean);
     }
 }
 
@@ -556,9 +554,7 @@ function downsampled_getaverage( input, use_mipmap )
 			else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
 				vec4.scale( v,v, 1/(255*255) ); //is this correct?
 
-			var renderer = CORE._renderer;
-
-			if(!renderer)
+			if(!CORE)
 			return;
 
 			var logMean = Math.exp( v[0] );
@@ -570,7 +566,7 @@ function downsampled_getaverage( input, use_mipmap )
 			LOG_MEAN_VALUES.shift();
 
 			var smooth_logmean = LOG_MEAN_VALUES.reduce( function(e, r){ return e + r } ) / k;
-			renderer._uniforms['u_logMean'] = smooth_logmean;
+			CORE.setUniform('u_logMean', smooth_logmean);
 		}
 		
 	}
@@ -642,9 +638,7 @@ function perblock_getmax( input )
 		else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
 			vec4.scale( v,v, 1/(255*255) ); //is this correct?
 
-		var renderer = CORE._renderer;
-
-		if(!renderer)
+		if(!CORE)
 		return;
 
 		var maxLum = v[0];			
@@ -656,7 +650,7 @@ function perblock_getmax( input )
 		MAX_LUM_VALUES.shift();
 	
 		var smooth_maxlum = MAX_LUM_VALUES.reduce( function(e, r){ return e + r } ) / k;
-		renderer._uniforms['u_maxLum'] = smooth_maxlum;
+		CORE.setUniform('u_maxLum', smooth_maxlum);
 	}
 
 }

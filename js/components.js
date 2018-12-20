@@ -1,7 +1,7 @@
 
 /*
 	List of components to use in the app
-	Show them in the gui
+	global components or gui components
 */
 
 function Tonemapper()
@@ -11,8 +11,6 @@ function Tonemapper()
 
     this.uniforms = {};
 }
-
-WS.Tonemapper = Tonemapper;
 
 Tonemapper.prototype.apply = function(input, output)
 {
@@ -69,3 +67,64 @@ Tonemapper.prototype.injectCode = function( base_class )
 
     return fs_code;
 }
+
+Tonemapper.prototype.setParam = function ( name, value )
+{
+	
+	this.params[name].value = value;
+
+}
+
+// *****************************************************************************
+//				bon nadal
+// *****************************************************************************
+
+
+function Light()
+{
+    if(this.constructor !== Light)
+        throw("Use new");
+	
+
+	this.position = vec3.fromValues(1, 5, 1);
+	this.color = [1, 1, 1];
+	this.intensity = 0;
+}
+
+CORE.registerComponent( Light, 'Light');
+
+function NodePicker()
+{
+    if(this.constructor !== NodePicker)
+        throw("Use new");
+	
+}
+
+CORE.registerComponent( NodePicker, 'NodePicker');
+
+/*
+	GUI components
+*/
+
+
+function SFX()
+{
+    if(this.constructor !== SFX)
+        throw("Use new");
+	
+	this.exposure = 0;
+	this.offset= 0;
+
+	this.glow_enable = false;
+	this.glow_intensity = 1;
+	this.glow_threshold = 25;
+	this.glow_iterations = 8;
+
+	this.fxaa = true;
+
+	this.tonemapping = "Reinhard";
+    
+}
+
+CORE.registerComponent( SFX, 'Screen FX');
+

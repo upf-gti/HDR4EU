@@ -26,6 +26,7 @@ function init()
     canvas.addEventListener("webglcontextlost", function(event) {
         event.preventDefault();
         console.error('Context lost');
+	    console.error(event);
     }, false);
 
     canvas.ondragover = () => {return false};
@@ -39,25 +40,23 @@ function init()
     camera = CORE.controller._camera;
     
     // declare renderer uniforms
-    renderer._uniforms["u_rotation"] = 0.0;
-    renderer._uniforms["u_exposure"] = 0.0;
-    renderer._uniforms["u_offset"] = 0.0;
-    renderer._uniforms["u_channel"] = 0.0;
-    renderer._uniforms["u_enable_ao"] = true;
-    renderer._uniforms["u_correctAlbedo"] = true;
-    renderer._uniforms["u_ibl_intensity"] = 1.0;
-
-    renderer._uniforms["u_albedo"] = vec3.fromValues( 1, 1, 1);
-
-    renderer._uniforms["u_near"] = camera.near;
-    renderer._uniforms["u_far"] = camera.far;
+    CORE.setUniform("near", camera.near);
+    CORE.setUniform("far", camera.far);
+	CORE.setUniform("rotation", 0.0);
+    CORE.setUniform("exposure", 0.0);
+    CORE.setUniform("offset", 0.0);
+    CORE.setUniform("channel", 0.0);
+    CORE.setUniform("enable_ao", true);
+    CORE.setUniform("correctAlbedo", true);
+    CORE.setUniform("ibl_intensity", 1.0);
+    CORE.setUniform("albedo", vec3.fromValues( 1, 1, 1));
     
     // Atmospherical Scattering
-    renderer._uniforms['u_SunPos'] = 0.4;
-    renderer._uniforms['u_SunIntensity'] = 22.0;
-    renderer._uniforms["u_MieDirection"] = 0.76;
-    renderer._uniforms['u_originOffset'] = 0.0;
-    renderer._uniforms['u_MieCoeff'] = 21;
+    CORE.setUniform('SunPos', 0.4);
+    CORE.setUniform('SunIntensity', 22.0);
+    CORE.setUniform("MieDirection", 0.76);
+    CORE.setUniform('originOffset', 0.0);
+    CORE.setUniform('MieCoeff', 21);
 
     // set param macros
     default_shader_macros[ 'INPUT_TEX_WIDTH' ] = gl.viewport_data[2];

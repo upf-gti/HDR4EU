@@ -22,8 +22,6 @@ function No_Tonemapper()
     this.uniforms = {};
 }
 
-No_Tonemapper.Name = "None";
-
 No_Tonemapper.Uniforms = `
 
 `;    
@@ -33,7 +31,7 @@ No_Tonemapper.Code = `
 
 `;
 
-CORE.registerTonemapper( No_Tonemapper );
+CORE.registerTonemapper( No_Tonemapper, 'None' );
 
 /**
  * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -47,8 +45,6 @@ function ReinhardTonemapper()
 	this.uniforms = {};
 }
 
-ReinhardTonemapper.Name = "Reinhard";
-
 ReinhardTonemapper.Uniforms = `
 
 `;    
@@ -59,7 +55,7 @@ ReinhardTonemapper.Code = `
 
 `;
 
-CORE.registerTonemapper( ReinhardTonemapper );
+CORE.registerTonemapper( ReinhardTonemapper, 'Reinhard' );
 
 /**
  * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -78,8 +74,6 @@ function AtmosTonemapper()
     };
 }
 
-AtmosTonemapper.Name = "Atmos";
-
 AtmosTonemapper.Uniforms = `
     
     uniform float u_scale;
@@ -92,7 +86,7 @@ AtmosTonemapper.Code = `
 
 `;
 
-CORE.registerTonemapper( AtmosTonemapper );
+CORE.registerTonemapper( AtmosTonemapper, 'Atmos');
 /**
  * xxxxxxxxx LOGARITHMIC TONE MAPPER xxxxxxxxxxx
  */
@@ -106,8 +100,6 @@ function LogarithmicTonemapper()
         //u_maxLum: renderer._uniforms['u_maxLum']
     };
 }
-
-LogarithmicTonemapper.Name = 'Logarithmic';
 
 LogarithmicTonemapper.Uniforms = `
 
@@ -128,7 +120,7 @@ LogarithmicTonemapper.Code = `
     color = color.rgb * lum_TM/lum;
 `;
 
-CORE.registerTonemapper( LogarithmicTonemapper );
+CORE.registerTonemapper( LogarithmicTonemapper, 'Logarithmic' );
 
 
 /**
@@ -153,8 +145,6 @@ function ExponentialTonemapper()
     };
 }
 
-ExponentialTonemapper.Name = 'Exponential';
-
 ExponentialTonemapper.Uniforms = `
     uniform float u_logMean;
     uniform float u_Brightness;
@@ -169,7 +159,7 @@ ExponentialTonemapper.Code = `
     color = color.rgb * lum_TM/lum;
 `;
 
-CORE.registerTonemapper( ExponentialTonemapper );
+CORE.registerTonemapper( ExponentialTonemapper, 'Exponential' );
 
 /**
  * xxxxxx PHOTOGRAPHIC TONE REPRODUCTION xxxxxxxx
@@ -193,8 +183,6 @@ function PTRTonemapper()
     };
 }
 
-PTRTonemapper.Name = 'PTR';
-
 PTRTonemapper.Uniforms = `
     uniform float u_logMean;
     uniform float u_maxLum;
@@ -215,5 +203,5 @@ PTRTonemapper.Code = `
     color = color.rgb * lum_TM/lum;
 `;
 
-CORE.registerTonemapper( PTRTonemapper );
+CORE.registerTonemapper( PTRTonemapper, 'PTR' );
 
