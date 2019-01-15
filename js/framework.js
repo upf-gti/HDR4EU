@@ -5,7 +5,7 @@
 
 var MAX_LUM_VALUES = [];
 var LOG_MEAN_VALUES = [];
-var SMOOTH_SHIFT = 100;
+var SMOOTH_SHIFT = 75;
 
 function processDrop(e)
 {
@@ -56,25 +56,6 @@ function includes(str, find)
             return true;
 }
 
-function getPixelFromMouse(x, y)
-{
-    if(x == null || y == null) throw('No mouse'); 
-
-    var WIDTH = CORE._viewport_tex.width;
-    var HEIGHT = CORE._viewport_tex.height;
-
-	y = HEIGHT - y;
-
-    var pixel = 4 * (y * WIDTH + x);
-
-    return [
-        CORE._viewport_tex.getPixels()[pixel],
-        CORE._viewport_tex.getPixels()[pixel+1],
-        CORE._viewport_tex.getPixels()[pixel+2],
-        CORE._viewport_tex.getPixels()[pixel+3],
-    ];
-}
-
 async function resize()
 {
     if(!renderer)
@@ -100,7 +81,7 @@ async function resize()
 
     camera.perspective(camera.fov, w / h, camera.near, camera.far);
 	
-	CORE.setUniform('u_viewport', gl.viewport_data);
+	CORE.setUniform('viewport', gl.viewport_data);
 	default_shader_macros[ 'INPUT_TEX_WIDTH' ] = gl.viewport_data[2];
     default_shader_macros[ 'INPUT_TEX_HEIGHT' ] = gl.viewport_data[3];
 }
@@ -400,73 +381,11 @@ function createGlow( tex, options )
 }
 
 // https://github.com/jagenjo/litegraph.js/blob/master/src/nodes/gltextures.js @jagenjo 
-function getFrameInfo( input )
-{
-	// check browser compatibility 
-	if (CORE && CORE.browser == 'safari')
-		throw( 'using safari' );
-
-	if(!input)
-        input = CORE._viewport_tex || null;
-
-    var tex = input;
-    if(!tex)
-        return;    
-
-    var shader = gl.shaders['liteluminance'];
-
-    if(!shader)
-        throw("no luminance shader");
-
-    var temp = null;
-    var type = gl.UNSIGNED_BYTE;
-    if(tex.type != type) //force floats, half floats cannot be read with gl.readPixels
-        type = gl.FLOAT;
-
-    if(!temp || temp.type != type )
-        temp = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
-
-    var properties = { mipmap_offset: 0, low_precision: false };
-    var uniforms = { u_mipmap_offset: properties.mipmap_offset };
-
-    temp.drawTo(function(){
-        tex.toViewport( shader, uniforms );
-    });
-
-    var pixel = temp.getPixels();
-    if(pixel)
-    {
-        var v = new Float32Array(4);
-        var type = temp.type;
-        v.set( pixel );
-        if(type == gl.UNSIGNED_BYTE)
-            vec4.scale( v,v, 1/255 );
-        else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
-            vec4.scale( v,v, 1/(255*255) ); //is this correct?
-
-        if(!CORE)
-        return;
-
-		var logMean = Math.exp( v[0] );
-		var maxLum = v[3];			
-
-		MAX_LUM_VALUES.push( maxLum );
-		LOG_MEAN_VALUES.push( logMean );
-
-		var k = MAX_LUM_VALUES.length;
-
-		var smooth_maxlum = MAX_LUM_VALUES.reduce( function(e, r){ return e + r } ) / k;
-		var smooth_logmean = LOG_MEAN_VALUES.reduce( function(e, r){ return e + r } ) / k;
-		
-		CORE.setUniform('u_maxLum', smooth_maxlum);
-        CORE.setUniform('u_logMean', smooth_logmean);
-    }
-}
 
 /*
 	Down sample frame and get average 
 */
-function downsampled_getaverage( input, use_mipmap )
+function downsampled_getaverage( input )
 {
 	// check browser compatibility 
 	if (CORE && CORE.browser == 'safari')
@@ -478,97 +397,66 @@ function downsampled_getaverage( input, use_mipmap )
 	if(!input)
 		throw('no valid input');
 
-	var use_mipmap = true;//use_mipmap !== null ? use_mipmap : true;
     var temp = null;
     var type = gl.FLOAT;
 
 	var input_width = input.width;
 	var input_height = input.height;
 		
-	// manual downsampling
-	if( !use_mipmap ) {
+	var mipmap_level = 2;
 
-		/*var shader = gl.shaders['average'];
+	var size = Math.pow(2, Math.floor(Math.log(input_width)/Math.log(2))) / Math.pow(2, mipmap_level);
+	size = 256;
 
-		if(!shader)
-			throw('no average shader');
+	var shader = gl.shaders['luminance'];
 
-		var blockSize = getMagicNumber( input_width );
-		var blocks = input_width / blockSize;
+	if(!shader)
+		throw("no luminance shader");
 
-		console.log(blockSize, blocks);
-		
-		if(!temp || temp.type != type )
-			temp = new GL.Texture( blocks, input_height, { type: type, format: gl.RGBA, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+	if(!temp || temp.type != type )
+		temp = new GL.Texture( size, size, { type: type, format: gl.RGBA, minFilter: gl.LINEAR_MIPMAP_LINEAR });
 
-		var uniforms = {};
+	temp.drawTo(function(){
+		input.toViewport();
+	});
 
-		temp.drawTo(function(){
-			input.bind(0);
-			shader.toViewport( uniforms );
-		});*/
+	temp.bind(0);
+	gl.generateMipmap(gl.TEXTURE_2D);
+	temp.unbind(0);
 
-	}
-	
-	// mipmap version
-	else {
-	
-		var mipmap_level = 2;
-		var input_width = input.width;
-		var size = Math.pow(2, Math.floor(Math.log(input_width)/Math.log(2))) / Math.pow(2, mipmap_level);
-		size = 256;
+	var pixelColor = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
 
-		var shader = gl.shaders['luminance'];
+	var properties = { mipmap_offset: 0, low_precision: false };
+	var uniforms = { u_mipmap_offset: properties.mipmap_offset };
 
-		if(!shader)
-			throw("no luminance shader");
+	pixelColor.drawTo(function(){
+		temp.toViewport( shader, uniforms );
+	});
 
-		if(!temp || temp.type != type )
-			temp = new GL.Texture( size, size, { type: type, format: gl.RGBA, minFilter: gl.LINEAR_MIPMAP_LINEAR });
+	var pixel = pixelColor.getPixels();
+	if(pixel)
+	{
+		var v = new Float32Array(4);
+		var type = temp.type;
+		v.set( pixel );
+		if(type == gl.UNSIGNED_BYTE)
+			vec4.scale( v,v, 1/255 );
+		else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
+			vec4.scale( v,v, 1/(255*255) ); //is this correct?
 
-		temp.drawTo(function(){
-			input.toViewport();
-		});
+		if(!CORE)
+		return;
 
-		temp.bind(0);
-		gl.generateMipmap(gl.TEXTURE_2D);
-		temp.unbind(0);
+		var logMean = Math.exp( v[0] );
+		LOG_MEAN_VALUES.push( logMean );
 
-		var pixelColor = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
+		var k = LOG_MEAN_VALUES.length;
 
-		var properties = { mipmap_offset: 0, low_precision: false };
-		var uniforms = { u_mipmap_offset: properties.mipmap_offset };
+		if(k > SMOOTH_SHIFT)
+		LOG_MEAN_VALUES.shift();
 
-		pixelColor.drawTo(function(){
-			temp.toViewport( shader, uniforms );
-		});
-
-		var pixel = pixelColor.getPixels();
-		if(pixel)
-		{
-			var v = new Float32Array(4);
-			var type = temp.type;
-			v.set( pixel );
-			if(type == gl.UNSIGNED_BYTE)
-				vec4.scale( v,v, 1/255 );
-			else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
-				vec4.scale( v,v, 1/(255*255) ); //is this correct?
-
-			if(!CORE)
-			return;
-
-			var logMean = Math.exp( v[0] );
-			LOG_MEAN_VALUES.push( logMean );
-
-			var k = LOG_MEAN_VALUES.length;
-
-			if(k > SMOOTH_SHIFT)
-			LOG_MEAN_VALUES.shift();
-
-			var smooth_logmean = LOG_MEAN_VALUES.reduce( function(e, r){ return e + r } ) / k;
-			CORE.setUniform('u_logMean', smooth_logmean);
-		}
-		
+		var smooth_logmean = LOG_MEAN_VALUES.reduce( function(e, r){ return e + r } ) / k;
+		CORE.setUniform('logMean', smooth_logmean);
 	}
 
 }
@@ -650,7 +538,7 @@ function perblock_getmax( input )
 		MAX_LUM_VALUES.shift();
 	
 		var smooth_maxlum = MAX_LUM_VALUES.reduce( function(e, r){ return e + r } ) / k;
-		CORE.setUniform('u_maxLum', smooth_maxlum);
+		CORE.setUniform('maxLum', smooth_maxlum);
 	}
 
 }

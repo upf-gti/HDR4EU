@@ -91,7 +91,7 @@ function onread( data )
         HDRTool.brdf( 'brdfIntegrator');
         
         gui.init(); // init gui
-        CORE.set( textures_folder + "fireplace.hdre" );
+        CORE.set( textures_folder + "studio.hdre" );
 
     }, default_shader_macros);
 }

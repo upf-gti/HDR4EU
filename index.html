@@ -5,11 +5,58 @@
 <meta name="viewport" 
   content="width=device-width, initial-scale=1.0, user-scalable=no">
 
-<title>GTI-UPF/HDR4EU Demo</title>
+<link rel="shortcut icon" type="image/png" href="data/favicon.png"/>
+
+<title>HDR4EU (GTI-UPF)</title>
 <!-- <link rel="stylesheet" href="css/bootstrap.min.css"> -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
 <link rel="stylesheet" href="css/litegui.css">
 <link rel="stylesheet" href="css/progress.css">
+
+<style>
+	
+	#canvas-tools {
+		position: absolute;
+		top: 50px;
+		left: 10px;
+		z-index: 5;
+	}
+
+	.tool-section {
+		user-select: none;
+		-moz-user-select: none;  
+		-webkit-user-select: none;  
+	}
+
+	.tool-button {
+		opacity: 0.9;
+		border-radius: 2px;
+		border: 1px solid #777;
+		color: #AAA;
+		background-color: #333;
+		min-width: 20px;
+		height: 20px;
+		line-height: 20px;
+		margin-right: 4px;
+		margin-bottom: 4px;
+		cursor:pointer;
+		background-position: center center;
+		background-repeat: no-repeat;
+		text-align: center;
+	}
+
+	.tool-button.enabled {
+		opacity: 1;
+		background-color: #BBE;
+		color: black;
+	}
+
+	.tool-button:hover {
+		background-color: rgb(30, 211, 111);
+		color: black;
+	}
+
+</style>
 
 </head>
 <body>
@@ -23,14 +70,14 @@
 
 		<div style="margin-top: 25vh; width: 100%;">
 
-			<img src="data/title_christmas.png" style="width: 50%;">
+			<img src="data/title.png" style="width: 25%;">
 			
 						
 		</div>
 
 	</div>
 
-	<div class="pixelPicker">
+	<div class="pixelPicker" style="display: none">
 		<!--<span id="pixelPickerColor"></span>-->
 		<span id="pixelPickerText"></span>
 		<span id="pixelPickerCoord">RGB</span>
@@ -38,6 +85,15 @@
 	</div>
 
 	<div id="log"></div>
+
+	<div id="canvas-tools">
+	
+		<div class="tool-section tool-section-manipulate">
+		
+			<div class="tool-button tool-colorpicker " title="Pick color" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-colorpicker.png)"></div>
+		</div>
+	
+	</div>
 	
 </body>
 
@@ -64,6 +120,7 @@
     <script type="text/javascript" src="js/lib/litegui.js"></script>
 	<script type="text/javascript" src="js/lib/gl-matrix-min.js"></script>
 	<script type="text/javascript" src="js/lib/litegl.js"></script>
+	<script type="text/javascript" src="js/lib/Canvas2DtoWebGL.js"></script>
 	<script type="text/javascript" src="js/lib/wbin.js"></script>
 	<script type="text/javascript" src="js/lib/litescene.js"></script>
 	<script type="text/javascript" src="js/lib/litegraph.js"></script>
@@ -76,8 +133,7 @@
 
 	<!-- Other scripts -->
     <script type="text/javascript" src="js/framework.js"></script>
-	<script type="text/javascript" src="js/wShade.js"></script>
-	<script type="text/javascript" src="js/old.js"></script>
+	<script type="text/javascript" src="js/core.js"></script>
 	<script type="text/javascript" src="js/scenes.js"></script>
 	<script type="text/javascript" src="js/init.js"></script>
 	<script type="text/javascript" src="js/components.js"></script>

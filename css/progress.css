@@ -29,12 +29,12 @@
   width: 30%;
   height: 15vh;
   padding: 6px;
-  bottom: 20px;
-  left: 20px;
+  bottom: 30px;
+  left: 5px;
   position: absolute;
   font-size: 13px;
   background-color: rgba(0, 0, 0, 0.4);
-  color: #AAF;
+  color: #5AF;
   z-index: 1;
   overflow: scroll;
   display: none;

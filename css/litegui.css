@@ -1408,15 +1408,16 @@ a:hover {
 
 .litemenu-entry .icon {
 	display: inline-block;
-	width: 10px;
-	height: 10px;
+	width: 7px;
+	height: 7px;
 	margin: 2px;
 	vertical-align: top;
 }
 
 .litemenu-entry.checked .icon {
 	background-color: #AAF;
-	margin-right: 8px; 
+	margin-right: 4px; 
+	margin-top: 5px; 
 }
 
 .litemenu-entry .more {
