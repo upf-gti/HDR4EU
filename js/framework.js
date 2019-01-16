@@ -262,10 +262,12 @@ function createGlow( tex, options )
     if(!tex || !gl.shaders["glow"])
         return;	
 
+	var SFXComponent = CORE.get('ScreenFX');
+
     options = options || {
-        iterations: window.iterations,
-        threshold: window.threshold,
-        intensity: window.intensity
+        iterations: SFXComponent.glow_iterations,
+        threshold: SFXComponent.glow_threshold,
+        intensity: SFXComponent.glow_intensity
     };
 
     var LGraphTextureGlow = LiteGraph.Nodes.LGraphTextureGlow;
@@ -545,7 +547,8 @@ function perblock_getmax( input )
 
 function info_check()
 {
-	var myToneMapper = CORE._tonemappers[ WS.Components.FX.tonemapping ];
+
+	var myToneMapper = CORE._tonemappers[ CORE.get('ScreenFX').tonemapping ];
 	var fs = myToneMapper.constructor.Uniforms;
 
 

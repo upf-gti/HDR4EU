@@ -362,16 +362,18 @@
 
         // Apply (or not) bloom effect
         var render_texture = this._viewport_tex; 
-		if( WS.Components.FX._glow_enable )
+		var SFXComponent = CORE.get("ScreenFX");
+
+		if( SFXComponent.glow_enable )
 			render_texture = createGlow( this._viewport_tex );
 
 		// Get tonemapper and apply ********************
 		// (exposure, offset, tonemapping, degamma)
-		var myToneMapper = this._tonemappers[ WS.Components.FX.tonemapping ];
+		var myToneMapper = this._tonemappers[ SFXComponent.tonemapping ];
 		myToneMapper.apply( render_texture, this._fx_tex ); 
 
 		// Apply antialiasing (FXAA)
-		if( WS.Components.FX._fxaa )
+		if( SFXComponent.fxaa )
 			this._fx_tex.toViewport( this.fxaa_shader );
 		else
 			this._fx_tex.toViewport();
@@ -865,15 +867,17 @@
     */
     Core.prototype.addLight = function()
     {
-        if(light) {
-            LiteGUI.alert("Only one light supported");
+        var LightComponent = CORE.get('Light');
+		
+		if(light || !LightComponent ) {
+            LiteGUI.alert("Error (Only one light supported, No light component)");
             return;
         }
 
         light = new RD.SceneNode();
         light.mesh = "sphere";
         light.name = "light";
-        light.position = WS.Components.LIGHT.position = [0, this._controller._camera.position[1]/2 + this.selected_radius, this.selected_radius ];
+        light.position = LightComponent.position = [0, this._controller._camera.position[1]/2 + this.selected_radius, this.selected_radius ];
         light.visible = true;
         light.color = [1, 1, 1, 1];
         light.scaling = 0.05;
@@ -1015,7 +1019,7 @@
             },
             descriptor: this._descriptor,
             uniforms: this._renderer._uniforms,
-            components: {FX: WS.Components.FX, LIGHT: WS.Components.LIGHT},
+            components: {FX: this.get('ScreenFX'), LIGHT: this.get('Light')},
             hasLight: (light) ? true : false,
             nodes: []
         }
@@ -1312,6 +1316,7 @@
 
         var camera = CORE.controller._camera;
         var skybox = CORE.cubemap;
+		var SFXComponent = CORE.get('ScreenFX');
 
         if(item_selected == 'root')
         {
@@ -1325,12 +1330,6 @@
             widgets.addTitle("Properties");
             widgets.addNumber("Rotation", renderer._uniforms["u_rotation"], {min:-720*DEG2RAD,max:720*DEG2RAD,step:0.05, callback: function(v){ CORE.setUniform("rotation",v);}});
             widgets.addCheckbox("Visible", skybox.flags.visible, {callback: function(v) { skybox.visible = v}});
-            /*widgets.addSeparator();
-            widgets.addTitle("Sampling");
-            widgets.addComboButtons("Irradiance samples", CORE.blur_samples,{name_width: "40%", values:[512, 1024, 2048, 4096, 8192], callback: async function(v) {
-                CORE.blur_samples = parseInt(v);
-                await CORE.reloadShaders();
-            }});*/
             widgets.addSeparator();
             widgets.addTitle("Atmospheric scattering");
             widgets.widgets_per_row = 2;
@@ -1389,79 +1388,17 @@
             }});*/
             widgets.addSection("Render");
             widgets.addCheckbox("Ambient occlusion",  renderer._uniforms['u_enable_ao'], {name_width: '50%', callback: function(v){  CORE.setUniform('enable_ao', v); }});
-			widgets.addCheckbox("FXAA",  WS.Components["FX"]._fxaa, {name_width: '50%', callback: function(v){  WS.Components["FX"]._fxaa = v }});
             widgets.addCheckbox("Correct Albedo",  renderer._uniforms["u_correctAlbedo"], {name_width: '50%', callback: function(v){  CORE.setUniform('correctAlbedo', v); }});
             widgets.addSlider("IBL Scale", renderer._uniforms["u_ibl_intensity"], {min:0.0, max: 10,name_width: '50%', callback: function(v){ CORE.setUniform('ibl_intensity', v); }});
-            
-            widgets.addSection("FX");
 
-			widgets.addTitle("Frame");
-            widgets.addNumber("Exposure", WS.Components["FX"].exposure,{min:-10,max:10,step:0.1,callback: function(v) { 
-                WS.Components["FX"].exposure = v;
-            }});
-            widgets.addNumber("Offset", WS.Components["FX"].offset,{min:-0.5,max:0.5,step:0.01,callback: function(v) {
-                WS.Components["FX"].offset = v;
-            }});
+			// Screen FX Component
+			SFXComponent.create( widgets, root );
 
-			if(CORE.browser !== 'safari')
-			{
-				widgets.addTitle("Tonemapping");
-
-				var tonemappers = Object.keys(CORE._tonemappers);
-				var selected_tonemapper_name = WS.Components["FX"].tonemapping;
-				var selected_tonemapper = CORE._tonemappers[ selected_tonemapper_name ];
-
-				widgets.addCombo(null, selected_tonemapper_name, {values: tonemappers, callback: function(v){
-					WS.Components["FX"].tonemapping = v;
-					window.last_scroll = root.content.getElementsByClassName("inspector")[0].scrollTop;
-					that.updateSidePanel( that._sidepanel, 'root' );
-				}});
-				
-				
-				if(selected_tonemapper && selected_tonemapper.params)
-					for( let p in selected_tonemapper.params ) // important let!!
-					{
-						var tm = selected_tonemapper.params[p];
-						var options = tm.options || {};
-
-						CORE.setUniform(p, tm.value); 
-
-						widgets.addSlider(p, tm.value, {min:options.min || 0,max:options.max||1,step:options.step||0.1,name_width: '50%', callback: function(v) {  
-							CORE.setUniform(p, v); 
-							selected_tonemapper.setParam(p, v);
-						}});
-					}
-				
-				widgets.addSeparator();
-			}
-            
-            widgets.widgets_per_row = 1;
-            widgets.addTitle("Glow");
-            widgets.addCheckbox("Enable", WS.Components["FX"].glow_enable, {callback: function(v) { WS.Components["FX"].glow_enable = v; } });
-            widgets.addSlider("Intensity", WS.Components["FX"].glow_intensity, {min:1,max:2,step:0.1,callback: function(v) {  WS.Components["FX"].glow_intensity = v; }});
-            widgets.widgets_per_row = 2;
-            widgets.addNumber("Threshold", WS.Components["FX"].glow_threshold, {min:0,max:500000,step:0.1,callback: function(v) { WS.Components["FX"].glow_threshold = v; }});
-            widgets.addCombo("Iterations", WS.Components["FX"].glow_iterations, {values: [4, 8, 16],callback: function(v) { WS.Components["FX"].glow_iterations = v; }});
-            widgets.widgets_per_row = 1;
-            widgets.addSeparator();
-            widgets.addSeparator();
-            //widgets.addSeparator();
         }
         else if(item_selected == 'light')
         {
-            widgets.addSection("Light");
-            widgets.widgets_per_row = 2;
-            widgets.addCheckbox("Show node", light.visible, {callback: function(v){ light.visible = v }});
-            widgets.addNumber("Size", light.scaling[0], {step: 0.01, callback: function(v){ light.scaling = v }});
-            widgets.widgets_per_row = 1;
-            widgets.addColor("Color", WS.Components.LIGHT.color, {callback: function(color){ 
-                WS.Components.LIGHT.color = color;
-            }});
-            widgets.addSlider("Scale", WS.Components.LIGHT.intensity, {min:0,max:10,step:0.1,callback: function(v) {  
-                WS.Components.LIGHT.intensity = v; 
-            }});
-            widgets.addVector3("Position", WS.Components.LIGHT.position, { callback: function(v){ WS.Components.LIGHT.position = v }});
-            widgets.addButton(null, "Get position", {callback: function(){ that.updateSidePanel(that._sidepanel, 'light')}});
+			var LightComponent = CORE.get('Light');
+			LightComponent.create( widgets );
         }
         
         else if(item_selected.includes("scale") || item_selected.includes("matrix"))
@@ -1483,10 +1420,25 @@
         else if(item_selected.includes("-")) // is a primitive uid
         {
             var node = CORE.getByName(item_selected);
-           
+			
+			// update rotations
+			node.rots = node.rots ? node.rots : vec3.create();
+
             widgets.addTitle(node.mesh);
             widgets.addSection("Transform");
             widgets.addVector3("Position", node.position, {callback: function(v){ node.position = v; }});
+			widgets.addVector3("Rotation", node.rots, {callback: function(v){ 
+				
+				var dt = vec3.create();
+				dt = vec3.sub(dt, node.rots, v);
+
+				node.rots = v;
+
+				node.rotate(dt[0] * DEG2RAD, RD.LEFT);
+				node.rotate(dt[1] * DEG2RAD, RD.UP);
+				node.rotate(dt[2] * DEG2RAD, RD.FRONT);
+
+			}});
             widgets.addNumber("Uniform scale", node.scaling[0], {step: 0.01, min: 0.1, callback: function(v){ node.scaling = v; }});
             widgets.addButton(null, "Set camera", {callback: function() {
 
