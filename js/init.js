@@ -8,19 +8,17 @@ var default_shader_macros = {
     "GAMMA": 2.2,
 };
 
-var CORE        = null,
+var CORE        = new WS.Core(),
     LOAD_STEPS  = 6,
     STEPS       = 0,
     textures    = {},
     mainarea    = null,
-    push_msgs   = 0,
     _dt         = 0.0;
 
 function init()
 {
     var last = now = getTime();
 
-    CORE = new WS.Core();
     canvas = CORE.getCanvas();
 
     canvas.addEventListener("webglcontextlost", function(event) {
@@ -51,6 +49,10 @@ function init()
     CORE.setUniform("ibl_intensity", 1.0);
     CORE.setUniform("albedo", vec3.fromValues( 1, 1, 1));
     
+	// SSAO
+	CORE.setUniform("radius", 16.0);
+	CORE.setUniform("outputChannel", 0.0);
+
     // Atmospherical Scattering
     CORE.setUniform('SunPos', 0.4);
     CORE.setUniform('SunIntensity', 22.0);
@@ -63,12 +65,6 @@ function init()
     default_shader_macros[ 'INPUT_TEX_HEIGHT' ] = gl.viewport_data[3];
 	default_shader_macros[ 'PIXEL_OFFSET' ] = 30;
 	default_shader_macros[ 'EM_SIZE' ] = 1; // no parsing at initialization
-
-    // initialize some global parameters 
-    window.glow = true;
-    window.iterations = 8;
-    window.threshold = 10.0;
-    window.intensity = 1.0;
     
     renderer.context.ondraw = function(){ CORE.render() };
     renderer.context.onupdate = function(dt){ CORE.update(dt) };
@@ -86,16 +82,15 @@ function onread( data )
     textures = JSON.parse(data);
 
     // Environment BRDF (LUT) when reloading shaders
-    renderer.loadShaders("data/shaders.glsl", function(){
+	CORE.reloadShaders(default_shader_macros, function(){
         
-        HDRTool.brdf( 'brdfIntegrator');
+		var brdf = Texture.fromURL("data/brdfLUT.png");
+		gl.textures['_brdf_integrator'] = brdf;
         
-        gui.init(); // init gui
-        CORE.set( textures_folder + "studio.hdre" );
+		
+		CORE.set( textures['Studio'] );
+		ssao.init();
+		gui.init(); // init gui
 
-    }, default_shader_macros);
+    });
 }
-
-
-
-init();

@@ -7,6 +7,15 @@ var MAX_LUM_VALUES = [];
 var LOG_MEAN_VALUES = [];
 var SMOOTH_SHIFT = 75;
 
+var identity_mat4 = mat4.create();
+var temp_mat3 = mat3.create();
+var temp_mat4 = mat4.create();
+var temp_vec2 = vec2.create();
+var temp_vec3 = vec3.create();
+var temp_vec3b = vec3.create();
+var temp_vec4 = vec4.create();
+var temp_quat = quat.create();
+
 function processDrop(e)
 {
     e.preventDefault();
@@ -105,9 +114,12 @@ function changeCameraDistance(dt, camera)
 {
     if(!camera) throw('no camera');
 
-    var eye = camera.position;
+	if(window.destination_eye === undefined)
+		window.destination_eye = vec3.fromValues(camera.position[0], camera.position[1], camera.position[2]);
+
+    //var eye = camera.position;
     var center = camera.target;
-    var dist = vec3.sub( vec3.create(), eye, center );
+    var dist = vec3.sub( vec3.create(), window.destination_eye, center );
     vec3.scale( dist, dist, dt );
 
     if(camera.type == LS.Camera.ORTHOGRAPHIC)
@@ -115,8 +127,33 @@ function changeCameraDistance(dt, camera)
 
     var new_eye = vec3.create();
 
-    vec3.add( new_eye, dist, center );
-    camera.position = new_eye;
+    vec3.add( window.destination_eye, dist, center );
+}
+
+function orbitCamera (camera, yaw, pitch)
+{
+	var problem_angle = vec3.dot( camera.getFront(), camera.up );
+	
+	var center = camera._target;
+	var right = camera.getLocalVector(LS.RIGHT);
+	var up = camera.up;
+	//var eye = window.destination_eye;
+
+	if(window.destination_eye === undefined)
+		window.destination_eye = vec3.fromValues(camera.position[0], camera.position[1], camera.position[2]);
+	
+	var dist = vec3.sub( vec3.create(), window.destination_eye, center );
+	//yaw
+	var R = quat.fromAxisAngle( up, -yaw );
+	vec3.transformQuat( dist, dist, R );
+
+	if( !(problem_angle > 0.99 && pitch > 0 || problem_angle < -0.99 && pitch < 0)) 
+			quat.setAxisAngle( R, right, pitch );
+	vec3.transformQuat(dist, dist, R );
+
+	vec3.add(window.destination_eye, dist, center);
+	//window.destination_eye = eye;
+	camera._must_update_matrix = true;
 }
 
   // litegl.js @javiagenjo
@@ -153,6 +190,10 @@ function downloadBinary ( mesh, format )
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+}
+
+function lerp (start, end, amt){
+  return (1-amt)*start+amt*end
 }
 
 function tendTo(v, f)

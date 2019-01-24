@@ -15,9 +15,12 @@
      */
     
     var WS = global.WS = {
-        version: 1.0
+        version: 1.0,
+
+			FORWARD:	00,
+			DEFERRED:	01,
     };
-    
+
     WS.setup = function(o)
     {
         o = o || {};
@@ -37,25 +40,25 @@
     Object.defineProperty(RD.SceneNode.prototype, 'hasAlpha', {
         get: function() { return this._hasAlpha; },
         set: function(v) { this._hasAlpha = v; this._uniforms["u_hasAlpha"] = v; },
-        enumerable: true //avoid problems
+        enumerable: true 
     });
 
     Object.defineProperty(RD.SceneNode.prototype, 'hasAO', {
         get: function() { return this._hasAO; },
         set: function(v) { this._hasAO = v; this._uniforms["u_hasAO"] = v; },
-        enumerable: true //avoid problems
+        enumerable: true 
     });
 
     Object.defineProperty(RD.SceneNode.prototype, 'hasBump', {
         get: function() { return this._hasBump; },
         set: function(v) { this._hasBump = v; this._uniforms["u_hasBump"] = v; },
-        enumerable: true //avoid problems
+        enumerable: true 
     });
 
     Object.defineProperty(RD.SceneNode.prototype, 'hasNormal', {
         get: function() { return this._hasNormal; },
         set: function(v) { this._hasNormal = v; this._uniforms["u_hasNormal"] = v; },
-        enumerable: true //avoid problems
+        enumerable: true
     });
 
     RD.SceneNode.prototype.setTextureProperties = function()
@@ -94,6 +97,8 @@
 
 		this.browser = this.browser();
 
+		
+		this.setup();
         this._ctor();
         if(o)
             this.configure( o );
@@ -159,6 +164,18 @@
 		this.fxaa_shader = Shader.getFXAAShader();
 		this.fxaa_shader.setup();
 
+		// deferred rendering (G buffers)
+        this.texture_albedo = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+		this.texture_roughness = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+        this.texture_normal = new GL.Texture(w,h, { type: type, filter: gl.LINEAR });
+        this.texture_depth = new GL.Texture(w,h, { format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT}); 
+        this.texture_final = new GL.Texture(w,h, { texture_type: gl.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+
+        this.fbo_textures = [ this.texture_albedo, this.texture_normal, this.texture_roughness ];
+        this.fbo = new GL.FBO( this.fbo_textures, this.texture_depth );
+
+		this.show_deferred_textures = false;
+		
         this._controller = new WS.Controller( this._context );
         this._gui = new WS.GUI();
 
@@ -166,6 +183,37 @@
         this._tonemappers = {};
         this._components = {};
     }
+
+	Core.prototype.setup = function()
+	{
+		var that = this;
+
+		// Init Canvas tools (which are not in component)
+		var button = $(document.querySelector(".tool-sphereprem"));
+		button.on('click', function(){
+
+			if(window.prem_sphere) {
+				window.prem_sphere.destroy(true);
+				this._gui.updateSidePanel(null, 'root');
+				window.prem_sphere = undefined;
+				$(this).removeClass("enabled");
+				return;
+			}
+			window.prem_sphere = that.addPrimitive('sphere', 'mirror', true);
+			$(this).addClass("enabled");
+		});
+
+		button = $(document.querySelector(".tool-deferredtex"));
+		button.on('click', function(){
+
+			that.show_deferred_textures = !that.show_deferred_textures;
+			
+			if(that.show_deferred_textures)
+				$(this).addClass("enabled");
+			else 
+				$(this).removeClass("enabled");
+		});
+	}
 
 	// Get component
     Core.prototype.get = function( component_name )
@@ -327,14 +375,34 @@
     */
     Core.prototype.render = function()
     {
-        var renderer = this._renderer;
-		var that = this;
-
-        if(!this.cubemap.ready())
+		if(!this.cubemap.ready())
         return;
+
+		var mode = this.get('Render').render_mode;
 
 		// Update cubemap position
         this.cubemap.position = this.controller.getCameraPosition();
+
+		if( mode == WS.FORWARD )
+			this.forwardRender();
+		else if( mode == WS.DEFERRED )
+			this.deferredRender();
+
+        // Render GUI
+        this._gui.render();
+        
+        // Render node selected
+		this.get('NodePicker').render();
+    }
+
+	/**
+    * Render all the scene using forward rendering
+    * @method forwardRender
+    */
+    Core.prototype.forwardRender = function()
+    {
+        var renderer = this._renderer;
+		var that = this;
 
         // Render scene to texture
         this._viewport_tex.drawTo( function() {
@@ -362,7 +430,7 @@
 
         // Apply (or not) bloom effect
         var render_texture = this._viewport_tex; 
-		var SFXComponent = CORE.get("ScreenFX");
+		var SFXComponent = this.get("ScreenFX");
 
 		if( SFXComponent.glow_enable )
 			render_texture = createGlow( this._viewport_tex );
@@ -377,17 +445,102 @@
 			this._fx_tex.toViewport( this.fxaa_shader );
 		else
 			this._fx_tex.toViewport();
+    }
 
-        // Render GUI
-        this._gui.render();
-        
-        // Render node selected
-       CORE.get('NodePicker').render();
+	/**
+    * Render all the scene using deferred rendering
+    * @method deferredRender
+    */
+    Core.prototype.deferredRender = function()
+    {
+        var renderer = this._renderer;
+		var that = this;
+
+		if(!gl.shaders['finalDeferred'])
+			return;
+
+		// PRE PASS: fill G buffers
+		this.fbo.bind(true);
+		
+		gl.enable( gl.DEPTH_TEST );
+		gl.disable( gl.BLEND );
+
+		// render geometry and capture info
+		renderer.clear( this._background_color );
+		renderer.render( this.scene, this.controller._camera );
+
+		this.fbo.unbind();
+		gl.disable( gl.DEPTH_TEST );
+        gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+
+		// FINAL PASS
+
+		this.texture_albedo.bind(0);
+		this.texture_normal.bind(1);
+		this.texture_roughness.bind(2);
+		this.texture_depth.bind(3);
+		ssao.noiseTexture.bind(4);
+		
+
+		this.setUniform('fbo_color_texture', 0);
+		this.setUniform('fbo_normal_texture', 1);
+		this.setUniform('fbo_roughness_texture', 2);
+		this.setUniform('fbo_depth_texture', 3);
+
+		
+		var inv_p = mat4.create(),
+			inv_v = mat4.create(),
+			camera = this.controller._camera;
+
+		mat4.invert(inv_p, camera._projection_matrix);
+		mat4.invert(inv_v, camera._view_matrix);
+
+		this.setUniform('invv', inv_v);
+		this.setUniform('invp', inv_p);
+		this.setUniform('projection', camera._projection_matrix);
+		this.setUniform('view', camera._view_matrix);
+
+		this.texture_final.drawTo( () => {
+			
+			renderer.clear( this._background_color );
+			gl.disable( gl.DEPTH_TEST );
+			gl.disable( gl.BLEND );
+			
+			gl.shaders['finalDeferred'].uniforms(renderer._uniforms).draw(Mesh.getScreenQuad());
+		});
+
+		// Apply (or not) bloom effect
+        var render_texture = this.texture_final; 
+		var SFXComponent = this.get("ScreenFX");
+
+		if( SFXComponent.glow_enable )
+			render_texture = createGlow( this.texture_albedo );
+
+		// Get tonemapper and apply ********************
+		// (exposure, offset, tonemapping, degamma)
+		var myToneMapper = this._tonemappers[ SFXComponent.tonemapping ];
+		myToneMapper.apply( render_texture, this._fx_tex ); 
+
+		// Apply antialiasing (FXAA)
+		if( SFXComponent.fxaa )
+			this._fx_tex.toViewport( this.fxaa_shader );
+		else
+			this._fx_tex.toViewport();
+
+		if(this.show_deferred_textures) {
+			var w = gl.canvas.width / 4;
+			var h = gl.canvas.height / 4;
+			gl.drawTexture( this.texture_albedo, 0, gl.canvas.height - h, w,  h );
+			gl.drawTexture( this.texture_roughness, w, gl.canvas.height - h, w,  h );
+			gl.drawTexture( this.texture_normal, w*2, gl.canvas.height - h, w,  h );
+			gl.drawTexture( this.texture_depth, w*3, gl.canvas.height - h, w,  h );
+		}
+		
     }
 
     /**
-    * Render all the scene
-    * @method render
+    * Update all the scene
+    * @method update
     * @param {number} dt
     */
     Core.prototype.update = function(dt)
@@ -407,11 +560,12 @@
     * @param {string} env_path
     * @param {Object} options
     */
-    Core.prototype.set = function(env_path, options)
+    Core.prototype.set = function(env_set, options)
     {
         if(!this._cubemap)
             throw("Create first a cubemap node");
 
+		var env_path = env_set.constructor == String ? env_set : env_set.path;
         var tex_name = HDRTool.getName( env_path );
         var options = options || {};
 
@@ -422,6 +576,7 @@
 
         this._last_environment = this._environment;
         this._environment = tex_name;
+		this._environment_set = env_set;
                 
         var that = this;
         var oncomplete = function() { that.display( options.no_free_memory ); if(options.onImport) options.onImport(); };
@@ -931,13 +1086,11 @@
     * Add primitive to the scene
     * @method addPrimitive
     * @param {String} mesh
+	* @param {String} shader
     */
-    Core.prototype.addPrimitive = function(mesh)
+    Core.prototype.addPrimitive = function(mesh, shader, show_prem)
     {
-        var shader = (this._environment == "no current") ? "phong" : "pbr";
-        
-        if(this._environment == 'no current')
-            shader = "phong";
+        var shader = shader || ( (this._environment == "no current") ? "phong" : "pbr");
         
         var node = new RD.SceneNode({
                 mesh: mesh,
@@ -954,21 +1107,26 @@
 
         this.controller._camera.lookAt([ 0, radius * 0.5, radius * 2.5 ], result, RD.UP);
 
-        node.name = "node-" + simple_guidGenerator();
-        node._uniforms["u_roughness"] = 0.0;
-        node._uniforms["u_metalness"] = 1.0;
-        // node.flags.depth_test = false;
+        node.name = show_prem ? 'show_prem' : "node-" + simple_guidGenerator();
+
+		if(!show_prem) {
+	        node._uniforms["u_roughness"] = 0.0;
+		    node._uniforms["u_metalness"] = 1.0;
+
+			node.setTextureProperties();
+        }
         
         if(mesh == "plane") 
             node.flags.two_sided = true;
         
-        node.setTextureProperties();
         this._root.addChild( node );
         this.updateNodes();
 
 
         if(this._gui._sidepanel)
             this._gui.updateSidePanel(null, node.name);
+
+		return node;
     }
 
     /**
@@ -1019,7 +1177,7 @@
             },
             descriptor: this._descriptor,
             uniforms: this._renderer._uniforms,
-            components: {FX: this.get('ScreenFX'), LIGHT: this.get('Light')},
+            components: {'ScreenFX': this.get('ScreenFX'), 'Light': this.get('Light')},
             hasLight: (light) ? true : false,
             nodes: []
         }
@@ -1030,9 +1188,10 @@
         boo['nodes'].push( JSON.stringify(cubemap) );
 
         // skip cubemap
-        for(var i = 1; i < this._root.children.length; i++) {
+        for(var i = 0; i < this._root.children.length; i++) {
             // boo['nodes'].push( this.getProperties(this._root.children[i]) );
             var tmp = this._root.children[i].clone();
+			tmp.uniforms = this._root.children[i].uniforms;
             boo['nodes'].push( JSON.stringify(tmp) );
         }
 
@@ -1078,17 +1237,19 @@
         for(var key in o.components)
         {
             var copy = o.components[key];
+			var component = this.get( key );
+
             //copy to attributes
             for(var i in copy)
             {
-                var v = WS.Components[key][i];
+                var v = component[i];
                 if(v === undefined)
                     continue;
     
                 if( v && v.constructor === Float32Array )
                     v.set( copy[i] );
                 else 
-                    WS.Components[key][i] = copy[i];
+                    component[i] = copy[i];
             }
         }
 
@@ -1102,6 +1263,7 @@
         for(var i in o.nodes)    
         {
             var node_properties = JSON.parse(o.nodes[i]);
+			console.log(node_properties );
             
             switch(node_properties.name)
             {
@@ -1120,6 +1282,7 @@
                     new_node.name = "tmp";
                     new_node.configure(node_properties);
                     new_node.setTextureProperties();
+					//new_node.uniforms = node_properties.uniforms;
                     this._root.addChild(new_node);
                     break;
             }
@@ -1160,7 +1323,7 @@
         // other properties
         this._allow_drop = true;
         this._enable_log = false;
-		this._color_picker = false;
+		this._color_picker = true;
     }
     
     /**
@@ -1212,8 +1375,12 @@
         var that = this;
 
         mainmenu.add("File/Save scene", { callback: function() { that.onExport() } });
-        mainmenu.add("File/Load scene", { callback: function() { that.onImport() } });
-		mainmenu.add("File/Allow drop", { type: "checkbox", instance: this, property: "_allow_drop"});
+        mainmenu.add("File/Load scene/From file", { callback: function() { that.onImport() } });
+		mainmenu.add("File/Load scene/From server", { callback: function() { 
+			$.get("saved_scenes.php", function(data){ that.onImportFromServer(data)  });
+		} });
+
+		mainmenu.add("File/Preferences/Allow drop", { type: "checkbox", instance: this, property: "_allow_drop"});
 
 		for(let s in scenes)
 			mainmenu.add("Scene/Shade Model/"+scenes[s].name, { callback: function() {
@@ -1225,6 +1392,18 @@
 		mainmenu.add("Scene/Add Primitive/Plane", { callback: function() { CORE.addPrimitive('plane'); } });
 		mainmenu.add("Scene/Add Primitive/Cube", { callback: function() { CORE.addPrimitive('cube'); } });
 		mainmenu.add("Scene/Add Light", { callback: function() { CORE.addLight(); } });
+
+		for(let i = 0; i < 5; i++)
+			mainmenu.add("View/PREM/Level "+i, { callback: function() {
+				var env = CORE._environment;
+				CORE.cubemap.texture = '_prem_' + i + '_' + env;
+			}});
+		
+		mainmenu.add("View/SSAO Noise tex", { callback: function() {
+				var node = CORE.addPrimitive('plane');
+				node.shader = "textured";
+				node.texture = "ssao_noise";
+			}});
 
         mainmenu.add("View/FPS counter", { type: "checkbox", instance: this, property: "_fps_enable", callback: function() { 
             if(!that._fps_enable) that.closeFPS();
@@ -1246,7 +1425,8 @@
         }});
         
         mainmenu.add("Actions/Reload shaders", { callback: function() { CORE.reloadShaders() } });
-        mainmenu.add("Actions/Get Environment (HDRE)", { callback: function() { HDRTool.getSkybox( CORE._environment ) } });
+        mainmenu.add("Actions/Get Environment/HDRE (8 bits)", { callback: function() { HDRTool.getSkybox( CORE._environment, GL.UNSIGNED_BYTE ) } });
+		mainmenu.add("Actions/Get Environment/HDRE (32 bits)", { callback: function() { HDRTool.getSkybox( CORE._environment, GL.FLOAT ) } });
         mainmenu.add("Actions/Get Mesh (wBin)", { callback: function() {
             var node = CORE.get('NodePicker').selected;
 
@@ -1291,13 +1471,14 @@
 
         var that = this;
 
-        // litetree.root.addEventListener("item_dblclicked", function(e){
-            
-        // });
-
-        litetree.root.addEventListener('item_selected', function(e){
+		litetree.root.addEventListener('item_selected', function(e){
             e.preventDefault();
             that.updateSidePanel( that._sidepanel, e.detail.data.id );
+        });
+
+        litetree.root.addEventListener("item_dblclicked", function(e){
+            e.preventDefault();
+			
         });
 
         $(root.content).append( litetree.root );
@@ -1306,24 +1487,22 @@
         var widgets = new LiteGUI.Inspector();
         $(root.content).append(widgets.root);
 
-		//widgets.root.className += " pelota";
 		var k = 0;
 		for(var node in scene.root.children) if(scene.root.children[k].name == 'lines') continue; else k++; 
 		widgets.root.style.height = "calc( 100% - " + k * 25 + "px )";
         
-		// update inspector depending on the tree item_selected 
-        // put this apart (insane code in one function!!!!!)
-
-        var camera = CORE.controller._camera;
-        var skybox = CORE.cubemap;
+        var camera = CORE.controller._camera, skybox = CORE.cubemap;
 		var SFXComponent = CORE.get('ScreenFX');
+		var RenderComponent = CORE.get('Render');
 
         if(item_selected == 'root')
         {
+			var current_env = CORE._environment_set || {};
+
             widgets.addSection("Skybox");
-            widgets.addList("Environment", textures, {height: "125px", callback: function(v){
+            widgets.addList("Environment", textures, {selected: current_env, height: "125px", callback: function(v){
                 gui.loading();
-				CORE.set( v.path );
+				CORE.set( v);
             }});
             widgets.widgets_per_row = 1;
             widgets.addSeparator();
@@ -1382,14 +1561,13 @@
                 CORE.controller._mouse_speed = v;
                 CORE.controller.setBindings(renderer.context);
             }});
-            /*widgets.addSlider("Wheel Speed", CORE.controller._wheel_speed, {min: 0.01, max: 1, step: 0.1, callback: function(v){
+            /*widgets.addSlider("Wheel Speed", CORE.controller._wheel_speed, {min: 0.1, max: 1, step: 0.05, callback: function(v){
                 CORE.controller._wheel_speed = v;
                 CORE.controller.setBindings(renderer.context);
             }});*/
-            widgets.addSection("Render");
-            widgets.addCheckbox("Ambient occlusion",  renderer._uniforms['u_enable_ao'], {name_width: '50%', callback: function(v){  CORE.setUniform('enable_ao', v); }});
-            widgets.addCheckbox("Correct Albedo",  renderer._uniforms["u_correctAlbedo"], {name_width: '50%', callback: function(v){  CORE.setUniform('correctAlbedo', v); }});
-            widgets.addSlider("IBL Scale", renderer._uniforms["u_ibl_intensity"], {min:0.0, max: 10,name_width: '50%', callback: function(v){ CORE.setUniform('ibl_intensity', v); }});
+            
+			// Render Component
+			RenderComponent.create( widgets, root );
 
 			// Screen FX Component
 			SFXComponent.create( widgets, root );
@@ -1452,6 +1630,8 @@
 
                 CORE.controller._camera.lookAt([ 0, radius * 0.5, radius * 2.5 ], result, RD.UP);
             }});
+			widgets.addSection("Shader");
+			widgets.addList(null, ["flat", "phong", "textured_phong", "pbr", "DeferredPBR"], {selected: node.shader,callback: function(v){ node.shader = v; }})
             this.addMaterial(widgets, node);
         }
 
@@ -1468,7 +1648,7 @@
 
         inspector.addSection("Material");
         inspector.addTitle("PBR properties");
-        inspector.addColor("Base color", node._uniforms["u_albedo"], {callback: function(color){ node._uniforms["u_albedo"] = color }});
+        inspector.addColor("Base color", node._uniforms["u_albedo"], {callback: function(color){ node._uniforms["u_albedo"] = node._uniforms["u_color"] = color; }});
         inspector.addSlider("Roughness", node._uniforms['u_roughness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_roughness'] = v }});
         inspector.addSlider("Metalness", node._uniforms['u_metalness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_metalness'] = v }});
         
@@ -1543,6 +1723,9 @@
     */
     GUI.prototype.onExport = function()
     {
+		LiteGUI.alert("Not available (updates on the way)");
+        return;
+
         const isInServer = Object.keys(textures).filter(function(key){ return textures[key].path.includes( CORE._environment )}).length;
 
         // is not in server
@@ -1568,7 +1751,7 @@
 
     /**
     * Import scene dialog
-    * @method onExport
+    * @method onImport
     * @param {File} file
     */
     GUI.prototype.onImport = function(file)
@@ -1610,6 +1793,51 @@
                 };
                 reader.readAsText(file ? file : json.file);
                 return false;
+            } });
+
+        }
+    
+        widgets.on_refresh();
+        dialog.add(widgets);  
+        var w = 400;
+        dialog.setPosition( window.innerWidth/2 - w/2, window.innerHeight/2 - 50 );       
+    }
+
+	/**
+    * Import scene from server dialogg
+    * @method onImportFromServer
+    * @param {File} file
+    */
+    GUI.prototype.onImportFromServer = function(data)
+    {
+        var id = "Load scene from server"
+        var dialog_id = id.replace(" ", "-").toLowerCase();
+        var w = 400;
+        var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", close: true, title: id, width: w, draggable: true });
+        dialog.show('fade');
+        dialog.makeModal('fade');
+        var widgets = new LiteGUI.Inspector();
+
+		var saved_scenes = JSON.parse(data);
+		var selected = null;
+
+        widgets.on_refresh = function(){
+
+            widgets.clear();
+            widgets.addList( null, Object.keys(saved_scenes), {callback: function(v) {
+                
+                selected = v;
+            } });
+
+			widgets.addButton( null, "Load", {callback: function() {
+
+				if(!selected)
+					return;
+				// gui
+				$('#'+dialog_id).remove();
+				LiteGUI.showModalBackground(false);
+				//
+                CORE.fromJSON( saved_scenes[selected].data );
             } });
 
         }
@@ -1753,10 +1981,10 @@
         switch(extension)
         {
             case 'json':
-                gui.onImport(file);
+                this.onImport(file);
                 break;
             case 'obj':
-                gui.onDragMesh( file );
+                this.onDragMesh( file );
                 break;
             case 'hdre':
             case 'exr':
@@ -1999,7 +2227,7 @@
         // events
         this._context = context;
         this._mouse_speed = 0.25;
-        this._wheel_speed = 0.05;
+        this._wheel_speed = 0.5;
         this.setBindings();
     }
 
@@ -2064,7 +2292,6 @@
 
         var camera = this._camera;
         var s = this._mouse_speed;
-        var w = this._wheel_speed;
 
         ctx.captureKeys(true);
         ctx.onkeydown = function(e)
@@ -2100,8 +2327,9 @@
 
             if (e.leftButton) {
 
-                camera.orbit(-e.deltax * _dt * s, RD.UP,  camera._target);
-                camera.orbit(-e.deltay * _dt * s, camera._right, camera._target );
+				orbitCamera(camera, e.deltax * _dt * s, -e.deltay * _dt * s);
+//                camera.orbit(-e.deltax * _dt * s, RD.UP);
+  //              camera.orbit(-e.deltay * _dt * s, camera._right);
             }
             
             if (e.rightButton && ctx.keys["L"]) {
@@ -2117,7 +2345,9 @@
             if(!e.wheel)
                 return;
 
-            var amount =  (1 + e.delta * -w);
+			var w = this._wheel_speed / 10;
+
+            var amount =  (1 + e.delta * -0.05);
             changeCameraDistance(amount, camera);
         }
 
@@ -2206,6 +2436,10 @@
     {
         if(!ctx)
             throw('no WebGLRenderingContext');
+
+		var camera = this._camera;
+		if(window.destination_eye)
+			vec3.lerp(camera.position, camera.position, window.destination_eye, 0.3);
 
         var w = this._wheel_speed * 25;
         var s = CORE.selected_radius ? CORE.selected_radius * w : w;

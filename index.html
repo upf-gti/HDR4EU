@@ -77,9 +77,9 @@
 
 	</div>
 
-	<div class="pixelPicker" style="display: none">
+	<div class="pixelPicker" style="display: block">
 		<!--<span id="pixelPickerColor"></span>-->
-		<span id="pixelPickerText"></span>
+		<!--<span id="pixelPickerText"></span>-->
 		<span id="pixelPickerCoord">RGB</span>
 
 	</div>
@@ -90,7 +90,9 @@
 	
 		<div class="tool-section tool-section-manipulate">
 		
-			<div class="tool-button tool-colorpicker " title="Pick color" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-colorpicker.png)"></div>
+			<div class="tool-button tool-colorpicker" title="Pick color" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-colorpicker.png)"></div>
+			<div class="tool-button tool-sphereprem" title="Show sphere PREM" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-circle.png)"></div>
+			<div class="tool-button tool-deferredtex" title="Show deferred textures" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-depth.png)"></div>
 		</div>
 	
 	</div>
@@ -128,6 +130,7 @@
     <script type="text/javascript" src="js/lib/dat.gui.min.js"></script>
 	<!--<script type="text/javascript" src="js/lib/tinyexr.js"></script> -->
 	<script type="text/javascript" src="js/lib/rendeer.js"></script>
+	<script type="text/javascript" src="js/lib/SimplexNoise.js"></script>
 	<script type="text/javascript" src="https://webglstudio.org/users/arodriguez/libs/HDRTool.js"></script>
 	<script type="text/javascript" src="https://webglstudio.org/users/arodriguez/libs/hdre.js"></script>
 
@@ -138,4 +141,11 @@
 	<script type="text/javascript" src="js/init.js"></script>
 	<script type="text/javascript" src="js/components.js"></script>
 	<script type="text/javascript" src="js/tonemap.js"></script>
+	<script type="text/javascript" src="js/ssao.js"></script>
+
+	<script type="text/javascript">
+	
+		init();
+		
+	</script>
 </html>
