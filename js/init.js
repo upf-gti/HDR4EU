@@ -51,6 +51,7 @@ function init()
     
 	// SSAO
 	CORE.setUniform("radius", 16.0);
+	CORE.setUniform("enableSSAO", true);
 	CORE.setUniform("outputChannel", 0.0);
 
     // Atmospherical Scattering
@@ -73,24 +74,27 @@ function init()
     window.onresize = resize;
 
     // get response from files.php and init app
-    $.get("files.php", function(data){ onread(data) });
+    LiteGUI.request({url:"files.php", 
+			success: function(data){ onread(data) },
+			error: function(err){ console.error(err, "Error getting app environments") }
+	});
 }
 
-function onread( data )
+async function onread( data )
 {
     // Save textures info for the GUI
     textures = JSON.parse(data);
+	
+	await CORE.reloadShaders();
 
-    // Environment BRDF (LUT) when reloading shaders
-	CORE.reloadShaders(default_shader_macros, function(){
-        
-		var brdf = Texture.fromURL("data/brdfLUT.png");
-		gl.textures['_brdf_integrator'] = brdf;
-        
-		
-		CORE.set( textures['Studio'] );
-		ssao.init();
-		gui.init(); // init gui
-
-    });
+	// Environment BRDF (LUT)
+	var brdf = Texture.fromURL("data/brdfLUT.png");
+	gl.textures['_brdf_integrator'] = brdf;
+	
+	// Set environment 
+	CORE.set( textures['Studio'] );
+	
+	// Init things
+	ssao.init();
+	gui.init();
 }

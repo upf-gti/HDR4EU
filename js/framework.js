@@ -78,7 +78,7 @@ async function resize()
     if(gui)
     {
         w = gui._mainarea.root.clientWidth - gui._sidepanel.root.clientWidth - 4;
-        h = gui._mainarea.root.clientHeight;
+		h = gui._mainarea.root.clientHeight;
     }
 
     renderer.canvas.height = h;
@@ -195,6 +195,12 @@ function downloadBinary ( mesh, format )
 function lerp (start, end, amt){
   return (1-amt)*start+amt*end
 }
+
+function nearestMult(num, mult) 
+{ 
+    var rem = num % mult; 
+    return rem >= 5 ? (num - rem + mult) : (num - rem); 
+} 
 
 function tendTo(v, f)
 {

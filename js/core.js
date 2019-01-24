@@ -146,7 +146,8 @@
         this._root.addChild(cubemap);
 
         this._context = GL.create({width: window.innerWidth, height: window.innerHeight, 
-            // alpha: true, premultipliedAlpha: false
+            // alpha: true, 
+			//premultipliedAlpha: false
         });
 
         this._renderer = new RD.Renderer( this._context, {
@@ -157,8 +158,8 @@
         var h = (gl.canvas.height)|0;
         var type = gl.FLOAT;
         
-        this._viewport_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
-		this._fx_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+        this._viewport_tex = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+		this._fx_tex = new GL.Texture(w,h, {type: gl.HALF_FLOAT_OES});
         this._background_color = vec4.fromValues(0.2, 0.2, 0.2,1);
 
 		this.fxaa_shader = Shader.getFXAAShader();
@@ -1343,11 +1344,7 @@
 		var that = this;
 
         var canvas = renderer.canvas;
-        this._mainarea.onresize = function() {
-            var w = that._mainarea.root.clientWidth - that._sidepanel.root.clientWidth - 3;
-            var h = that._mainarea.root.clientHeight;
-            resize(renderer, [w, h], camera);
-        };
+        this._mainarea.onresize = resize;
         this._mainarea.content.appendChild(canvas);
         
         var push = document.createElement('div');
@@ -1442,9 +1439,7 @@
 		mainmenu.add("Help/Other demos", { callback: function() { LiteGUI.showMessage("<a href='https://webglstudio.org/users/arodriguez/demos/atmos'>Atmospherical scattering</a><br>"+
 		"<a href='https://webglstudio.org/latest/player.html?url=fileserver%2Ffiles%2Farodriguez%2Fprojects%2FHDR4EU%2Fgreen.scene.json'>Chroma Keying</a><br>", {title: "App Info"}) } });
         
-        var w = this._mainarea.root.clientWidth - this._sidepanel.root.clientWidth - 4;
-        var h = this._mainarea.root.clientHeight;
-        resize(renderer, [w, h], camera);
+        resize();
     }
 
     GUI.prototype.createSidePanel = function()
@@ -1631,7 +1626,7 @@
                 CORE.controller._camera.lookAt([ 0, radius * 0.5, radius * 2.5 ], result, RD.UP);
             }});
 			widgets.addSection("Shader");
-			widgets.addList(null, ["flat", "phong", "textured_phong", "pbr", "DeferredPBR"], {selected: node.shader,callback: function(v){ node.shader = v; }})
+			widgets.addList(null, ["flat", "phong", "textured", "pbr", "DeferredPBR"], {selected: node.shader,callback: function(v){ node.shader = v; }})
             this.addMaterial(widgets, node);
         }
 

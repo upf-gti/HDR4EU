@@ -456,11 +456,11 @@
 		}
 		else {
 			widgets.addTitle('SSAO');
-			widgets.addCheckbox("Enable", true, {name_width: '50%', callback: function(v){   }});
+			widgets.addCheckbox("Enable", true, {name_width: '50%', callback: function(v){ CORE.setUniform('enableSSAO', v); }});
 			widgets.addSlider("Kernel radius", renderer._uniforms['u_radius'], {min:1,max:32,step:0.1,name_width: '50%', callback: function(v) { CORE.setUniform('radius', v); }});
-			widgets.addCombo("Noise tiling", 8, {values: [4, 8, 16, 32, 64, 128, 256], name_width: '50%', callback: function(v) { 
+			/*widgets.addCombo("Noise tiling", 4, {values: [4, 8, 16, 32, 64, 128, 256], name_width: '50%', callback: function(v) { 
 				CORE.setUniform('noise_tiling', v);
-			}});
+			}});*/
 			widgets.addCombo("Output", 'Default', {values: ['Default', 'SSAO only', 'Depth', 'Normal'], name_width: '50%', callback: function(v) { 
 				var values = $(this)[0].options.values;
 				CORE.setUniform('outputChannel', parseFloat(values.indexOf(v)));

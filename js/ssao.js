@@ -9,7 +9,7 @@ var ssao = {
 
 	kernelSize: 64,
 	kernel: [],
-	noiseSize: 8,
+	noiseSize: 4,
 	
 	init: async function()
 	{
@@ -17,7 +17,7 @@ var ssao = {
 		this.generateSampleKernel();
 		CORE.setUniform('kernel', GL.linearizeArray( this.kernel ));
 		CORE.setUniform('noise_texture', 4);
-		CORE.setUniform('noise_tiling', 8);
+		CORE.setUniform('noise_tiling', 4);
 		await CORE.reloadShaders();
 	},
 
@@ -67,24 +67,35 @@ var ssao = {
 			var noise3d = SN.noise3d( x, y, z );
 			data[i] = noise3d;
 		}
-		/*data[0] = -0.7968388795852661;
+
+		/*data[0] = 0.7968388795852661;
 		data[1] = 0.5131536722183228;
-		data[2] = -0.4655301868915558;
+		data[2] = 0.4655301868915558;
 		data[3] = 0.2008838653564453;
-		data[4] = -0.6598166227340698;
+		data[4] = 0.6598166227340698;
 		data[5] = 0.21552163362503052;
-		data[6] = -0.1582496613264084;
-		data[7] = -0.11282402276992798;
-		data[8] = -0.46743690967559814;
+		data[6] = 0.1582496613264084;
+		data[7] = 0.11282402276992798;
+		data[8] = 0.46743690967559814;
 		data[9] = 0.010806102305650711;
 		data[10] = 0.17328834533691406;
-		data[11] = -0.5647706985473633;
-		data[12] = -0.18150515854358673;
+		data[11] = 0.5647706985473633;
+		data[12] = 0.18150515854358673;
 		data[13] = 0.46387165784835815;
 		data[14] = 0.5509496331214905;
-		data[15] = -0.7847991585731506;*/
+		data[15] = 0.7847991585731506;*/
 
-		var noiseTexture = new GL.Texture(this.noiseSize, this.noiseSize, {type: GL.FLOAT, format: GL.LUMINANCE, internalFormat: GL.LUMINANCE, pixel_data: data, filter: gl.NEAREST, wrap: gl.REPEAT});
+		var options = {
+			type: GL.FLOAT,
+			format: GL.LUMINANCE,
+			internalFormat: GL.LUMINANCE,
+			pixel_data: data,
+			filter: gl.NEAREST,
+			wrap: gl.REPEAT,
+			anisotropic: 1
+		}
+
+		var noiseTexture = new GL.Texture(this.noiseSize, this.noiseSize, options);
 		this.noiseTexture = gl.textures['ssao_noise'] = noiseTexture;
 	}
 }

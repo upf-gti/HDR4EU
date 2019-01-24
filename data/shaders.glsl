@@ -1265,7 +1265,7 @@ precision highp float;
 		vec3 viewNormal = -normalize( texture2D(u_fbo_normal_texture, v_coord).xyz * 2.0 - 1.0 );
 
 		vec2 noiseScale = vec2(float(resolution.x) / u_noise_tiling, float(resolution.y) / u_noise_tiling);
-		vec3 rvec = normalize(texture2D(u_noise_texture, v_coord * noiseScale).xyz * 2.0 - 1.0);
+		vec3 rvec = normalize(texture2D(u_noise_texture, v_coord * 300.0).xyz * 2.0 - 1.0);
 		
 		vec3 tangent = normalize(rvec - viewNormal * dot(rvec, viewNormal));
 		vec3 bitangent = cross(viewNormal, tangent);
