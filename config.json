@@ -1,0 +1,225 @@
+{
+    "nocache": false,
+    
+    "imports" : [
+        "js/lib/tinyexr.js",
+        "js/lib/bootstrap.min.js",
+        "js/lib/jscolor/jscolor.js",
+        "js/lib/gl-matrix-min.js",
+        "js/lib/dat.gui.min.js",
+        "js/lib/litegl.js",
+        "js/lib/Canvas2DtoWebGL.js",
+        "js/lib/wbin.js",
+        "js/lib/litescene.js",
+        "js/lib/litegraph.js",
+        "js/lib/importer.js",
+        "js/lib/rendeer.js",
+        "js/lib/HDRTool.js",
+        "js/lib/hdre.js",
+        "js/lib/SimplexNoise.js",
+        "js/gui.js",
+        "js/utils.js",
+        "js/core.js",
+        "js/components/atmospheric.js",
+        "js/components/colorpicker.js",
+        "js/components/nodepicker.js",
+        "js/components/controller.js",
+        "js/components/light.js",
+        "js/components/render.js",
+        "js/components/screenfx.js",
+        "js/shaders/tonemapping.js",
+        "js/screenspace/ssao.js",
+        "js/screenspace/ssr.js"
+    ],
+
+    "scenes" : {
+
+        "Pbr": {
+            "name": "Pbr",
+            "mesh": "Pbr/pbr.wbin",
+            "textures": {
+                "roughness": "Pbr/roughness.png",
+                "metalness": "Pbr/metalness.png",
+                "albedo": "Pbr/albedo.png",
+                "normal": "Pbr/normal.png",
+                "ao": "Pbr/ao.png",
+                "height": "Pbr/height.png"
+            },
+            "size": "7,28 MB",
+            "camera": {
+                "eye": [0,65,387]
+            }
+        },
+        "Lantern": {
+            "name": "Lantern",
+            "mesh": "Lantern/lantern.obj",
+            "textures": {
+                "roughness": "Lantern/roughness.png",
+                "metalness": "Lantern/metalness.png",
+                "albedo": "Lantern/albedo.png",
+                "normal": "Lantern/normal.png",
+                "ao": "Lantern/ao.png",
+                "opacity": "Lantern/opacity.png"
+            },
+            "size": "1,94 MB",
+            "camera": {
+                "eye": [-25,80,150],
+                "target": [0,30,0]
+            }
+        },
+        "Blaster": {
+            "name": "Blaster",
+            "mesh": "Blaster/blaster.obj",
+            "textures": {
+                "roughness": "Blaster/roughness.png",
+                "metalness": "Blaster/metalness.png",
+                "albedo": "Blaster/albedo.png",
+                "normal": "Blaster/normal.png",
+                "ao": "Blaster/ao.png",
+                "emissive": "Blaster/emissive.png"
+            },
+            "size": "3,6 MB",
+            "camera": {
+                "eye": [-10,3.6,-8]
+            }
+        },
+        "Golden ball": {
+            "name": "Golden ball",
+            "mesh": "Golden/golden.obj",
+            "textures": {
+                "roughness": "Golden/roughness.png",
+                "metalness": "Golden/metalness.png",
+                "albedo": "Golden/albedo.png",
+                "normal": "Golden/normal.png",
+                "ao": "Golden/ao.png"
+            },
+            "size": "0,8 MB"
+        },
+        "JetPrince 1967": {
+            "name": "JetPrince 1967",
+            "mesh": [
+             "Bike/bike1/bike1.obj",
+             "Bike/bike2/bike2.obj",
+             "Bike/bike3/bike3.obj",
+             "Bike/bike4/bike4.obj"
+            ],
+            "textures": [
+                {
+                    "roughness": "Bike/bike1/roughness.png",
+                    "metalness": "Bike/bike1/metalness.png",
+                    "albedo": "Bike/bike1/albedo.png",
+                    "normal": "Bike/bike1/normal.png",
+                    "ao": "Bike/bike1/ao.png"
+                },
+                {
+                    "roughness": "Bike/bike2/roughness.png",
+                    "metalness": "Bike/bike2/metalness.png",
+                    "albedo": "Bike/bike2/albedo.png",
+                    "normal": "Bike/bike2/normal.png",
+                    "ao": "Bike/bike2/ao.png"
+                },
+                {
+                    "roughness": "Bike/bike3/roughness.png",
+                    "metalness": "Bike/bike3/metalness.png",
+                    "albedo": "Bike/bike3/albedo.png",
+                    "normal": "Bike/bike3/normal.png",
+                    "ao": "Bike/bike3/ao.png"
+                },
+                {
+                    "roughness": "Bike/bike4/roughness.png",
+                    "metalness": "Bike/bike4/metalness.png",
+                    "albedo": "Bike/bike4/albedo.png",
+                    "normal": "Bike/bike4/normal.png",
+                    "ao": "Bike/bike4/ao.png",
+                    "opacity": "Bike/bike4/opacity.png"
+                }
+            ],
+            "size": "10,2 MB",
+            "camera": {
+                "eye": [2.5,1.5,3]
+            },
+            "node_name": "multipart_node"
+        },
+        "Iron Man helmet": {
+            "name": "Iron Man helmet",
+            "mesh": [
+             "IronMan/helmet/helmet.obj",
+             "IronMan/base/base.obj"
+            ],
+            "textures": [
+                {
+                    "roughness": "IronMan/helmet/roughness.png",
+                    "metalness": "IronMan/helmet/metalness.png",
+                    "albedo": "IronMan/helmet/albedo.png",
+                    "normal": "IronMan/helmet/normal.png",
+                    "ao": "IronMan/helmet/ao.png",
+                    "emissive": "IronMan/helmet/emissive.png"
+                },
+                {
+                    "roughness": "IronMan/base/roughness.png",
+                    "metalness": "IronMan/base/metalness.png",
+                    "albedo": "IronMan/base/albedo.png",
+                    "normal": "IronMan/base/normal.png",
+                    "ao": "IronMan/base/ao.png"
+                }
+            ],
+            "size": "2,51 MB"
+        },
+        "Cerberus": {
+            "name": "Cerberus",
+            "mesh": "Cerberus/cerberus.wbin",
+            "textures": {
+                "roughness": "Cerberus/roughness.png",
+                "metalness": "Cerberus/metalness.png",
+                "albedo": "Cerberus/albedo.png",
+                "normal": "Cerberus/normal.png",
+                "ao": "Cerberus/ao.png"
+            },
+            "size": "2,51 MB",
+            "camera": {
+                "eye": [1,0.5,-1],
+                "target": [0,0,-0.5]
+            }
+        },
+        "AirConditioner": {
+            "name": "AirConditioner",
+            "mesh": "AirConditioner/AirConditioner.obj",
+            "textures": {
+                "roughness": "AirConditioner/roughness.png",
+                "metalness": "AirConditioner/metalness.png",
+                "albedo": "AirConditioner/albedo.png",
+                "normal": "AirConditioner/normal.png",
+                "ao": "AirConditioner/ao.png"
+            },
+            "size": "0,04 MB",
+            "camera": {
+                "eye": [-80,35,20],
+                "target": [0,20,-40]
+            }
+        },
+        "Matrix": {
+            "name": "Matrix",
+            "node_name": "matrix_node",
+            "camera": {
+                "eye": [0,10,25],
+                "target": [7,0,7]
+            }
+        },
+        "Roughness scale": {
+            "name": "Roughness scale",
+            "node_name": "roughness_scale_node",
+            "camera": {
+                "eye": [13.81, 0.24,8.38],
+                "target": [0,0,8]
+            }
+        },
+        "Metalness scale": {
+            "name": "Metalness scale",
+            "node_name": "metalness_scale_node",
+            "camera": {
+                "eye": [13.81, 0.24,8.38],
+                "target": [0,0,8]
+            }
+        }
+    }
+}

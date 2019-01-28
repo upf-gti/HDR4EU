@@ -279,7 +279,7 @@ display: none;
 	-moz-box-sizing: border-box;	
 	-webkit-box-sizing: border-box;	
 	box-sizing: border-box;
-	padding: 2px;
+	padding: 0px; /* 2px */
 	padding-left: 4px;
 	font-weight: normal;
 	/* text-shadow: 0 1px 0 black; */
@@ -2206,7 +2206,7 @@ input[type="range"]::-moz-slider-thumb {
 }
 
 .slider-container {
-    margin-left: 5px;
+    margin-left: 0px;
     /*margin-right: 5px;*/
 }
 
