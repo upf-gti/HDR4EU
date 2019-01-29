@@ -753,91 +753,91 @@ DeferredPBR default.vs DeferredPBR.fs
 	
 	void main() {
         
-	// Get Roughness
-	float perceptualRoughness = u_roughness;
-	#ifdef HAS_ROUGHNESS_MAP
-		perceptualRoughness = texture2D(u_roughness_texture, v_coord).r;
-	#endif
-	perceptualRoughness = max(c_MinRoughness, perceptualRoughness);
-	float alphaRoughness = perceptualRoughness * perceptualRoughness;
+		// Get Roughness
+		float perceptualRoughness = u_roughness;
+		#ifdef HAS_ROUGHNESS_MAP
+			perceptualRoughness = texture2D(u_roughness_texture, v_coord).r;
+		#endif
+		perceptualRoughness = max(c_MinRoughness, perceptualRoughness);
+		float alphaRoughness = perceptualRoughness * perceptualRoughness;
 
-	// Get Metalness
-	float metallic = u_metalness;
-	#ifdef HAS_METALNESS_MAP
-		metallic = texture2D(u_metalness_texture, v_coord).r;
-	#endif
+		// Get Metalness
+		float metallic = u_metalness;
+		#ifdef HAS_METALNESS_MAP
+			metallic = texture2D(u_metalness_texture, v_coord).r;
+		#endif
 
-	vec3 baseColor = u_albedo;
-	#ifdef HAS_ALBEDO_MAP
-		baseColor = texture2D(u_albedo_texture, v_coord).rgb;
-	#endif
+		vec3 baseColor = u_albedo;
+		#ifdef HAS_ALBEDO_MAP
+			baseColor = texture2D(u_albedo_texture, v_coord).rgb;
+		#endif
 
-	if( u_correctAlbedo )
-		baseColor = pow(baseColor, vec3(GAMMA));
+		if( u_correctAlbedo )
+			baseColor = pow(baseColor, vec3(GAMMA));
 
-	vec3 f0 = vec3(FDIELECTRIC);
-	vec3 diffuseColor = mix(baseColor , f0, metallic);
-	vec3 specularColor = mix(f0, baseColor, metallic);
-        
-        // Compute reflectance.
-        // For typical incident reflectance range (between 4% to 100%) set the grazing reflectance to 100% for typical fresnel effect.
-        // For very low reflectance range on highly diffuse objects (below 4%), incrementally reduce grazing reflecance to 0%.
-        float reflectance = max(max(specularColor.r, specularColor.g), specularColor.b);
-        float reflectance90 = clamp(reflectance * 25.0, 0.0, 1.0);
-        vec3 specularEnvironmentR0 = specularColor.rgb;
-        vec3 specularEnvironmentR90 = vec3(1.0, 1.0, 1.0) * reflectance90;
-        
-        vec3 v = normalize(v_wPosition - u_camera_position);    	// Vector from surface point to camera
-        vec3 n = -normalize( v_wNormal ); // normal at surface point
+		vec3 f0 = vec3(FDIELECTRIC);
+		vec3 diffuseColor = mix(baseColor , f0, metallic);
+		vec3 specularColor = mix(f0, baseColor, metallic);
+		
+		// Compute reflectance.
+		// For typical incident reflectance range (between 4% to 100%) set the grazing reflectance to 100% for typical fresnel effect.
+		// For very low reflectance range on highly diffuse objects (below 4%), incrementally reduce grazing reflecance to 0%.
+		float reflectance = max(max(specularColor.r, specularColor.g), specularColor.b);
+		float reflectance90 = clamp(reflectance * 25.0, 0.0, 1.0);
+		vec3 specularEnvironmentR0 = specularColor.rgb;
+		vec3 specularEnvironmentR90 = vec3(1.0, 1.0, 1.0) * reflectance90;
+		
+		vec3 v = normalize(v_wPosition - u_camera_position);    	// Vector from surface point to camera
+		vec3 n = normalize( v_wNormal ); // normal at surface point
 
-        #ifdef HAS_NORMAL_MAP
-		vec3 normal_map = texture2D(u_normal_texture, v_coord).xyz;
-	        n = -normalize( perturbNormal( v_wNormal, v, v_coord, normal_map ) ); // normal at surface point
-	#endif
+		#ifdef HAS_NORMAL_MAP
+			vec3 normal_map = texture2D(u_normal_texture, v_coord).xyz;
+			n = normalize( perturbNormal( v_wNormal, v, v_coord, normal_map ) ); // normal at surface point
+		#endif
 
-	vec3 l = -normalize(u_light_position - v_wPosition);  			// Vector from surface point to light
-	vec3 h = normalize(l+v);                                	// Half vector between both l and v
-        vec3 reflection = normalize(reflect(-v, n));
-        
-        float NdotL = clamp(dot(n, l), 0.001, 1.0);
-        float NdotV = clamp(dot(n, v), 0.001, 1.0);
-        float NdotH = clamp(dot(n, h), 0.0, 1.0);
-        float LdotH = clamp(dot(l, h), 0.0, 1.0);
-        float VdotH = clamp(dot(v, h), 0.0, 1.0);
-        
-        PBRInfo pbrInputs = PBRInfo(
-		NdotL,
-		NdotV,
-		NdotH,
-		LdotH,
-		VdotH,
-		perceptualRoughness,
-		metallic,
-		specularEnvironmentR0,
-		specularEnvironmentR90,
-		alphaRoughness,
-		diffuseColor,
-		specularColor
-	);
-        
-	vec3 lightContribution = getLightContribution(pbrInputs);
-       	vec3 IBL = getIBLContribution(pbrInputs, n, reflection) * u_ibl_intensity;
+		vec3 l = -normalize(u_light_position - v_wPosition);  			// Vector from surface point to light
+		vec3 h = normalize(l+v);                                	// Half vector between both l and v
+		vec3 reflection = normalize(reflect(-v, n));
+		
+		float NdotL = clamp(dot(-n, l), 0.001, 1.0);
+		float NdotV = clamp(dot(-n, v), 0.001, 1.0);
+		float NdotH = clamp(dot(-n, h), 0.0, 1.0);
+		float LdotH = clamp(dot(l, h), 0.0, 1.0);
+		float VdotH = clamp(dot(v, h), 0.0, 1.0);
+		
+		PBRInfo pbrInputs = PBRInfo(
+			NdotL,
+			NdotV,
+			NdotH,
+			LdotH,
+			VdotH,
+			perceptualRoughness,
+			metallic,
+			specularEnvironmentR0,
+			specularEnvironmentR90,
+			alphaRoughness,
+			diffuseColor,
+			specularColor
+		);
+		
+		vec3 lightContribution = getLightContribution(pbrInputs);
+		vec3 IBL = getIBLContribution(pbrInputs, n, reflection) * u_ibl_intensity;
 
-	// Apply ambient oclusion 
-	if(u_hasAO && u_enable_ao)
-		IBL *= texture2D(u_ao_texture, v_coord).r;
+		// Apply ambient oclusion 
+		if(u_hasAO && u_enable_ao)
+			IBL *= texture2D(u_ao_texture, v_coord).r;
 
-        vec4 color = vec4(IBL + lightContribution, 1.0);
+		vec4 color = vec4(IBL + lightContribution, 1.0);
 
-	if(u_hasAlpha)
-		color.a = texture2D(u_opacity_texture, v_coord).r;
+		if(u_hasAlpha)
+			color.a = texture2D(u_opacity_texture, v_coord).r;
 
-	// Apply light from material (emissiveColor)
-	if(u_isEmissive)
-		 color.rgb += texture2D(u_emissive_texture, v_coord).rgb * u_emissiveScale;
-	
-	gl_FragColor = color;
-}
+		// Apply light from material (emissiveColor)
+		if(u_isEmissive)
+			 color.rgb += texture2D(u_emissive_texture, v_coord).rgb * u_emissiveScale;
+		
+		gl_FragColor = vec4(color);
+	}
 
 //
 // Deferred shading
@@ -994,94 +994,94 @@ DeferredPBR default.vs DeferredPBR.fs
 	
 	void main() {
         
-	// Get Roughness
-	float perceptualRoughness = u_roughness;
-	#ifdef HAS_ROUGHNESS_MAP
-		perceptualRoughness = texture2D(u_roughness_texture, v_coord).r;
-	#endif
-	perceptualRoughness = max(c_MinRoughness, perceptualRoughness);
-	float alphaRoughness = perceptualRoughness * perceptualRoughness;
+		// Get Roughness
+		float perceptualRoughness = u_roughness;
+		#ifdef HAS_ROUGHNESS_MAP
+			perceptualRoughness = texture2D(u_roughness_texture, v_coord).r;
+		#endif
+		perceptualRoughness = max(c_MinRoughness, perceptualRoughness);
+		float alphaRoughness = perceptualRoughness * perceptualRoughness;
 
-	// Get Metalness
-	float metallic = u_metalness;
-	#ifdef HAS_METALNESS_MAP
-		metallic = texture2D(u_metalness_texture, v_coord).r;
-	#endif
+		// Get Metalness
+		float metallic = u_metalness;
+		#ifdef HAS_METALNESS_MAP
+			metallic = texture2D(u_metalness_texture, v_coord).r;
+		#endif
 
-	vec3 baseColor = u_albedo;
-	#ifdef HAS_ALBEDO_MAP
-		baseColor = texture2D(u_albedo_texture, v_coord).rgb;
-	#endif
+		vec3 baseColor = u_albedo;
+		#ifdef HAS_ALBEDO_MAP
+			baseColor = texture2D(u_albedo_texture, v_coord).rgb;
+		#endif
 
-	if( u_correctAlbedo )
-		baseColor = pow(baseColor, vec3(GAMMA));
+		if( u_correctAlbedo )
+			baseColor = pow(baseColor, vec3(GAMMA));
 
-	vec3 f0 = vec3(FDIELECTRIC);
-	vec3 diffuseColor = mix(baseColor , f0, metallic);
-	vec3 specularColor = mix(f0, baseColor, metallic);
-        
-        // Compute reflectance.
-        // For typical incident reflectance range (between 4% to 100%) set the grazing reflectance to 100% for typical fresnel effect.
-        // For very low reflectance range on highly diffuse objects (below 4%), incrementally reduce grazing reflecance to 0%.
-        float reflectance = max(max(specularColor.r, specularColor.g), specularColor.b);
-        float reflectance90 = clamp(reflectance * 25.0, 0.0, 1.0);
-        vec3 specularEnvironmentR0 = specularColor.rgb;
-        vec3 specularEnvironmentR90 = vec3(1.0, 1.0, 1.0) * reflectance90;
-        
-        vec3 v = normalize(v_wPosition - u_camera_position);    	// Vector from surface point to camera
-        vec3 n = -normalize( v_wNormal ); // normal at surface point
+		vec3 f0 = vec3(FDIELECTRIC);
+		vec3 diffuseColor = mix(baseColor , f0, metallic);
+		vec3 specularColor = mix(f0, baseColor, metallic);
+		
+		// Compute reflectance.
+		// For typical incident reflectance range (between 4% to 100%) set the grazing reflectance to 100% for typical fresnel effect.
+		// For very low reflectance range on highly diffuse objects (below 4%), incrementally reduce grazing reflecance to 0%.
+		float reflectance = max(max(specularColor.r, specularColor.g), specularColor.b);
+		float reflectance90 = clamp(reflectance * 25.0, 0.0, 1.0);
+		vec3 specularEnvironmentR0 = specularColor.rgb;
+		vec3 specularEnvironmentR90 = vec3(1.0, 1.0, 1.0) * reflectance90;
+		
+		vec3 v = normalize(v_wPosition - u_camera_position);    	// Vector from surface point to camera
+		vec3 n = normalize( v_wNormal ); // normal at surface point
 
-        #ifdef HAS_NORMAL_MAP
-		vec3 normal_map = texture2D(u_normal_texture, v_coord).xyz;
-	        n = -normalize( perturbNormal( v_wNormal, v, v_coord, normal_map ) ); // normal at surface point
-	#endif
+		#ifdef HAS_NORMAL_MAP
+			vec3 normal_map = texture2D(u_normal_texture, v_coord).xyz;
+			n = normalize( perturbNormal( v_wNormal, v, v_coord, normal_map ) ); // normal at surface point
+		#endif
 
-	vec3 l = -normalize(u_light_position - v_wPosition);  			// Vector from surface point to light
-	vec3 h = normalize(l+v);                                	// Half vector between both l and v
-        vec3 reflection = normalize(reflect(-v, n));
-        
-        float NdotL = clamp(dot(n, l), 0.001, 1.0);
-        float NdotV = clamp(dot(n, v), 0.001, 1.0);
-        float NdotH = clamp(dot(n, h), 0.0, 1.0);
-        float LdotH = clamp(dot(l, h), 0.0, 1.0);
-        float VdotH = clamp(dot(v, h), 0.0, 1.0);
-        
-        PBRInfo pbrInputs = PBRInfo(
-		NdotL,
-		NdotV,
-		NdotH,
-		LdotH,
-		VdotH,
-		perceptualRoughness,
-		metallic,
-		specularEnvironmentR0,
-		specularEnvironmentR90,
-		alphaRoughness,
-		diffuseColor,
-		specularColor
-	);
-        
-	vec3 lightContribution = getLightContribution(pbrInputs);
-       	vec3 IBL = getIBLContribution(pbrInputs, n, reflection) * u_ibl_intensity;
+		vec3 l = -normalize(u_light_position - v_wPosition);  			// Vector from surface point to light
+		vec3 h = normalize(l+v);                                	// Half vector between both l and v
+		vec3 reflection = normalize(reflect(-v, n));
+		
+		float NdotL = clamp(dot(-n, l), 0.001, 1.0);
+		float NdotV = clamp(dot(-n, v), 0.001, 1.0);
+		float NdotH = clamp(dot(-n, h), 0.0, 1.0);
+		float LdotH = clamp(dot(l, h), 0.0, 1.0);
+		float VdotH = clamp(dot(v, h), 0.0, 1.0);
+		
+		PBRInfo pbrInputs = PBRInfo(
+			NdotL,
+			NdotV,
+			NdotH,
+			LdotH,
+			VdotH,
+			perceptualRoughness,
+			metallic,
+			specularEnvironmentR0,
+			specularEnvironmentR90,
+			alphaRoughness,
+			diffuseColor,
+			specularColor
+		);
+		
+		vec3 lightContribution = getLightContribution(pbrInputs);
+		vec3 IBL = getIBLContribution(pbrInputs, n, reflection) * u_ibl_intensity;
 
-	// Apply ambient oclusion 
-	if(u_hasAO && u_enable_ao)
-		IBL *= texture2D(u_ao_texture, v_coord).r;
+		// Apply ambient oclusion 
+		if(u_hasAO && u_enable_ao)
+			IBL *= texture2D(u_ao_texture, v_coord).r;
 
-        vec4 color = vec4(IBL + lightContribution, 1.0);
+		vec4 color = vec4(IBL + lightContribution, 1.0);
 
-	if(u_hasAlpha)
-		color.a = texture2D(u_opacity_texture, v_coord).r;
+		if(u_hasAlpha)
+			color.a = texture2D(u_opacity_texture, v_coord).r;
 
-	// Apply light from material (emissiveColor)
-	if(u_isEmissive)
-		 color.rgb += texture2D(u_emissive_texture, v_coord).rgb * u_emissiveScale;
+		// Apply light from material (emissiveColor)
+		if(u_isEmissive)
+			 color.rgb += texture2D(u_emissive_texture, v_coord).rgb * u_emissiveScale;
 	
-	gl_FragData[0] = color;
-	gl_FragData[1] = vec4((n * 0.5 + vec3(0.5) ), 1.0); 
-	gl_FragData[2] = vec4(vec3(perceptualRoughness), 1.0);
-	// gl_FragData[3] = ...
-}
+		gl_FragData[0] = color;
+		gl_FragData[1] = vec4((n * 0.5 + vec3(0.5) ), 1.0); 
+		gl_FragData[2] = vec4(vec3(perceptualRoughness), 1.0);
+		// gl_FragData[3] = ...
+	}
 
 \finalDeferred.fs
 
@@ -1169,11 +1169,12 @@ DeferredPBR default.vs DeferredPBR.fs
 	void main() {
 		
 		float depth = texture2D(u_fbo_depth_texture, v_coord).r;
+		vec3 frameColor = texture2D(u_fbo_color_texture, v_coord).rgb;
 		
 		const vec2 resolution = vec2(INPUT_TEX_WIDTH, INPUT_TEX_HEIGHT);
 
 		vec3 viewPosition = getViewPosition(depth);
-		vec3 viewNormal = -normalize( texture2D(u_fbo_normal_texture, v_coord).xyz * 2.0 - 1.0 );
+		vec3 viewNormal = normalize( texture2D(u_fbo_normal_texture, v_coord).xyz * 2.0 - 1.0 );
 
 		vec2 noiseScale = vec2(float(resolution.x) / u_noise_tiling, float(resolution.y) / u_noise_tiling);
 		vec3 rvec = normalize(texture2D(u_noise_texture, v_coord * 300.0).xyz * 2.0 - 1.0);

@@ -157,18 +157,7 @@ Core.prototype.setup = function()
         url:"php/files.php", 
         success: async function(data){ 
             // Save textures info for the GUI
-            //textures = JSON.parse(data);
-            RM.textures = {
-                "Vondelpark": {
-                    name: "Vondelpark",
-                    path: "textures/hdre/vondelpark.hdre"
-                },
-
-                "Venice": {
-                    name: "Venice",
-                    path: "textures/hdre/venice_sunrise.hdre"
-                },
-            };
+			RM.textures = JSON.parse(data);
             
             await that.reloadShaders();
         
@@ -176,7 +165,7 @@ Core.prototype.setup = function()
 			HDRTool.brdf("brdfIntegrator");
             
             // Set environment 
-            that.set( RM.textures['Venice'] );
+            that.set( RM.textures['Vondelpark'] );
             
             // Init things
             ssao.init();
@@ -186,12 +175,11 @@ Core.prototype.setup = function()
     });
 
     // Init Canvas tools (which are not in component)
-    var button = $(document.querySelector(".tool-sphereprem"));
-    button.on('click', function(){
+    $(document.querySelector(".tool-sphereprem")).on('click', function(){
 
         if(window.prem_sphere) {
             window.prem_sphere.destroy(true);
-            this._gui.updateSidePanel(null, 'root');
+            that._gui.updateSidePanel(null, 'root');
             window.prem_sphere = undefined;
             $(this).removeClass("enabled");
             return;
@@ -200,8 +188,7 @@ Core.prototype.setup = function()
         $(this).addClass("enabled");
     });
 
-    button = $(document.querySelector(".tool-deferredtex"));
-    button.on('click', function(){
+    $(document.querySelector(".tool-deferredtex")).on('click', function(){
 
         that.show_deferred_textures = !that.show_deferred_textures;
         
@@ -229,10 +216,10 @@ Core.prototype.configure = function(o)
     {
         switch( i )
         {
-            case "components":
 			case "controller":
-			case "nodes":
 			case "uniforms":
+			case "_environment":
+			case "_environment_set":
                 continue;
         };
 
@@ -613,10 +600,10 @@ Core.prototype.parse = function(name)
 {
     var toParse = RM.scenes[name];
 
-    toParse.mesh = RM.MODELS_FOLDER + toParse.mesh;
-
-    for(var t in toParse.textures)
-    toParse.textures[t] = RM.MODELS_FOLDER + toParse.textures[t];
+	var meshes = [].concat(toParse.mesh);
+	for(var t in meshes)
+    meshes[t] = RM.MODELS_FOLDER + meshes[t];
+	toParse.mesh = meshes;
 
     // clean scene
     this.destroyByName('node');
@@ -651,7 +638,7 @@ Core.prototype.loadResources = async function( toParse, name )
     var that = this;
 
     // Load array of meshes
-    var meshes = [].concat(toParse.mesh);
+    var meshes = toParse.mesh;
     var RenderComponent = RM.get("Render");
     var render_mode = 0;
     if(RenderComponent && RenderComponent.render_mode)
@@ -683,7 +670,7 @@ Core.prototype.loadResources = async function( toParse, name )
         
         // load textures
         for(var t in toParse.textures[i])
-            node.textures[t] = toParse.textures[i][t];
+            node.textures[t] = RM.MODELS_FOLDER + toParse.textures[i][t];
 
         // is emissive? has AO? has Alpha?
         node.setTextureProperties();
@@ -929,7 +916,7 @@ Core.prototype.renderMatrix = function(visible)
         mn.shader = "pbr";
         mn.position = [j * 2.5, 0, i * 2.5];
         mn._uniforms["u_roughness"] = values[i];
-        mn._uniforms["u_metalness"] = values[j];
+        mn._uniforms["u_metalness"] = 1.0 - values[j];
         node.addChild(mn);
     }
 
@@ -1183,7 +1170,7 @@ Core.prototype.toJSON = function()
 		_descriptor: this._descriptor,
 		_environment: this._environment, 
 		_environment_set: this._environment_set,
-        _blur_samplesblur_samples: this._blur_samples,
+        _blur_samples: this._blur_samples,
         _background_color: this._background_color,
 		selected_radius: this.selected_radius,
         controller: {
@@ -1322,8 +1309,10 @@ Core.prototype.fromJSON = function( o, only_settings )
     }
 
     // set scene
-    this.set( RM.TEXTURES_FOLDER + o._environment );
-    gui.updateSidePanel(null, 'root');
+	if ( o._environment_set )
+		this.set( o._environment_set );
+		
+	gui.updateSidePanel(null, 'root');
 }
 
 /////// ****** ////// ******* /////// ******* /////// ******* ///// 
