@@ -735,12 +735,8 @@
 		
 		var array_type = Float32Array;
 		
-		console.log(type);
-
 		if(type == GL.UNSIGNED_BYTE) 
 			array_type = Uint8Array;
-
-				console.log(array_type);
 
 
         /**
@@ -756,7 +752,7 @@
         // Get all roughness levels
         for(var i = 0; i < 5; i++)
         {
-            let a = '_prem_'+i+'_'+e;;
+            let a = '_prem_'+i+'_'+e;
             let _env = this.processSkybox(a);
 
             let w = _env.width;

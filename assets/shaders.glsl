@@ -678,6 +678,7 @@ DeferredPBR default.vs DeferredPBR.fs
 	uniform bool u_hasAO;
 	uniform bool u_enable_ao;
 	uniform bool u_correctAlbedo;
+	uniform bool u_EC;
     
 	struct PBRInfo
 	{
@@ -700,18 +701,36 @@ DeferredPBR default.vs DeferredPBR.fs
 	#import "prem.inc"
 	#import "fresnel.inc"
 
-	#define PI 3.1415926535897932384626433832795
+	#define PI 3.14159265359
+	#define RECIPROCAL_PI 0.31830988618
 	#define FDIELECTRIC 0.04
 
 	const float c_MinRoughness = 0.04;
     
+	vec2 integrateSpecularBRDF( const float dotNV, const float roughness ) {
+
+		const vec4 c0 = vec4( -1.0, -0.0275, -0.572, 0.022 );
+		const vec4 c1 = vec4( 1.0, 0.0425, 1.04, -0.04 );
+		vec4 r = roughness * c0 + c1;
+		float a004 = min( r.x * r.x, exp2( - 9.28 * dotNV ) ) * r.x + r.y;
+		return vec2( -1.04, 1.04 ) * a004 + r.zw;
+	}
+
+	// Clear coat directional hemishperical reflectance
+	float clearCoatDHRApprox( const in float roughness, const in float dotNL ) {
+		return FDIELECTRIC + ( 1.0 - FDIELECTRIC ) * ( pow( 1.0 - dotNL, 5.0 ) * pow( 1.0 - roughness, 2.0 ) );
+	}
+
+	vec3 BRDF_Diffuse_Lambert( const in vec3 diffuseColor )
+	{
+		return RECIPROCAL_PI * diffuseColor;
+	} 
+
 	vec3 getIBLContribution(PBRInfo pbrInputs, vec3 n, vec3 reflection)
 	{
-		vec3 brdf = texture2D(u_brdf_texture, vec2(pbrInputs.NdotV, pbrInputs.perceptualRoughness)).rgb;
-
 		// Get values from brdf texture
-		float x_brdf = brdf.x;
-		float y_brdf = brdf.y;//pow(brdf.y, 2.0);
+		vec2 brdf = texture2D(u_brdf_texture, vec2(pbrInputs.NdotV, pbrInputs.perceptualRoughness)).xy;
+		//brdf = integrateSpecularBRDF(pbrInputs.NdotV, pbrInputs.perceptualRoughness);
 
 		// Sample diffuse irradiance at normal direction.
 		vec3 diffuseLight = prem(reflection, 1.0, u_rotation);
@@ -722,7 +741,7 @@ DeferredPBR default.vs DeferredPBR.fs
 		vec3 F = specularReflection(pbrInputs);
 
 		vec3 diffuse = diffuseLight * pbrInputs.diffuseColor;
-		vec3 specular =  specularLight * (pbrInputs.specularColor * x_brdf + y_brdf);
+		vec3 specular =  specularLight * ( F * brdf.x + pow(brdf.y, 0.5));
 		vec3 color = diffuse + specular;
 
 		if(u_channel == 1.0)
@@ -731,6 +750,54 @@ DeferredPBR default.vs DeferredPBR.fs
 			color = specular;
 
 		return color;
+	}
+
+	vec3 IndirectDiffuse(PBRInfo pbrInputs, vec3 n, vec3 reflection)
+	{
+		vec3 irradiance = prem(reflection, 1.0, u_rotation);
+		return irradiance * BRDF_Diffuse_Lambert( pbrInputs.diffuseColor );
+	}
+
+	vec3 IndirectSpecular(PBRInfo pbrInputs, vec3 n, vec3 reflection, inout vec3 indirectDiffuse)
+	{
+		vec3 irradiance = prem(reflection, pbrInputs.perceptualRoughness, u_rotation);
+		vec3 radiance = prem(reflection, 0.0, u_rotation);
+
+		// Both indirect specular and diffuse light accumulate here
+		// if energy preservation enabled
+		vec3 singleScattering = vec3(0.0);
+		vec3 multiScattering = vec3(0.0);
+		vec3 cosineWeightedIrradiance = irradiance * RECIPROCAL_PI;
+		
+		// get material info
+		float dotNV = pbrInputs.NdotV;
+		float roughness = pbrInputs.perceptualRoughness;
+		vec3 specularColor = specularReflection(pbrInputs);
+
+		float materialClearCoat = 0.0;
+		float clearCoatDHR = materialClearCoat * clearCoatDHRApprox(roughness, dotNV);
+		float clearCoatInv = 1.0 - clearCoatDHR;
+
+		vec2 brdf = texture2D(u_brdf_texture, vec2(dotNV, roughness)).xy;
+
+		vec3 FssEss = specularColor * brdf.x + brdf.y;
+		float Ess = brdf.x + brdf.y;
+		float Ems = 1.0 - Ess;
+		// Paper incorrect indicates coefficient is PI/21, and will
+		// be corrected to 1/21 in future updates.
+		vec3 Favg = specularColor + ( 1.0 - specularColor ) * 0.047619; // 1/21
+		vec3 Fms = FssEss * Favg / ( 1.0 - Ems * Favg );
+		singleScattering += FssEss;
+		multiScattering += Fms * Ems;
+		
+		vec3 diffuse = pbrInputs.diffuseColor * ( 1.0 - ( singleScattering + multiScattering ) );
+		vec3 indirectSpecular = clearCoatInv * irradiance * singleScattering;
+		indirectSpecular += clearCoatInv * irradiance * multiScattering;
+
+		indirectDiffuse += singleScattering * cosineWeightedIrradiance;
+		indirectDiffuse += multiScattering * cosineWeightedIrradiance;
+		indirectDiffuse += diffuse * cosineWeightedIrradiance;
+		return indirectSpecular;
 	}
 
 	vec3 getLightContribution(PBRInfo pbrInputs)
@@ -776,7 +843,7 @@ DeferredPBR default.vs DeferredPBR.fs
 			baseColor = pow(baseColor, vec3(GAMMA));
 
 		vec3 f0 = vec3(FDIELECTRIC);
-		vec3 diffuseColor = mix(baseColor , f0, metallic);
+		vec3 diffuseColor = mix(baseColor , vec3(0.0), metallic);
 		vec3 specularColor = mix(f0, baseColor, metallic);
 		
 		// Compute reflectance.
@@ -820,8 +887,23 @@ DeferredPBR default.vs DeferredPBR.fs
 			specularColor
 		);
 		
+		// Step 1 direct lighting
 		vec3 lightContribution = getLightContribution(pbrInputs);
+
+
+		// Step 2 indirect lighting
+
+		// version 1: no energy preservation
 		vec3 IBL = getIBLContribution(pbrInputs, n, reflection) * u_ibl_intensity;
+
+		// version 2: energy preservation when roughness increases
+		if(u_EC) {
+		
+			vec3 diffuse = vec3(0.0);
+			vec3 specular = IndirectSpecular(pbrInputs, n, reflection, diffuse);
+			IBL = diffuse + specular;
+		}
+		
 
 		// Apply ambient oclusion 
 		if(u_hasAO && u_enable_ao)
@@ -1614,6 +1696,14 @@ DeferredPBR default.vs DeferredPBR.fs
 	{
 		return F0 + (vec3(1.0) - F0) * pow( (1.0 - val) , 5.0);
 	}
+
+	// Optimized variant (presented by Epic at SIGGRAPH '13)
+	// https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf
+	vec3 F_Schlick( const in vec3 specularColor, const in float dotLH ) {
+	
+		float fresnel = exp2( ( -5.55473 * dotLH - 6.98316 ) * dotLH );
+		return ( 1.0 - specularColor ) * fresnel + specularColor;
+	} 
 
 \atmosphere.inc	
 

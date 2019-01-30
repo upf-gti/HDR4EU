@@ -29,8 +29,8 @@ Object.assign( Render.prototype, {
 	
 		widgets.widgets_per_row = 1;
 		if(this.show_more) {
+			widgets.addCheckbox("Energy conservation",  renderer._uniforms["u_EC"], {name_width: '50%', callback: function(v){ CORE.setUniform('EC', v);  }});
 			widgets.addCheckbox("Correct Albedo",  renderer._uniforms["u_correctAlbedo"], {name_width: '50%', callback: function(v){  CORE.setUniform('correctAlbedo', v); }});
-			widgets.addCheckbox("Anything",  true, {name_width: '50%', callback: function(v){   }});
 		}
 		widgets.addSeparator();
 	

@@ -126,6 +126,7 @@ Core.prototype.setup = function()
     this.setUniform("channel", 0.0);
     this.setUniform("enable_ao", true);
     this.setUniform("correctAlbedo", true);
+	this.setUniform("EC", false);
     this.setUniform("ibl_intensity", 1.0);
     this.setUniform("albedo", vec3.fromValues( 1, 1, 1));
     
@@ -541,7 +542,11 @@ Core.prototype.set = function(env_set, options)
     this._environment_set = env_set;
             
     var that = this;
-    var oncomplete = function() { that.display( options.no_free_memory ); if(options.onImport) options.onImport(); };
+    var oncomplete = function() { 
+		that.display( options.no_free_memory ); 
+		if(options.onImport)
+			options.onImport();
+	};
     var params = {oncomplete: oncomplete};
 
     if(tex_name != ":atmos")
@@ -588,7 +593,7 @@ Core.prototype.display = function( no_free_memory )
         that._gui.loading(0);
         $("#import-loader").hide();            
         console.log("%c" + that._environment, 'font-weight: bold;');
-    }, 1250);
+    }, 1000);
 }
 
 /**
@@ -1213,6 +1218,7 @@ Core.prototype.toJSON = function()
 Core.prototype.fromJSON = function( o, only_settings )
 {
     var gui = this._gui;
+	var that = this;
 	gui.loading();
     var o = o || {};
     
@@ -1273,46 +1279,50 @@ Core.prototype.fromJSON = function( o, only_settings )
 		    this.addLight( components['Light'] );
 	}
 
-	// no load nodes
-    if(only_settings)
-    {
-        gui.updateSidePanel(null, 'root');
-        return;
-    }
-    
-    // load nodes info
-    for(var i in o.nodes)    
-    {
-        var node_properties = JSON.parse(o.nodes[i]);
-        
-        switch(node_properties.name)
-        {
-            case 'lines':
-            case 'light':
-                continue;
-            case 'cubemap':
-                this.cubemap.flags = node_properties.flags;
-				this.cubemap.shader = node_properties.shader;
-                break;
-            case 'matrix_node':
-                this.renderMatrix( true );
-                break;
-            default:
-                // create node and apply properties
-                var new_node = new RD.SceneNode();
-                new_node.name = "tmp";
-                new_node.configure(node_properties);
-                new_node.setTextureProperties();
-                this._root.addChild(new_node);
-                break;
-        }
-    }
-
-    // set scene
+	// set scene
 	if ( o._environment_set )
-		this.set( o._environment_set );
+		this.set( o._environment_set, {onImport: onLoadEnvironment } );
+
+	function onLoadEnvironment() {
 		
-	gui.updateSidePanel(null, 'root');
+		// no load nodes
+		if(only_settings)
+		{
+			that._gui.updateSidePanel(null, 'root');
+			return;
+		}
+		  // load nodes info
+		for(var i in o.nodes)    
+		{
+			var node_properties = JSON.parse(o.nodes[i]);
+			
+			switch(node_properties.name)
+			{
+				case 'lines':
+				case 'light':
+					continue;
+				case 'cubemap':
+					that.cubemap.flags = node_properties.flags;
+					that.cubemap.shader = node_properties.shader;
+					break;
+				case 'matrix_node':
+					that.renderMatrix( true );
+					break;
+				default:
+					// create node and apply properties
+					var new_node = new RD.SceneNode();
+					new_node.name = "tmp";
+					new_node.configure(node_properties);
+					new_node.setTextureProperties();
+					that._root.addChild(new_node);
+					break;
+			}
+		}
+			
+		gui.updateSidePanel(null, 'root');
+		
+	}
+	
 }
 
 /////// ****** ////// ******* /////// ******* /////// ******* ///// 
