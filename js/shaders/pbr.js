@@ -38,9 +38,11 @@ Object.assign( PBR_Shader.prototype, {
 			'\tprecision highp float;\n'
 		].join('\n');
 		
-		for(var i in this.defines) {
-			this.vs_code += '\t#define ' + i + " " + this.defines[i] + "\n";
-			this.fs_code += '\t#define ' + i + " " + this.defines[i] + "\n";
+		var defines_list = Object.assign(this.defines, RM.shader_macros);
+
+		for(var i in defines_list) {
+			this.vs_code += '\t#define ' + i + " " + defines_list[i] + "\n";
+			this.fs_code += '\t#define ' + i + " " + defines_list[i] + "\n";
 		}
 		
 		this.vs_code += this.constructor.VS_CODE;
@@ -129,6 +131,7 @@ PBR_Shader.FS_CODE = `
     struct PBRMat
     {
         float linearRoughness;
+		float roughness;
         float metallic;
         float f90;
         vec3 f0;
@@ -237,7 +240,8 @@ PBR_Shader.FS_CODE = `
 		roughness = max(roughness, MIN_ROUGHNESS);	
         float linearRoughness = roughness * roughness;
 
-        material.metallic = metallic;
+        material.roughness = roughness;
+		material.metallic = metallic;
         material.linearRoughness = linearRoughness;
         material.f0 = f0;
         material.diffuseColor = diffuseColor;
@@ -277,15 +281,82 @@ PBR_Shader.FS_CODE = `
 		return (D * V) * F;
 	}
 
+	mat4 rotationMatrix(vec3 a, float angle) {
+
+		vec3 axis = normalize(a);
+		float s = sin(angle);                                                                                                                          
+		float c = cos(angle);
+		float oc = 1.0 - c;
+		
+		return mat4(oc*axis.x*axis.x+c,oc*axis.x*axis.y-axis.z*s,oc*axis.z*axis.x+axis.y*s,0.0,
+					oc*axis.x*axis.y+axis.z*s,oc*axis.y*axis.y+c,oc*axis.y*axis.z-axis.x*s,0.0,
+					oc*axis.z*axis.x-axis.y*s,oc*axis.y*axis.z+axis.x*s,oc*axis.z*axis.z+c,0.0,
+					0.0,0.0,0.0,1.0);
+	}
+
+	vec3 prem(vec3 R, float roughness, float rotation) {
+    
+        float a = roughness * 5.0;
+
+		R = (rotationMatrix(vec3(0.0,1.0,0.0),rotation) * vec4(R,1.0)).xyz;
+
+    	if(a < 1.0) return mix(textureCube(u_env_texture, R).rgb, textureCube(u_env_1_texture, R).rgb, a);
+        if(a < 2.0) return mix(textureCube(u_env_1_texture, R).rgb, textureCube(u_env_2_texture, R).rgb, a - 1.0);
+        if(a < 3.0) return mix(textureCube(u_env_2_texture, R).rgb, textureCube(u_env_3_texture, R).rgb, a - 2.0);
+        if(a < 4.0) return mix(textureCube(u_env_3_texture, R).rgb, textureCube(u_env_4_texture, R).rgb, a - 3.0);
+        if(a < 5.0) return mix(textureCube(u_env_4_texture, R).rgb, textureCube(u_env_5_texture, R).rgb, a - 4.0);
+
+        return textureCube(u_env_5_texture, R).xyz;
+    }
+
+	// Fdez-Agüera's "Multiple-Scattering Microfacet Model for Real-Time Image Based Lighting"
+	// Approximates multiscattering in order to preserve energy.
+	// http://www.jcgt.org/published/0008/01/03/
+	void BRDF_Specular_Multiscattering ( const in PBRMat material, inout vec3 singleScatter, inout vec3 multiScatter ) {
+		
+		float NoV = material.NoV;
+		vec3 F = F_Schlick( NoV, material.f0 );
+		vec2 brdf = texture2D( u_brdf_texture, vec2(NoV, material.linearRoughness) ).xy;
+		vec3 FssEss = F * brdf.x + brdf.y;
+		float Ess = brdf.x + brdf.y;
+		float Ems = 1.0 - Ess;
+
+		vec3 Favg = material.f0 + ( 1.0 - material.f0 ) * 0.047619; // 1/21
+		vec3 Fms = FssEss * Favg / ( 1.0 - Ems * Favg );
+		singleScatter += FssEss;
+		multiScatter += Fms * Ems;
+	}
+
 	// still no energy compensation
-	vec3 do_lighting(const in PBRMat material)
+	void do_lighting(inout PBRMat material, inout vec3 color)
 	{
 		// Specular BRDF
         vec3 Fr = specularBRDF( material );
         // Diffuse BRDF
         vec3 Fd = material.diffuseColor * Fd_Lambert();
 		// Combine
-		vec3 color = Fd + Fr;
+		vec3 direct = Fd + Fr;
+
+		// Image based lighting 
+		vec3 radiance = prem(material.reflection, material.roughness, u_rotation);
+		vec3 irradiance = prem(material.reflection, 1.0, u_rotation);
+		vec3 cosineWeightedIrradiance = irradiance * RECIPROCAL_PI;
+
+		/*vec3 singleScattering = vec3(0.0);
+		vec3 multiScattering = vec3(0.0);
+		
+		BRDF_Specular_Multiscattering( material, singleScattering, multiScattering );
+
+		vec3 diffuse = material.diffuseColor * ( 1.0 - ( singleScattering + multiScattering ) );
+		Fr = radiance * singleScattering;
+		Fd = cosineWeightedIrradiance * multiScattering + diffuse * cosineWeightedIrradiance;*/
+
+		// update reflected color
+		vec2 brdf = texture2D( u_brdf_texture, vec2(material.NoV, material.roughness) ).xy;
+		vec3 F = F_Schlick( material.NoV, material.f0 );
+		Fr = radiance * ( F * brdf.x + brdf.y);;
+		Fd = irradiance * material.diffuseColor;
+		vec3 indirect = Fd + Fr;
 
 		if(true) {
 			
@@ -300,26 +371,22 @@ PBR_Shader.FS_CODE = `
 			float Fcc = specularClearCoat( material, clearCoat, clearCoatRoughness );
 			float attenuation = 1.0 - Fcc;
 
-			color = (Fd + Fr /* * (energyCompensation * attenuation)*/) * attenuation + clearCoat;
+			indirect *= attenuation + clearCoat;
 		}
 
 		vec3 lightScale = vec3(u_light_intensity);
-		vec3 finalColor = color * material.NoL * u_light_color * lightScale;
-    	return finalColor;
+		vec3 finalColor = indirect + direct * (material.NoL * u_light_color * lightScale);
+    	color = finalColor;
 	}
 
     void main() {
         
-        PBRMat material = PBRMat(
-            0.0, 0.0, 0.0,
-            vec3(0.0), vec3(0.0), vec3(0.0),
-            0.0, 0.0, 0.0, 0.0
-		);
+        PBRMat material;
+		vec3 color;
 
         updateMaterial( material );
         updateVectors( material );
-
-		vec3 color = do_lighting( material );
+		do_lighting( material, color);
         
         // Energy loss
         gl_FragColor = vec4(color, 1.0);

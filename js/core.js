@@ -821,6 +821,13 @@ Core.prototype.reloadShaders = async function(macros, callback)
         that._renderer.loadShaders("assets/shaders.glsl", function() {
             
             console.log("Shaders reloaded!", {macros: RM.shader_macros});
+
+			// now reload shaders from /shaders/js
+			/*for(var i in RM.shaders) {
+				RM.shaders[i].setup();
+				gl.shaders[i].updateShader(RM.shaders[i].vs_code, RM.shaders[i].fs_code);
+			}*/
+
             if(callback)
                 callback();
             resolve();
