@@ -282,18 +282,37 @@ GUI.prototype.updateSidePanel = function( root, item_selected )
     else if(item_selected.includes("scale") || item_selected.includes("matrix"))
     {
         var node = CORE.getByName(item_selected);
+		var first_child = node.children[0];
+
+		// update rotations
+        node.rots = node.rots ? node.rots : vec3.create();
+
         widgets.addSection("Transform");
         widgets.addVector3("Position", node.position, {callback: function(v){ node.position = v; }});
-        widgets.addNumber("Uniform scale", node.scaling[0], {min: 0.1, callback: function(v){ node.scaling = v; }});
-        widgets.widgets_per_row = 3;
-        widgets.addButton(null, "Reset", {callback: function(v){
-            node.scaling = 1; 
-            node.position = [0, 0, 0];
-            that.updateSidePanel(that._sidepanel, item_selected);
+		widgets.addVector3("Rotation", node.rots, {callback: function(v){ 
+            
+            var dt = vec3.create();
+            dt = vec3.sub(dt, node.rots, v);
+
+            node.rots = v;
+
+            node.rotate(dt[0] * DEG2RAD, RD.LEFT);
+            node.rotate(dt[1] * DEG2RAD, RD.UP);
+            node.rotate(dt[2] * DEG2RAD, RD.FRONT);
+
         }});
-        widgets.widgets_per_row = 1;
+        widgets.addNumber("Uniform scale", node.scaling[0], {min: 0.1, callback: function(v){ node.scaling = v; }});
+		widgets.addSection("Shader");
+        widgets.addList(null, ["flat", "phong","PBR", "pbr", "DeferredPBR"], {selected: first_child.shader, callback: function(v){ 
+			for(var i in node.children)
+				node.children[i].shader = v;
+		}})
         widgets.addSection("Properties");
-        widgets.addColor("Base color", renderer._uniforms["u_albedo"], {callback: function(color){ CORE.setUniform('albedo', color); }});
+        widgets.addColor("Base color", renderer._uniforms["u_albedo"], {callback: function(color){ 
+			CORE.setUniform('albedo', color);
+			for(var i in node.children)
+				node.children[i].uniforms['u_color'] = color;
+		}});
     }
     else if(item_selected.includes("-")) // is a primitive uid
     {
@@ -331,7 +350,7 @@ GUI.prototype.updateSidePanel = function( root, item_selected )
             CORE.controller._camera.lookAt([ 0, radius * 0.5, radius * 2.5 ], result, RD.UP);
         }});
         widgets.addSection("Shader");
-        widgets.addList(null, ["flat", "phong", "textured", "pbr", "DeferredPBR"], {selected: node.shader,callback: function(v){ node.shader = v; }})
+        widgets.addList(null, ["flat", "phong", "textured","PBR", "pbr", "DeferredPBR"], {selected: node.shader,callback: function(v){ node.shader = v; }})
         this.addMaterial(widgets, node);
     }
 
@@ -351,6 +370,8 @@ GUI.prototype.addMaterial = function(inspector, node)
     inspector.addColor("Base color", node._uniforms["u_albedo"], {callback: function(color){ node._uniforms["u_albedo"] = node._uniforms["u_color"] = color; }});
     inspector.addSlider("Roughness", node._uniforms['u_roughness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_roughness'] = v }});
     inspector.addSlider("Metalness", node._uniforms['u_metalness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_metalness'] = v }});
+	inspector.addSlider("Clear coat", node._uniforms['u_clearCoat'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_clearCoat'] = v }});
+	inspector.addSlider("Clear coat rough.", node._uniforms['u_clearCoatRoughness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_clearCoatRoughness'] = v }});
     
     inspector.addTitle("Textures")
     inspector.addNumber("Bump scale", node._uniforms['u_bumpScale'],{name_width: "50%", min:0,max:5,step:0.01, callback: function(v){ node._uniforms['u_bumpScale'] = v }});

@@ -691,7 +691,7 @@ DeferredPBR default.vs DeferredPBR.fs
 		float metalness;              // metallic value at the surface
 		vec3 reflectance0;            // full reflectance color (normal incidence angle)
 		vec3 reflectance90;           // reflectance color at grazing angle
-		float alphaRoughness;         // roughness mapped to a more linear change in the roughness (proposed by [2])
+		float linearRoughness;         // roughness mapped to a more linear change in the roughness (proposed by [2])
 		vec3 diffuseColor;            // color contribution from diffuse lighting
 		vec3 specularColor;           // color contribution from specular lighting
 	};
@@ -705,7 +705,7 @@ DeferredPBR default.vs DeferredPBR.fs
 	#define RECIPROCAL_PI 0.31830988618
 	#define FDIELECTRIC 0.04
 
-	const float c_MinRoughness = 0.04;
+	const float c_MinRoughness = 0.01;
     
 	vec2 integrateSpecularBRDF( const float dotNV, const float roughness ) {
 
@@ -826,7 +826,7 @@ DeferredPBR default.vs DeferredPBR.fs
 			perceptualRoughness = texture2D(u_roughness_texture, v_coord).r;
 		#endif
 		perceptualRoughness = max(c_MinRoughness, perceptualRoughness);
-		float alphaRoughness = perceptualRoughness * perceptualRoughness;
+		float linearRoughness = perceptualRoughness * perceptualRoughness;
 
 		// Get Metalness
 		float metallic = u_metalness;
@@ -882,7 +882,7 @@ DeferredPBR default.vs DeferredPBR.fs
 			metallic,
 			specularEnvironmentR0,
 			specularEnvironmentR90,
-			alphaRoughness,
+			linearRoughness,
 			diffuseColor,
 			specularColor
 		);
@@ -1013,7 +1013,7 @@ DeferredPBR default.vs DeferredPBR.fs
 		float metalness;              // metallic value at the surface
 		vec3 reflectance0;            // full reflectance color (normal incidence angle)
 		vec3 reflectance90;           // reflectance color at grazing angle
-		float alphaRoughness;         // roughness mapped to a more linear change in the roughness (proposed by [2])
+		float linearRoughness;         // roughness mapped to a more linear change in the roughness (proposed by [2])
 		vec3 diffuseColor;            // color contribution from diffuse lighting
 		vec3 specularColor;           // color contribution from specular lighting
 	};
@@ -1082,7 +1082,7 @@ DeferredPBR default.vs DeferredPBR.fs
 			perceptualRoughness = texture2D(u_roughness_texture, v_coord).r;
 		#endif
 		perceptualRoughness = max(c_MinRoughness, perceptualRoughness);
-		float alphaRoughness = perceptualRoughness * perceptualRoughness;
+		float linearRoughness = perceptualRoughness * perceptualRoughness;
 
 		// Get Metalness
 		float metallic = u_metalness;
@@ -1138,7 +1138,7 @@ DeferredPBR default.vs DeferredPBR.fs
 			metallic,
 			specularEnvironmentR0,
 			specularEnvironmentR90,
-			alphaRoughness,
+			linearRoughness,
 			diffuseColor,
 			specularColor
 		);
@@ -1594,12 +1594,12 @@ DeferredPBR default.vs DeferredPBR.fs
 	// This calculates the specular geometric attenuation (aka G()),
 	// where rougher material will reflect less light back to the viewer.
 	// This implementation is based on [1] Equation 4, and we adopt their modifications to
-	// alphaRoughness as input as originally proposed in [2].
+	// linearRoughness as input as originally proposed in [2].
 	float geometricOcclusion(PBRInfo pbrInputs)
 	{
 		float NdotL = pbrInputs.NdotL;
 		float NdotV = pbrInputs.NdotV;
-		float r = pbrInputs.alphaRoughness;
+		float r = pbrInputs.linearRoughness;
 
 		float attenuationL = 2.0 * NdotL / (NdotL + sqrt(r * r + (1.0 - r * r) * (NdotL * NdotL)));
 		float attenuationV = 2.0 * NdotV / (NdotV + sqrt(r * r + (1.0 - r * r) * (NdotV * NdotV)));
@@ -1619,7 +1619,7 @@ DeferredPBR default.vs DeferredPBR.fs
 	// Follows the distribution function recommended in the SIGGRAPH 2013 course notes from EPIC Games [1], Equation 3.
 	float microfacetDistribution(PBRInfo pbrInputs)
 	{
-		float roughnessSq = pbrInputs.alphaRoughness * pbrInputs.alphaRoughness;
+		float roughnessSq = pbrInputs.linearRoughness * pbrInputs.linearRoughness;
 		float f = (pbrInputs.NdotH * roughnessSq - pbrInputs.NdotH) * pbrInputs.NdotH + 1.0;
 		return roughnessSq / (M_PI * f * f);
 	}

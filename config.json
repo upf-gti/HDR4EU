@@ -28,6 +28,7 @@
         "js/components/render.js",
         "js/components/screenfx.js",
         "js/shaders/tonemapping.js",
+	"js/shaders/pbr.js",
         "js/screenspace/ssao.js",
         "js/screenspace/ssr.js"
     ],

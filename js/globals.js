@@ -23,6 +23,7 @@ var ResourceManager = RM = {
 
         tonemappers: {},
         components: {},
+		shaders: {},
 
         FORWARD:	00,
         DEFERRED:	01,
@@ -180,6 +181,21 @@ var ResourceManager = RM = {
 
         var name = name || base_class.name;
         this.components[name] = instance;
+    },
+
+	registerShader: function( base_class, name )
+    {
+        // Control that param has necessary items
+        if(!base_class || !base_class.constructor)
+        throw('component class needed');
+
+        var instance = new base_class();
+
+        if(instance.setup)
+        instance.setup();
+
+        var name = name || base_class.name;
+        this.shaders[name] = instance;
     },
 
     // Get component

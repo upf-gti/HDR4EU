@@ -146,6 +146,9 @@ Core.prototype.setup = function()
     RM.shader_macros[ 'INPUT_TEX_WIDTH' ] = gl.viewport_data[2];
     RM.shader_macros[ 'INPUT_TEX_HEIGHT' ] = gl.viewport_data[3];
     RM.shader_macros[ 'EM_SIZE' ] = 1; // no parsing at initialization
+
+	for(var i in RM.shaders)
+	gl.shaders[i] = new GL.Shader(RM.shaders[i].vs_code, RM.shaders[i].fs_code);
     
     renderer.context.ondraw = function(){ that.render() };
     renderer.context.onupdate = function(dt){ that.update(dt) };
@@ -1074,11 +1077,12 @@ Core.prototype.addMesh = function(mesh, resource)
 */
 Core.prototype.addPrimitive = function(mesh, shader, show_prem)
 {
-    var shader = shader || ( (this._environment == "no current") ? "phong" : "pbr");
+    var shader = shader || ( (this._environment == "no current") ? "phong" : "PBR");//"pbr");
     
     var node = new RD.SceneNode({
             mesh: mesh,
-            shader: shader
+            shader: shader,
+			color: [1, 1, 1, 1]
         });
 
     var bb = gl.meshes[node.mesh].getBoundingBox();
@@ -1096,7 +1100,9 @@ Core.prototype.addPrimitive = function(mesh, shader, show_prem)
     if(!show_prem) {
         node._uniforms["u_roughness"] = 0.0;
         node._uniforms["u_metalness"] = 1.0;
-
+		node._uniforms["u_clearCoat"] = 0.5;
+		node._uniforms["u_clearCoatRoughness"] = 0.0;
+		node._uniforms["u_albedo"] = vec3.fromValues(1, 1, 1);
         node.setTextureProperties();
     }
     
