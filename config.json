@@ -29,6 +29,7 @@
         "js/components/screenfx.js",
         "js/shaders/tonemapping.js",
 	"js/shaders/pbr.js",
+	"js/shaders/defpbr.js",
         "js/screenspace/ssao.js",
         "js/screenspace/ssr.js"
     ],

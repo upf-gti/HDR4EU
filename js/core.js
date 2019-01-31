@@ -165,8 +165,9 @@ Core.prototype.setup = function()
             
             await that.reloadShaders();
         
-            // Environment BRDF (LUT)
+            // Environment BRDFs (LUT)
 			HDRTool.brdf("brdfIntegrator");
+			HDRTool.brdf("multibrdfIntegrator", 1);
             
             // Set environment 
             that.set( RM.textures['Vondelpark'] );
@@ -661,7 +662,7 @@ Core.prototype.loadResources = async function( toParse, name )
         node.name = "node-" + simple_guidGenerator();
         node.render_priority = RD.PRIORITY_ALPHA;
 
-        var shader = (render_mode === 0) ? "pbr" : "DeferredPBR";
+        var shader = (render_mode === 0) ? "pbr" : "pbr_deferred";
         node.shader = shader;
 
         node.blend_mode = RD.BLEND_ALPHA;
@@ -729,6 +730,7 @@ Core.prototype.updateNodes = function()
         if(!node) continue;
 
         node.textures['brdf'] = "_brdf_integrator";
+		node.textures['brdf_multi'] = "_brdf_integrator_multi";
         node.textures['env'] = this._environment;
         node.textures['env_1'] = "_prem_0_" + this._environment;
         node.textures['env_2'] = "_prem_1_" + this._environment;
@@ -823,10 +825,17 @@ Core.prototype.reloadShaders = async function(macros, callback)
             console.log("Shaders reloaded!", {macros: RM.shader_macros});
 
 			// now reload shaders from /shaders/js
-			/*for(var i in RM.shaders) {
+			for(var i in RM.shaders) {
+
 				RM.shaders[i].setup();
-				gl.shaders[i].updateShader(RM.shaders[i].vs_code, RM.shaders[i].fs_code);
-			}*/
+
+				var shader = gl.shaders[i];
+	
+				if(!shader) 
+					continue;
+
+				shader.updateShader(RM.shaders[i].vs_code, RM.shaders[i].fs_code);
+			}
 
             if(callback)
                 callback();
@@ -1084,7 +1093,7 @@ Core.prototype.addMesh = function(mesh, resource)
 */
 Core.prototype.addPrimitive = function(mesh, shader, show_prem)
 {
-    var shader = shader || ( (this._environment == "no current") ? "phong" : "PBR");//"pbr");
+    var shader = shader || ( (this._environment == "no current") ? "textured" : "pbr");
     
     var node = new RD.SceneNode({
             mesh: mesh,

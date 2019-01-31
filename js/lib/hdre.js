@@ -36,7 +36,8 @@
         HDRE.configuration = o;
     }
     
-    // Float32Array -> Float32 -> 32 bits per element -> 4 bytes
+    // Uint8Array -> UInt8 -> 8 bits per element -> 1 byte
+	// Float32Array -> Float32 -> 32 bits per element -> 4 bytes
     // Float64Array -> Float64 -> 64 bits per element -> 8 bytes
     
     /** HEADER STRUCTURE (128 bytes)

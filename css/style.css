@@ -202,3 +202,22 @@
   border-radius:50%;
   border:2px solid #77B;
 }
+
+/* resource panel */
+.responsive{
+
+	padding: 0 6px;
+	float: left;
+	width: 24.99999%;
+	cursor: pointer;
+}
+
+.responsive div{
+
+	padding: 4px;
+}
+
+.responsive:hover{
+
+	background: #222;
+}

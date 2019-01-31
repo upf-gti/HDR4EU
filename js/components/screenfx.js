@@ -43,7 +43,9 @@ Object.assign( SFX.prototype, {
 		widgets.addTitle("Frame");
 		widgets.addNumber("Exposure", this.exposure,{min:-10,max:10,step:0.1,callback: function(v) { that.exposure = v; }});
 		widgets.addNumber("Offset", this.offset,{min:-0.5,max:0.5,step:0.01,callback: function(v) { that.offset = v; }});
+		widgets.widgets_per_row = 2;
 		widgets.addCheckbox("FXAA",  this.fxaa, {name_width: '50%', callback: function(v){ that.fxaa = v; }});
+		widgets.widgets_per_row = 1;
 
 		if(CORE.browser !== 'safari')
 		{

@@ -210,6 +210,7 @@ Controller.prototype.setBindings = function()
         {
             var shaded_models = [];
             var scenes = RM.scenes;
+			var RenderComponent = RM.get("Render");
 
             // OJO CON ESTE
             for(var s in scenes)
@@ -247,6 +248,20 @@ Controller.prototype.setBindings = function()
             {
                 title: "Add light", //text to show
                 callback: function() { CORE.addLight() }
+            },
+			{
+                title: "Render mode", //text to show
+                has_submenu: true,
+                submenu: {
+                    options: 
+                    [{
+                        title: "FORWARD",
+                        callback: function() { if(RenderComponent) RenderComponent.render_mode = RM.FORWARD; gui.updateSidePanel(null, 'root');}
+                    },{
+                        title: "DEFERRED",
+                        callback: function() { if(RenderComponent) RenderComponent.render_mode = RM.DEFERRED; gui.updateSidePanel(null, 'root');}
+                    }]
+                }
             }
             ];
             var contextmenu = new LiteGUI.ContextMenu( actions, { event: e });

@@ -303,7 +303,7 @@ GUI.prototype.updateSidePanel = function( root, item_selected )
         }});
         widgets.addNumber("Uniform scale", node.scaling[0], {min: 0.1, callback: function(v){ node.scaling = v; }});
 		widgets.addSection("Shader");
-        widgets.addList(null, ["flat", "phong","PBR", "pbr", "DeferredPBR"], {selected: first_child.shader, callback: function(v){ 
+        widgets.addList(null, ["flat", "phong","pbr", "pbr_deferred"], {selected: first_child.shader, callback: function(v){ 
 			for(var i in node.children)
 				node.children[i].shader = v;
 		}})
@@ -350,7 +350,15 @@ GUI.prototype.updateSidePanel = function( root, item_selected )
             CORE.controller._camera.lookAt([ 0, radius * 0.5, radius * 2.5 ], result, RD.UP);
         }});
         widgets.addSection("Shader");
-        widgets.addList(null, ["flat", "phong", "textured","PBR", "pbr", "DeferredPBR"], {selected: node.shader,callback: function(v){ node.shader = v; }})
+        widgets.addList(null, ["flat", "phong", "textured", "pbr", "pbr_deferred"], {selected: node.shader,callback: function(v){ 
+			node.shader = v;
+
+			if(v === 'textured' && !node.textures['albedo']) {
+				node.textures['albedo'] = 'white';
+				that.updateSidePanel(null, node.name);
+			}
+				
+		}})
         this.addMaterial(widgets, node);
     }
 
@@ -390,12 +398,18 @@ GUI.prototype.addMaterial = function(inspector, node)
         }, {});
 
 
-    inspector.widgets_per_row = 2;
+    inspector.widgets_per_row = 3;
 
     // OJO CON ESTE
-    for(var t in filtered) {
-        inspector.addString( t, node.textures[t], {width: "85%"});
-        inspector.addButton( null, '<i data-texture='+ t +' style="font-size: 16px;" class="material-icons">delete_forever</i>', {micro: true, width: "15%", callback: function(v) { 
+    for(let t in filtered) {
+        inspector.addString( t, node.textures[t], {width: "80%", callback: function(v){
+			console.log(v);
+			if(gl.textures[v])
+				node.textures[t] = v;
+			else
+				node.textures[t] = "";
+		}});
+        inspector.addButton( null, '<i data-texture='+ t +' style="font-size: 16px;" class="material-icons">delete_forever</i>', {micro: true, width: "10%", callback: function(v) { 
 
             var t = $(v).data('texture');
 
@@ -404,7 +418,13 @@ GUI.prototype.addMaterial = function(inspector, node)
             node.setTextureProperties();              
             that.updateSidePanel(null, node.name);
         }});
+		inspector.addButton( null, '<i data-texture='+ t +' style="font-size: 16px;" class="material-icons">folder_open</i>', {micro: true, width: "10%", callback: function(v) { 
+
+            that.selectResource( node, t );
+			
+        }});
     }
+	inspector.widgets_per_row = 1;
 }
 
 GUI.prototype.updateNodeTree = function(root)
@@ -446,9 +466,6 @@ GUI.prototype.updateNodeTree = function(root)
  */
 GUI.prototype.onExport = function()
 {
-    /*LiteGUI.alert("Not available (updates on the way)");
-    return;*/
-
     const isInServer = Object.keys(RM.textures).filter(function(key){ return RM.textures[key].path.includes( CORE._environment )}).length;
 
     // is not in server
@@ -491,7 +508,6 @@ GUI.prototype.onExport = function()
  */
 GUI.prototype.onImport = function(file)
 {
-
     var id = "Load scene"
     var dialog_id = id.replace(" ", "-").toLowerCase();
     var w = 400;
@@ -936,4 +952,114 @@ GUI.prototype.onDragMesh = function(file, resource)
     dialog.add(widgets);  
     var w = 400;
     dialog.setPosition( renderer.canvas.width/2 - w/2, renderer.canvas.height/2 - renderer.canvas.height/4 );                  
+}
+
+/**
+ * Shows the dialog for selecting any resource
+ * @method selectResource
+ * @param {Object} options
+ */
+GUI.prototype.selectResource = function(node, tex_name)
+{
+    var options = options || {};
+	var that = this;
+
+    var id = "Select resource";// (" + options.type + ")";
+    var dialog_id = replaceAll(id, ' ', '').toLowerCase();
+    var w = gl.canvas.width / 3;
+    var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", title: id, close: true, width: w, draggable: true });
+    dialog.show('fade');
+
+    var area = new LiteGUI.Area(null);
+	area.split("vertical",[50, null]);
+	
+	var section1 = area.getSection(0);
+
+	var widgets_top = new LiteGUI.Inspector();
+	widgets_top.addString( "Filter", "" );
+	widgets_top.addSeparator();
+	section1.add( widgets_top );
+
+	var section2 = area.getSection(1);
+	var bottom = new LiteGUI.Inspector();
+	section2.add( bottom );	
+
+	bottom.on_refresh = function(){
+	
+		var container = bottom.addContainer("cont-textures");
+		container.style.boxSizing = "border-box";
+		//container.style.overflowWrap = "break-word";
+
+		that.showResources( container );
+	}
+
+	bottom.on_refresh();
+
+	LiteGUI.bind( area, "resource_selected", function(e){
+	
+		var path = e.target.dataset['path'];
+		$("#"+dialog_id).remove();
+
+		node.textures[tex_name] = path;
+		that.updateSidePanel(null, node.name);
+	} );
+
+    dialog.add(area);  
+    dialog.setPosition( renderer.canvas.width/2 - w/2, renderer.canvas.height/2 - renderer.canvas.height/4 );                  
+}
+
+GUI.prototype.showResources = function(parent)
+{
+	for(var t in gl.textures)
+	{
+		var name = t;
+		var tex = gl.textures[t];
+		var type = tex.type;
+		var texture_type = tex.texture_type;
+
+		if(texture_type !== GL.TEXTURE_2D || type !== GL.UNSIGNED_BYTE)
+			continue;
+
+		var responsive = document.createElement('div');
+		responsive.className = "responsive";
+
+		responsive.addEventListener( 'click', function(e){ 
+		
+			var image = e.path[0]; // last bounce
+			LiteGUI.trigger( image, "resource_selected");
+
+		} )
+
+		var block = document.createElement('div');
+		block.className = "resource-block";
+
+		var url = name;
+
+		if( !url.includes('.') ) {// it is not a file
+
+			var canvas = tex.toCanvas();
+			url = canvas.toDataURL();
+		}
+
+		var image = document.createElement('img');
+		image.src = url;
+		image.style.width = "100%";
+		image.style.height = "auto";
+		image.dataset['path'] = name;
+
+		var text = document.createElement('p');
+		text.style.width = "120px";
+		text.style.overflow = "hidden";
+		name = name.split("/");
+		name = name[name.length-1];
+		text.innerHTML = name;
+	
+		block.appendChild(image);
+		block.appendChild(text);
+		responsive.appendChild( block );
+		parent.appendChild( responsive );
+	
+	}
+
+		
 }

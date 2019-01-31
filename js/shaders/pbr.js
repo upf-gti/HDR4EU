@@ -8,7 +8,7 @@ function PBR_Shader()
     if(this.constructor !== PBR_Shader)
         throw("Use new");
 
-    this.defines = {
+	this.defines = {
 		GAMMA: 2.2,
 		PI: 3.14159265359,
 		RECIPROCAL_PI: 0.3183098861837697,
@@ -19,19 +19,21 @@ function PBR_Shader()
 		MIN_ROUGHNESS: 0.01
 	};
 
-    this.uniforms = {};
+	this.uniforms = {};
 }   
 
 Object.assign( PBR_Shader.prototype, {
-   
+
     info() {
         console.log("%cSHADER: " + this.constructor.name, 'font-weight: bold');
 		console.log("Defines", this.defines);
         console.log("Uniforms", this.uniforms);
     },
 
-	setup() {
+	setup(console) {
 
+		if(console)
+			this.info();
 		this.vs_code = '\tprecision highp float;\n';
 		this.fs_code = [
 			'\t#extension GL_OES_standard_derivatives : enable',	
@@ -45,10 +47,58 @@ Object.assign( PBR_Shader.prototype, {
 			this.fs_code += '\t#define ' + i + " " + defines_list[i] + "\n";
 		}
 		
-		this.vs_code += this.constructor.VS_CODE;
-		this.fs_code += this.constructor.FS_CODE;
+		this.vs_code += PBR_Shader.VS_CODE;
+		this.fs_code += PBR_Shader.FS_CODE;
+		this.fs_code += PBR_Shader.FS_MAIN_CODE_FORWARD;
 	}
 } );
+
+PBR_Shader.FS_MAIN_CODE_FORWARD = `
+
+	void main() {
+        
+        PBRMat material;
+		vec3 color;
+		float alpha = 1.0;
+
+        updateMaterial( material );
+        updateVectors( material );
+		do_lighting( material, color);
+
+		if(u_hasAlpha)
+			alpha = texture2D(u_opacity_texture, v_coord).r;
+
+		if(u_isEmissive)
+			 color += texture2D(u_emissive_texture, v_coord).rgb * u_emissiveScale;
+        
+        gl_FragColor = vec4(color, alpha);
+    }
+`;
+
+PBR_Shader.FS_MAIN_CODE_DEFERRED = `
+
+	void main() {
+        
+        PBRMat material;
+		vec3 color;
+		float alpha = 1.0;
+
+        updateMaterial( material );
+        updateVectors( material );
+		do_lighting( material, color);
+
+		if(u_hasAlpha)
+			alpha = texture2D(u_opacity_texture, v_coord).r;
+
+		if(u_isEmissive)
+			 color += texture2D(u_emissive_texture, v_coord).rgb * u_emissiveScale;
+	
+		gl_FragData[0] = vec4(color, alpha);
+		gl_FragData[1] = vec4((material.N * 0.5 + vec3(0.5) ), 1.0); 
+		gl_FragData[2] = vec4(vec3(material.roughness), 1.0);
+    }
+`;
+
 
 PBR_Shader.VS_CODE = `
     attribute vec3 a_vertex;
@@ -81,7 +131,6 @@ PBR_Shader.VS_CODE = `
 
         gl_Position = u_mvp * vec4(position, 1.0);
     }
-
 `;
 
 PBR_Shader.FS_CODE = `
@@ -97,6 +146,7 @@ PBR_Shader.FS_CODE = `
     uniform vec4 background_color;
 
     uniform sampler2D u_brdf_texture;
+	uniform sampler2D u_brdf_texture_multi;
     uniform samplerCube u_env_texture;
     uniform samplerCube u_env_1_texture;
     uniform samplerCube u_env_2_texture;
@@ -137,11 +187,44 @@ PBR_Shader.FS_CODE = `
         vec3 f0;
         vec3 diffuseColor;
         vec3 reflection;
+		vec3 N;
         float NoV;
         float NoL;
         float NoH;
         float LoH;
     };
+
+	//Javi Agenjo Snipet for Bump Mapping
+	mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv){
+		// get edge vectors of the pixel triangle
+		vec3 dp1 = dFdx( p );
+		vec3 dp2 = dFdy( p );
+		vec2 duv1 = dFdx( uv );
+		vec2 duv2 = dFdy( uv );
+
+		// solve the linear system
+		vec3 dp2perp = cross( dp2, N );
+		vec3 dp1perp = cross( N, dp1 );
+		vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+		vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+
+		// construct a scale-invariant frame
+		float invmax = inversesqrt( max( dot(T,T), dot(B,B) ) );
+		return mat3( T * invmax, B * invmax, N );
+	}
+
+	vec3 perturbNormal( vec3 N, vec3 V, vec2 texcoord, vec3 normal_pixel ){
+		#ifdef USE_POINTS
+		return N;
+		#endif
+
+		// assume N, the interpolated vertex normal and
+		// V, the view vector (vertex to eye)
+		//vec3 normal_pixel = texture2D(normalmap, texcoord ).xyz;
+		normal_pixel = normal_pixel * 255./127. - 128./127.;
+		mat3 TBN = cotangent_frame(N, V, texcoord);
+		return normalize(TBN * normal_pixel);
+	}
 
     // Normal Distribution Function (NDC) using GGX Distribution
     float D_GGX (const in float NoH, const in float linearRoughness ) {
@@ -260,6 +343,7 @@ PBR_Shader.FS_CODE = `
         vec3 h = normalize(v + l);
 
         material.reflection = normalize(reflect(-v, n));
+		material.N = n;
         material.NoV = abs(dot(-n, v)) + 1e-5;
         material.NoL = clamp(dot(-n, l), 0.0, 1.0);
         material.NoH = clamp(dot(-n, h), 0.0, 1.0);
@@ -342,56 +426,43 @@ PBR_Shader.FS_CODE = `
 		vec3 irradiance = prem(material.reflection, 1.0, u_rotation);
 		vec3 cosineWeightedIrradiance = irradiance * RECIPROCAL_PI;
 
-		/*vec3 singleScattering = vec3(0.0);
-		vec3 multiScattering = vec3(0.0);
-		
-		BRDF_Specular_Multiscattering( material, singleScattering, multiScattering );
-
-		vec3 diffuse = material.diffuseColor * ( 1.0 - ( singleScattering + multiScattering ) );
-		Fr = radiance * singleScattering;
-		Fd = cosineWeightedIrradiance * multiScattering + diffuse * cosineWeightedIrradiance;*/
-
 		// update reflected color
-		vec2 brdf = texture2D( u_brdf_texture, vec2(material.NoV, material.roughness) ).xy;
+		vec2 brdf = texture2D( u_brdf_texture, vec2(material.NoV, material.roughness) ).rg;
 		vec3 F = F_Schlick( material.NoV, material.f0 );
-		Fr = radiance * ( F * brdf.x + brdf.y);;
+		Fr = radiance * ( F * brdf.x + brdf.y);
 		Fd = irradiance * material.diffuseColor;
-		vec3 indirect = Fd + Fr;
 
-		if(true) {
-			
-			float clearCoat = u_clearCoat; // clear coat strengh
-			float clearCoatRoughness = u_clearCoatRoughness;
-			
-			// Parameter remapping (clearCoatRoughness)
-			clearCoatRoughness = mix(0.089, 0.6, clearCoatRoughness);
-			float clearCoatLinearRoughness = clearCoatRoughness * clearCoatRoughness;
+		/*vec2 multi_DFG = texture2D(u_brdf_texture_multi, vec2(material.NoV, material.roughness) ).xy;
+		float dfgx = max(1e-8, multi_DFG.x);
+		float dfgy = max(1e-8, multi_DFG.y);
+		vec3 spec = mix(vec3(dfgx), vec3(dfgy), material.f0);
+		vec3 energyCompensation = 1.0 + spec * ((1.0 / dfgy) - 1.0);
+		Fr *= (energyCompensation * 0.16);*/
+		
+		vec3 indirect = (Fd + Fr);
 
-			// Specular BRDF (Clear coat lobe only represents specular BRDF)
-			float Fcc = specularClearCoat( material, clearCoat, clearCoatRoughness );
-			float attenuation = 1.0 - Fcc;
+		// Clear coat lobe
+		float clearCoat = u_clearCoat; // clear coat strengh
+		float clearCoatRoughness = u_clearCoatRoughness;
+		
+		// Parameter remapping (clearCoatRoughness)
+		clearCoatRoughness = mix(0.089, 0.6, clearCoatRoughness);
+		float clearCoatLinearRoughness = clearCoatRoughness * clearCoatRoughness;
 
-			indirect *= attenuation + clearCoat;
-		}
+		// Specular BRDF (Clear coat lobe only represents specular BRDF)
+		float Fcc = specularClearCoat( material, clearCoat, clearCoatRoughness );
+		float attenuation = 1.0 - Fcc;
+
+		indirect *= attenuation + clearCoat;
+
+		// Apply ambient oclusion 
+		if(u_hasAO && u_enable_ao)
+			color *= texture2D(u_ao_texture, v_coord).r;
 
 		vec3 lightScale = vec3(u_light_intensity);
 		vec3 finalColor = indirect + direct * (material.NoL * u_light_color * lightScale);
     	color = finalColor;
 	}
-
-    void main() {
-        
-        PBRMat material;
-		vec3 color;
-
-        updateMaterial( material );
-        updateVectors( material );
-		do_lighting( material, color);
-        
-        // Energy loss
-        gl_FragColor = vec4(color, 1.0);
-    }
-
 `;
 
-RM.registerShader( PBR_Shader, "PBR" );
+RM.registerShader( PBR_Shader, "pbr" );

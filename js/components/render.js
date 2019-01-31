@@ -26,13 +26,14 @@ Object.assign( Render.prototype, {
 			window.last_scroll = root.content.getElementsByClassName("inspector")[0].scrollTop;
 			gui.updateSidePanel( that._sidepanel, 'root' ); 
 		}});
-	
-		widgets.widgets_per_row = 1;
+		widgets.widgets_per_row = 2;
 		if(this.show_more) {
-			widgets.addCheckbox("Energy conservation",  renderer._uniforms["u_EC"], {name_width: '50%', callback: function(v){ CORE.setUniform('EC', v);  }});
+			widgets.addSeparator();
 			widgets.addCheckbox("Correct Albedo",  renderer._uniforms["u_correctAlbedo"], {name_width: '50%', callback: function(v){  CORE.setUniform('correctAlbedo', v); }});
+			widgets.addCheckbox("Baked A0",  renderer._uniforms['u_enable_ao'], {name_width: '50%', callback: function(v){  CORE.setUniform('enable_ao', v); }});
 		}
 		widgets.addSeparator();
+		widgets.widgets_per_row = 1;
 	
 		widgets.addCombo("Render mode", this.render_mode, {values: [RM.FORWARD, RM.DEFERRED], name_width: '50%', callback: function(v) { 
 			that.render_mode = v; 
@@ -41,7 +42,7 @@ Object.assign( Render.prototype, {
 		}});
 	
 		if(this.render_mode == RM.FORWARD) {
-			widgets.addCheckbox("Ambient occlusion (Baked)",  renderer._uniforms['u_enable_ao'], {name_width: '70%', callback: function(v){  CORE.setUniform('enable_ao', v); }});
+			
 		}
 		else {
 			widgets.addTitle('SSAO');

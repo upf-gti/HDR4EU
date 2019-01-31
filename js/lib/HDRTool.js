@@ -691,11 +691,15 @@
     * Environment BRDF (Store it in a 2D LUT)
     * @method brdf
     * @param {Shader||String} shader
+	* @param {bool} multiscattering
     */
-    HDRTool.brdf = function( shader )
+    HDRTool.brdf = function( shader, multiscattering )
     {
         var tex_name = '_brdf_integrator';
-       
+     
+		if(multiscattering)
+			tex_name += '_multi';
+
         if(shader.constructor !== GL.Shader)
             shader = gl.shaders[ shader ];
 
