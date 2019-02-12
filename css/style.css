@@ -1,5 +1,11 @@
 @import url('https://fonts.googleapis.com/css?family=Kreon|Share+Tech+Mono|VT323');
 
+:-moz-full-screen canvas {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    margin: auto;
+}
+
 #canvasarea{
 	
 	border-top: 1px solid #8a8a8a;

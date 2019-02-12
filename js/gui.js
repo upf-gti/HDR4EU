@@ -123,7 +123,7 @@ GUI.prototype.init = function()
     mainmenu.add("View/SSAO Noise tex", { callback: function() {
             var node = CORE.addPrimitive('plane');
             node.shader = "textured";
-            node.texture = "ssao_noise";
+            node.textures['albedo'] = "ssao_noise";
         }});
     mainmenu.separator("View");     
     mainmenu.add("View/FPS counter", { type: "checkbox", instance: this, property: "_fps_enable", callback: function() { 
@@ -762,6 +762,7 @@ GUI.prototype.onDragFile = function(file, extension)
             this.onDragMesh( file );
             break;
         case 'hdre':
+		case 'hdrec':
         case 'exr':
             this.onDragEnvironment(file);
             break;
@@ -801,6 +802,8 @@ GUI.prototype.onDragEnvironment = function(file)
         max: false,
     };
 
+	var isCompressed = filename.includes(".hdrec");
+
     var inner = function()
     {
         $("#"+dialog_id).remove();
@@ -809,6 +812,18 @@ GUI.prototype.onDragEnvironment = function(file)
         reader.onprogress = function(e){ $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%") };
         reader.onload = async function (event) {
             var data = event.target.result;
+
+
+			if(isCompressed) {
+			
+				// decompress data
+				var decom = pako.inflate( data );
+
+				// Get arraybuffer
+				data = decom.buffer;
+			}
+
+
             params['data'] = data;
             params['oncomplete'] = function(){
                 CORE.set( filename );

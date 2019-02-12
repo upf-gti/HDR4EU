@@ -152,9 +152,10 @@ Core.prototype.setup = function()
     RM.shader_macros[ 'INPUT_TEX_HEIGHT' ] = gl.viewport_data[3];
     RM.shader_macros[ 'EM_SIZE' ] = 1; // no parsing at initialization
 
+	// Compile shaders from scripts
 	for(var shader in RM.shaders) {
-        /*if(shader === "pbr_deferred")
-            continue;*/
+        if(this.mobile() && shader === "pbr_deferred")
+            continue;
         gl.shaders[shader] = new GL.Shader(RM.shaders[shader].vs_code, RM.shaders[shader].fs_code);
     }
 	
@@ -176,7 +177,7 @@ Core.prototype.setup = function()
         
             // Environment BRDFs (LUT)
 			HDRTool.brdf("brdfIntegrator");
-			HDRTool.brdf("multibrdfIntegrator", 1);
+			HDRTool.brdf("multibrdfIntegrator", RM.MULTI_BRDF);
             
             // Set environment 
             that.set( RM.textures['Pillars'] );
@@ -185,9 +186,9 @@ Core.prototype.setup = function()
             ssao.init();
             gui.init(); 
 
-			var url = "exports/";
+			/*var url = "exports/";
 			// query string params
-			/*if( QueryString['scene'] ) {
+			if( QueryString['scene'] ) {
 				url += QueryString['scene'];
 				LiteGUI.requestJSON( url, function(v){ CORE.fromJSON( v ); } );
 			}*/
