@@ -374,11 +374,13 @@ GUI.prototype.addMaterial = function(inspector, node)
     node = node.children[0];
 
     inspector.addSection("Material");
-    inspector.addTitle("PBR properties");
+    inspector.addTitle("Basic properties");
     inspector.addColor("Base color", node._uniforms["u_albedo"], {callback: function(color){ node._uniforms["u_albedo"] = node._uniforms["u_color"] = color; }});
     inspector.addSlider("Roughness", node._uniforms['u_roughness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_roughness'] = v }});
     inspector.addSlider("Metalness", node._uniforms['u_metalness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_metalness'] = v }});
-	inspector.addTitle("Clear Coat Layer");
+	inspector.addSeparator();
+    inspector.addNumber("Reflectance", node._uniforms['u_reflectance'] ,{name_width: "50%", min:0,max:1,step:0.01, callback: function(v){ node._uniforms['u_reflectance'] = v }});
+	inspector.addTitle("Clear Coat (Multi-Layer materials)");
 	inspector.widgets_per_row = 2;
 	inspector.addSlider("Clear coat", node._uniforms['u_clearCoat'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_clearCoat'] = v }});
 	inspector.addSlider("Roughness", node._uniforms['u_clearCoatRoughness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_clearCoatRoughness'] = v }});
@@ -386,7 +388,7 @@ GUI.prototype.addMaterial = function(inspector, node)
     inspector.addTitle("Textures")
     inspector.addNumber("Bump scale", node._uniforms['u_bumpScale'],{name_width: "50%", min:0,max:5,step:0.01, callback: function(v){ node._uniforms['u_bumpScale'] = v }});
     inspector.addNumber("Emissive scale", node._uniforms['u_emissiveScale'],{name_width: "50%", min:0,max:100,step:0.05, callback: function(v){ node._uniforms['u_emissiveScale'] = v }});
-    inspector.addSeparator();
+    //inspector.addSeparator();
 
     var that = this;
 
@@ -403,11 +405,13 @@ GUI.prototype.addMaterial = function(inspector, node)
     // OJO CON ESTE
     for(let t in filtered) {
         inspector.addString( t, node.textures[t], {width: "80%", callback: function(v){
-			console.log(v);
+
 			if(gl.textures[v])
 				node.textures[t] = v;
 			else
 				node.textures[t] = "";
+
+			node.setTextureProperties(); 
 		}});
         inspector.addButton( null, '<i data-texture='+ t +' style="font-size: 16px;" class="material-icons">delete_forever</i>', {micro: true, width: "10%", callback: function(v) { 
 
@@ -424,7 +428,16 @@ GUI.prototype.addMaterial = function(inspector, node)
 			
         }});
     }
+
 	inspector.widgets_per_row = 1;
+	inspector.addSeparator();
+	inspector.addString("Add", "", {callback: function(v) {
+			
+			node.textures[v] = ""; 
+            node.setTextureProperties(); 
+			that.updateSidePanel(null, node.name);
+        }});
+	
 }
 
 GUI.prototype.updateNodeTree = function(root)

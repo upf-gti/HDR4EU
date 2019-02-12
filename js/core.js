@@ -179,7 +179,7 @@ Core.prototype.setup = function()
 			HDRTool.brdf("multibrdfIntegrator", 1);
             
             // Set environment 
-            that.set( RM.textures['Vondelpark'] );
+            that.set( RM.textures['Pillars'] );
             
             // Init things
             ssao.init();
@@ -1111,7 +1111,7 @@ Core.prototype.addLight = function( o )
 */
 Core.prototype.addMesh = function(mesh, resource)
 {
-    var shader = (this._environment == "no current") ? "phong" : "pbr";
+     var shader = shader || ( (this._environment == "no current") ? "textured" : "pbr");
     var mesh_name = resource+'-'+simple_guidGenerator();
     gl.meshes[mesh_name] = mesh;
     
@@ -1124,6 +1124,7 @@ Core.prototype.addMesh = function(mesh, resource)
     node.name = "node-" + simple_guidGenerator();
     node._uniforms["u_roughness"] = 0.5;
     node._uniforms["u_metalness"] = 0.75;
+	node._uniforms["u_reflectance"] = 0.5;
 
     var bb = mesh.getBoundingBox();
     var center = BBox.getCenter(bb);
@@ -1171,8 +1172,9 @@ Core.prototype.addPrimitive = function(mesh, shader, show_prem)
 
     if(!show_prem) {
         node._uniforms["u_roughness"] = 0.0;
-        node._uniforms["u_metalness"] = 1.0;
-		node._uniforms["u_clearCoat"] = 0.5;
+        node._uniforms["u_metalness"] = 0.0;
+		node._uniforms["u_reflectance"] = 0.5;
+		node._uniforms["u_clearCoat"] = 0.0;
 		node._uniforms["u_clearCoatRoughness"] = 0.0;
 		node._uniforms["u_albedo"] = vec3.fromValues(1, 1, 1);
         node.setTextureProperties();

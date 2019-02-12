@@ -175,6 +175,7 @@ PBR_Shader.FS_CODE = `
     uniform bool u_enable_ao;
     uniform bool u_correctAlbedo;
 
+	uniform float u_reflectance;
 	uniform float u_clearCoat;
 	uniform float u_clearCoatRoughness;
 
@@ -192,6 +193,9 @@ PBR_Shader.FS_CODE = `
         float NoL;
         float NoH;
         float LoH;
+		float clearCoat;
+		float clearCoatRoughness;
+		float clearCoatLinearRoughness;
     };
 
 	//Javi Agenjo Snipet for Bump Mapping
@@ -284,6 +288,12 @@ PBR_Shader.FS_CODE = `
         return lightScatter * viewScatter * RECIPROCAL_PI;
     }
 
+	vec3 f0ClearCoatToSurface(const vec3 f0) {
+		// Approximation of iorTof0(f0ToIor(f0), 1.5)
+		// This assumes that the clear coat layer has an IOR of 1.5
+		return clamp(f0 * (f0 * (0.941892 - 0.263008 * f0) + 0.346479) - 0.0285998, 0.0, 1.0);
+	}
+
     void updateMaterial (inout PBRMat material) {
         float metallic = u_metalness;
         #ifdef HAS_METALNESS_MAP
@@ -309,8 +319,7 @@ PBR_Shader.FS_CODE = `
             Max reflectance - Gemstones (16%) - Linear value is 1.0
         */
         
-        float reflectance = 0.5; // default material
-        float f90 = 1.0;
+        float reflectance = u_reflectance; // 0.5 is the reflectance for default material
         
         // Compute f0 for dielectrics and metallic materials
         vec3 f0 = MAX_REFLECTANCE * reflectance * reflectance * (1.0 - metallic) + baseColor * metallic;
@@ -321,13 +330,33 @@ PBR_Shader.FS_CODE = `
             roughness = texture2D(u_roughness_texture, v_coord).r;
         #endif
 		roughness = max(roughness, MIN_ROUGHNESS);	
+
+		// Clear coat lobe
+		float clearCoat = u_clearCoat; // clear coat strengh
+		float clearCoatRoughness = u_clearCoatRoughness;
+		
+		// Parameter remapping (clearCoatRoughness)
+		clearCoatRoughness = mix(0.089, 0.6, clearCoatRoughness);
+		float clearCoatLinearRoughness = clearCoatRoughness * clearCoatRoughness;
+
+		// recompute f0 by first computing its IOR, then reconverting to f0
+		// by using the correct interface
+		//f0 = mix(f0, f0ClearCoatToSurface(f0), clearCoat);
+		
+		// remap roughness the base layer must be at least as rough
+		// as the clear coat layer to take into account possible diffusion by the
+		// top layer
+		//roughness = max(roughness, clearCoatRoughness);
         float linearRoughness = roughness * roughness;
 
         material.roughness = roughness;
+		material.linearRoughness = linearRoughness;
+		material.clearCoat = clearCoat;
+		material.clearCoatRoughness = clearCoatRoughness ;
+		material.clearCoatLinearRoughness = clearCoatLinearRoughness;
 		material.metallic = metallic;
-        material.linearRoughness = linearRoughness;
         material.f0 = f0;
-        material.diffuseColor = diffuseColor;
+		material.diffuseColor = diffuseColor;
     }
 
     void updateVectors (inout PBRMat material) {
@@ -357,11 +386,14 @@ PBR_Shader.FS_CODE = `
         return (D * V) * F;
     }
 
-	float specularClearCoat( const PBRMat material, float clearCoat, float clearCoatLinearRoughness ) {
+	float specularClearCoat( const PBRMat material, inout float Fc) {
 		
-		float D = D_GGX( clearCoatLinearRoughness, material.NoH );
+		float D = D_GGX( material.clearCoatLinearRoughness, material.NoH );
 		float V = V_Kelemen( material.LoH );
-		float F = F_Schlick( material.LoH, 0.04 ) * clearCoat;
+		float F = F_Schlick( material.LoH, 0.04, 1.0 ) * material.clearCoat;
+		
+		Fc = F;
+
 		return (D * V) * F;
 	}
 
@@ -439,31 +471,30 @@ PBR_Shader.FS_CODE = `
 		vec3 energyCompensation = 1.0 + spec * ((1.0 / dfgy) - 1.0);
 		Fr *= (energyCompensation * 0.16);*/
 		
-		vec3 indirect = (Fd + Fr);
-
-		// Clear coat lobe
-		float clearCoat = u_clearCoat; // clear coat strengh
-		float clearCoatRoughness = u_clearCoatRoughness;
-		
-		// Parameter remapping (clearCoatRoughness)
-		clearCoatRoughness = mix(0.089, 0.6, clearCoatRoughness);
-		float clearCoatLinearRoughness = clearCoatRoughness * clearCoatRoughness;
-
-		// Specular BRDF (Clear coat lobe only represents specular BRDF)
-		float Fcc = specularClearCoat( material, clearCoat, clearCoatRoughness );
-		float attenuation = 1.0 - Fcc;
-
-		indirect *= attenuation + clearCoat;
+		// Compute energy compensation
+		float energyCompensation = 1.0;
+		Fr *= energyCompensation;
 
 		// Apply ambient oclusion 
-		if(u_hasAO && u_enable_ao)
-			indirect *= texture2D(u_ao_texture, v_coord).r;
+		if(u_hasAO && u_enable_ao) {
+			
+			Fr *= texture2D(u_ao_texture, v_coord).r;
+		}
 
-		// Apply IBL scale
-		indirect *= u_ibl_intensity;
+		/*
+			Clear coat lobe
+		*/
+		float Fc = F_Schlick( material.NoV, 0.04, 1.0) * material.clearCoat;
+		float att = 1.0 - Fc;
+
+		Fd *= att;
+		Fr *= (att * att);
+		Fr += prem(material.reflection, material.clearCoatRoughness, u_rotation) * Fc;
+		
+		vec3 indirect = Fd + Fr;
 
 		vec3 lightScale = vec3(u_light_intensity);
-		vec3 finalColor = indirect + direct * (material.NoL * u_light_color * lightScale);
+		vec3 finalColor = indirect * u_ibl_intensity + direct * (material.NoL * u_light_color * lightScale);
     	color = finalColor;
 	}
 `;
