@@ -86,7 +86,12 @@ Core.prototype._ctor = function()
     this.texture_final = new GL.Texture(w,h, { texture_type: gl.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
 
     this.fbo_textures = [ this.texture_albedo, this.texture_normal, this.texture_roughness ];
-    this.fbo = new GL.FBO( this.fbo_textures, this.texture_depth );
+    this.fbo = null;
+
+    if(!this.mobile()) { // mobile browser does not support FBO
+        
+        this.fbo = new GL.FBO( this.fbo_textures, this.texture_depth );
+    }
 
     this.show_deferred_textures = false;
     
@@ -147,8 +152,12 @@ Core.prototype.setup = function()
     RM.shader_macros[ 'INPUT_TEX_HEIGHT' ] = gl.viewport_data[3];
     RM.shader_macros[ 'EM_SIZE' ] = 1; // no parsing at initialization
 
-	for(var i in RM.shaders)
-	gl.shaders[i] = new GL.Shader(RM.shaders[i].vs_code, RM.shaders[i].fs_code);
+	for(var shader in RM.shaders) {
+        /*if(shader === "pbr_deferred")
+            continue;*/
+        gl.shaders[shader] = new GL.Shader(RM.shaders[shader].vs_code, RM.shaders[shader].fs_code);
+    }
+	
     
     renderer.context.ondraw = function(){ that.render() };
     renderer.context.onupdate = function(dt){ that.update(dt) };
@@ -175,6 +184,13 @@ Core.prototype.setup = function()
             // Init things
             ssao.init();
             gui.init(); 
+
+			var url = "exports/";
+			// query string params
+			/*if( QueryString['scene'] ) {
+				url += QueryString['scene'];
+				LiteGUI.requestJSON( url, function(v){ CORE.fromJSON( v ); } );
+			}*/
         },
         error: function(err){ console.error(err, "Error getting app environments") }
     });
@@ -330,7 +346,7 @@ Core.prototype.render = function()
     // Update cubemap position
     this.cubemap.position = this.controller.getCameraPosition();
 
-    if( RenderComponent && RenderComponent.render_mode == RM.FORWARD )
+    if( (RenderComponent && RenderComponent.render_mode == RM.FORWARD) || !this.fbo)
         this.forwardRender();
     else
         this.deferredRender();
@@ -407,7 +423,7 @@ Core.prototype.deferredRender = function()
     var renderer = this._renderer;
     var that = this;
 
-    if(!gl.shaders['finalDeferred'])
+    if(!gl.shaders['finalDeferred'] || !gl.shaders['ssao'])
         return;
 
     // PRE PASS: fill G buffers
@@ -436,6 +452,7 @@ Core.prototype.deferredRender = function()
     this.setUniform('fbo_normal_texture', 1);
     this.setUniform('fbo_roughness_texture', 2);
     this.setUniform('fbo_depth_texture', 3);
+	this.setUniform('noise_texture', 4);
     
     var inv_p = mat4.create(),
         inv_v = mat4.create(),
@@ -449,29 +466,55 @@ Core.prototype.deferredRender = function()
     this.setUniform('projection', camera._projection_matrix);
     this.setUniform('view', camera._view_matrix);
 
-    this.texture_final.drawTo( () => {
-        
-        renderer.clear( this._background_color );
-        gl.disable( gl.DEPTH_TEST );
-        gl.disable( gl.BLEND );
-        
-        gl.shaders['finalDeferred'].uniforms(renderer._uniforms).draw(Mesh.getScreenQuad());
-    });
-
     // Fill renderer uniforms with average, max lum, etc.
-    try
+    /*try
     {
         if (info_check())
         {
-            perblock_getmax( this.texture_final );
-            downsampled_getaverage( this.texture_final );
+            perblock_getmax( this.texture_albedo );
+            downsampled_getaverage( this.texture_albedo );
         }
     }
     catch (e)
     {
         if(!this._errors[e])
         this._errors[e] = 1;
-    }
+    }*/
+
+	// TODO
+
+	// draw SSAO to texture
+	ssao.texture.drawTo( () => {
+        
+        gl.shaders['ssao'].uniforms(renderer._uniforms).draw(Mesh.getScreenQuad());
+    });
+
+	// blur SSAO texture
+	for(var i = 0; i < 3; i++)
+	{
+		ssao.texture.applyBlur( i,i, 1, ssao.blurTexture );
+	}
+
+	// combine SSAO with rendered frame
+	// rebind this bc something happens if not
+	this.texture_albedo.bind(0); 
+    this.texture_normal.bind(1);
+    this.texture_roughness.bind(2);
+    this.texture_depth.bind(3);
+    ssao.noiseTexture.bind(4);
+	ssao.blurTexture.bind(5);
+	this.setUniform('noise_texture_blur', 5);
+
+	this.texture_final.drawTo( () => {
+        
+        /*renderer.clear( this._background_color );
+        gl.disable( gl.DEPTH_TEST );
+        gl.disable( gl.BLEND );*/
+        
+        gl.shaders['finalDeferred'].uniforms(renderer._uniforms).draw(Mesh.getScreenQuad());
+    });
+
+	// .....
 
     // Apply (or not) bloom effect
     var render_texture = this.texture_final; 
@@ -538,6 +581,8 @@ Core.prototype.set = function(env_set, options)
 
     if(this._environment == tex_name && tex_name != ":atmos") {
         this._gui.loading(0);
+		if(options.onImport)
+			options.onImport();
         return;
     }
 
@@ -627,7 +672,7 @@ Core.prototype.parse = function(name)
     switch( name )
     {
         case "Matrix":
-            this.renderMatrix( true ); break;
+            this.createMatrix( true ); break;
         case "Roughness scale":
             this.renderSphereScale( true, { property: 'roughness', aux_prop: 1.0 } ); break;
         case "Metalness scale":
@@ -827,7 +872,8 @@ Core.prototype.reloadShaders = async function(macros, callback)
 			// now reload shaders from /shaders/js
 			for(var i in RM.shaders) {
 
-				RM.shaders[i].setup();
+				if(RM.shaders[i].setup)
+					RM.shaders[i].setup();
 
 				var shader = gl.shaders[i];
 	
@@ -919,10 +965,10 @@ Core.prototype.destroyByName = function( o )
 
 /**
 * Render sphere matrix
-* @method renderMatrix
+* @method createMatrix
 * @param {bool} visible
 */
-Core.prototype.renderMatrix = function(visible)
+Core.prototype.createMatrix = function(visible)
 {
     var values = [0, 0.16666, 0.33333, 0.5, 0.66666, 0.83333, 1];
     // var values = [0, 0.11111, 0.22222, 0.33333, 0.44444, 0.55555,0.66666,0.7777,0.8888,0.999999];
@@ -938,11 +984,21 @@ Core.prototype.renderMatrix = function(visible)
         var mn = new RD.SceneNode();
         mn.mesh = "sphere";
         mn.shader = "pbr";
-        mn.position = [j * 2.5, 0, i * 2.5];
+        mn.position = [j * 2.0, 0, i * 2.0];
         mn._uniforms["u_roughness"] = values[i];
         mn._uniforms["u_metalness"] = 1.0 - values[j];
         node.addChild(mn);
     }
+
+	var floor = new RD.SceneNode();
+	floor.mesh = "planeXZ";
+	floor.shader = "pbr";
+	floor.position = [3 * 2.0, 0, 3 * 2.0];
+	floor.scaling = 14;
+	floor._uniforms["u_roughness"] = 1;
+	floor._uniforms["u_metalness"] = 1;
+    floor.flags.visible = visible;
+    node.addChild(floor);
 
     this.updateNodes();
     this.selected_radius = 1;
@@ -1328,7 +1384,7 @@ Core.prototype.fromJSON = function( o, only_settings )
 					that.cubemap.shader = node_properties.shader;
 					break;
 				case 'matrix_node':
-					that.renderMatrix( true );
+					that.createMatrix( true );
 					break;
 				default:
 					// create node and apply properties

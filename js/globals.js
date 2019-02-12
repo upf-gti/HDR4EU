@@ -82,7 +82,15 @@ var ResourceManager = RM = {
         var userAgent = (navigator && navigator.userAgent || '').toLowerCase();
 		if(/android/.test(userAgent) || /mobile/.test(userAgent))
 		{
-            import_list.filter(function(e){ !e.includes("tinyexr.js")});
+            // import_list = import_list.filter(function(e){ !e.includes("tinyexr.js")});
+            var aux = [];
+            for(var i = 0; i < import_list.length; i++) {
+                if(import_list[i] === "js/lib/tinyexr.js")
+                continue;
+                aux.push( import_list[i] );
+            }
+
+            import_list = aux;
         }
 
         if(this.nocache) {

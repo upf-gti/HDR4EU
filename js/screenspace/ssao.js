@@ -10,15 +10,30 @@ var ssao = {
 	kernelSize: 64,
 	kernel: [],
 	noiseSize: 4,
+	noiseTexture: null,
+	texture: null,
+	blurTexture: null,
 	
 	init: async function()
 	{
-		this.generateNoiseTexture();
+		this.initTextures();
 		this.generateSampleKernel();
 		CORE.setUniform('kernel', GL.linearizeArray( this.kernel ));
-		CORE.setUniform('noise_texture', 4);
 		CORE.setUniform('noise_tiling', 4);
 		/*await CORE.reloadShaders();*/
+	},
+
+	initTextures: function()
+	{
+		var w = (gl.canvas.width)|0;
+		var h = (gl.canvas.height)|0;
+		var type = gl.FLOAT;
+
+		this.texture = new GL.Texture(w,h, { texture_type: gl.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+		this.blurTexture = new GL.Texture(w,h, { texture_type: gl.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+		gl.textures['ssao_noise_blur'] = this.blurTexture;
+		
+		this.generateNoiseTexture();
 	},
 
 	generateSampleKernel: function( use_hemisphere )

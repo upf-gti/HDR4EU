@@ -26,6 +26,7 @@ brdfIntegrator brdf.vs brdf.fs
 multibrdfIntegrator brdf.vs multi-brdf.fs
 
 // Deferred rendering Shaders
+ssao screen_shader.vs ssao.fs
 finalDeferred screen_shader.vs finalDeferred.fs
 DeferredCubemap default.vs DeferredCubemap.fs
 
@@ -675,7 +676,7 @@ DeferredCubemap default.vs DeferredCubemap.fs
 		// gl_FragData[3] = ...
 	}
 
-\finalDeferred.fs
+\ssao.fs
 
 	#extension GL_EXT_shader_texture_lod : enable
 	#extension GL_OES_standard_derivatives : enable
@@ -693,12 +694,10 @@ DeferredCubemap default.vs DeferredCubemap.fs
 	uniform float u_near;
 	uniform float u_far;
 
-	uniform bool u_enableSSAO;
 	uniform vec2 u_noiseScale;
 	uniform vec3 u_kernel[64];
 	uniform float u_radius;
 
-	uniform float u_outputChannel;
 	uniform float u_noise_tiling;
 
 	uniform sampler2D u_fbo_color_texture;
@@ -706,6 +705,7 @@ DeferredCubemap default.vs DeferredCubemap.fs
 	uniform sampler2D u_fbo_depth_texture;
 	uniform sampler2D u_fbo_roughness_texture;
 	uniform sampler2D u_noise_texture;
+	uniform sampler2D u_noise_texture_blur;
 
 	varying vec2 v_coord;
 
@@ -758,6 +758,12 @@ DeferredCubemap default.vs DeferredCubemap.fs
 		return projectedCoord.xy * 0.5 + 0.5;
 	}
 
+	float roundEven( float x ) {
+	
+		float f = floor(x);
+		return (mod(f, 2.0) == 0.0) ? f : floor(x+1.0);
+	}
+
 	void main() {
 		
 		float depth = texture2D(u_fbo_depth_texture, v_coord).r;
@@ -769,7 +775,9 @@ DeferredCubemap default.vs DeferredCubemap.fs
 		vec3 viewNormal = normalize( texture2D(u_fbo_normal_texture, v_coord).xyz * 2.0 - 1.0 );
 
 		vec2 noiseScale = vec2(float(resolution.x) / u_noise_tiling, float(resolution.y) / u_noise_tiling);
-		vec3 rvec = normalize(texture2D(u_noise_texture, v_coord * 300.0).xyz * 2.0 - 1.0);
+		float aspect = roundEven( float(resolution.x) / float(resolution.y) );
+		vec2 coords = vec2(v_coord.x * aspect * 400.0, v_coord.y * 150.0);
+		vec3 rvec = normalize(texture2D(u_noise_texture, coords).xyz);
 		
 		vec3 tangent = normalize(rvec - viewNormal * dot(rvec, viewNormal));
 		vec3 bitangent = cross(viewNormal, tangent);
@@ -799,16 +807,60 @@ DeferredCubemap default.vs DeferredCubemap.fs
 			float delta = sampleDepth - realDepth;
 			
 			// If scene fragment is before (smaller in z) sample point, increase occlusion.
-			if (delta > 0.0001 && delta < 0.005)
+			if (delta > 0.00005)
 			{
-				occlusion += 1.0 * rangeCheck;
+				occlusion += 1.0 * rangeCheck * 1.0;
 			}
 		}
 
-		occlusion = 1.0 - clamp( occlusion / (64.0 - 1.0), 0.0, 1.0) * 10.0;
+		occlusion = 1.0 - clamp( occlusion / (64.0 - 1.0), 0.0, 1.0);
+		gl_FragColor = vec4(vec3(occlusion), 1.0);
+	}
 
+\finalDeferred.fs
+
+	#extension GL_EXT_shader_texture_lod : enable
+	#extension GL_OES_standard_derivatives : enable
+
+	precision highp float;
+	uniform vec3 u_camera_position;
+	uniform vec3 u_light_position;
+	uniform float u_light_intensity;
+	uniform vec4 u_viewport;
+	uniform mat4 u_invp;
+	uniform mat4 u_projection;
+	uniform mat4 u_invv;
+	uniform mat4 u_view;
+
+	uniform float u_near;
+	uniform float u_far;
+
+	uniform bool u_enableSSAO;
+	uniform vec2 u_noiseScale;
+	uniform vec3 u_kernel[64];
+	uniform float u_radius;
+
+	uniform float u_outputChannel;
+	uniform float u_noise_tiling;
+
+	uniform sampler2D u_fbo_color_texture;
+	uniform sampler2D u_fbo_normal_texture;
+	uniform sampler2D u_fbo_depth_texture;
+	uniform sampler2D u_fbo_roughness_texture;
+	uniform sampler2D u_noise_texture;
+	uniform sampler2D u_noise_texture_blur;
+
+	varying vec2 v_coord;
+
+	
+	void main() {
+		
+		float occlusion = texture2D(u_noise_texture_blur, v_coord).r;
+		float depth = texture2D(u_fbo_depth_texture, v_coord).r;
+		vec3 viewNormal = normalize( texture2D(u_fbo_normal_texture, v_coord).xyz * 2.0 - vec3(1.0) );
 		vec4 color = texture2D(u_fbo_color_texture, v_coord) * (u_enableSSAO == true ? occlusion : 1.0);
-		gl_FragColor = (u_outputChannel == 0.0) ? color : (u_outputChannel == 1.0) ? vec4(vec3(occlusion), 1.0) : (u_outputChannel == 2.0) ? vec4(vec3(depth), 1.0) : vec4(vec3(viewNormal), 1.0);
+
+		gl_FragColor = (u_outputChannel == 0.0) ? color : (u_outputChannel == 1.0) ? vec4(texture2D(u_noise_texture_blur, v_coord).rgb, 1.0) : (u_outputChannel == 2.0) ? vec4(vec3(depth), 1.0) : vec4(vec3(viewNormal), 1.0);
 	}
 
 

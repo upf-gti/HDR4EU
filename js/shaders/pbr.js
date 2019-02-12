@@ -457,7 +457,10 @@ PBR_Shader.FS_CODE = `
 
 		// Apply ambient oclusion 
 		if(u_hasAO && u_enable_ao)
-			color *= texture2D(u_ao_texture, v_coord).r;
+			indirect *= texture2D(u_ao_texture, v_coord).r;
+
+		// Apply IBL scale
+		indirect *= u_ibl_intensity;
 
 		vec3 lightScale = vec3(u_light_intensity);
 		vec3 finalColor = indirect + direct * (material.NoL * u_light_color * lightScale);
