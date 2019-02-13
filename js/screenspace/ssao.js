@@ -17,7 +17,7 @@ var ssao = {
 	init: async function()
 	{
 		this.initTextures();
-		this.generateSampleKernel();
+		this.generateSampleKernel(true);
 		CORE.setUniform('kernel', GL.linearizeArray( this.kernel ));
 		CORE.setUniform('noise_tiling', 4);
 		/*await CORE.reloadShaders();*/

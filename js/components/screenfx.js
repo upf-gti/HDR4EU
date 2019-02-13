@@ -3,12 +3,24 @@
 *   @jxarco 
 */
 
+/*
+MIN_APERTURE = 0.5f;
+MAX_APERTURE = 64.0f;
+MIN_SHUTTER_SPEED = 1.0f / 25000.0f;
+MAX_SHUTTER_SPEED = 60.0f;
+MIN_SENSITIVITY = 10.0f;
+MAX_SENSITIVITY = 204800.0f;
+*/
+
 function SFX()
 {
 	if(this.constructor !== SFX)
 		throw("Use new");
 	
 	this._exposure = 0;
+	this._aperture = 0.5;
+	this._shutter_speed = "1/125";
+	this._sensitivity = 500;
 	this._offset= 0;
 
 	this.glow_enable = false;
@@ -19,6 +31,20 @@ function SFX()
 	this.fxaa = false;
 	this.tonemapping = "Reinhard";
 	
+	this.shs_values = [
+		4,
+		2,
+		1,
+		"1/2",
+		"1/4",
+		"1/15",
+		"1/60",
+		"1/125",
+		"1/500",
+		"1/1000",
+		"1/2500",
+	];
+
 }
 
 Object.defineProperty(SFX.prototype, 'exposure', {
@@ -35,15 +61,72 @@ Object.defineProperty(SFX.prototype, 'offset', {
 
 Object.assign( SFX.prototype, {
 
+	// Computes the camera's EV100 from exposure settings
+	// aperture in f-stops
+	// shutterSpeed in seconds
+	// sensitivity in ISO
+	exposureSettings() {
+		
+		 // EV100 = log2(N^2 / t) - log2(S / 100)
+		 // EV100 = log2((N^2 / t) * (100 / S))
+
+		var ss = this._shutter_speed;
+
+		if(ss && ss.constructor === String) {
+
+			var tks = ss.split('/');
+			ss = parseInt(tks[0]) / parseInt(tks[1]);
+		}
+
+		var tmp1 = ( (this._aperture * this._aperture) / ss );
+		var tmp2 = ( 100.0 / this._sensitivity );
+			
+		return tmp1 * tmp2;
+	},
+
+	updateExposure( value, setting ) {
+
+		if(value && value == 0) 
+		return;
+
+		switch(setting) {
+			case 01:
+			this._aperture = value;
+			break;
+			case 02:
+			this._shutter_speed = value;
+			break;
+			case 03:
+			this._sensitivity = value;
+			break;
+		}
+
+		if(value && value.constructor === String) {
+
+			var tks = value.split('/');
+			value = parseInt(tks[0]) / parseInt(tks[1]);
+		}
+		
+		var ev100 = this.exposureSettings();
+		//Computes the exposure normalization factor from the camera's EV100
+		this.exposure = 1.0 / (ev100 * 1.2);
+	},
+
 	create(widgets, root) {
 
+		this.updateExposure();
 		var that = this;
 	
+		var iso_logo = '<img src="assets/iso.png" style="width:20px; padding:2px;">';
+		var ev_logo = '<img src="assets/ev.png" style="width:20px; padding:2px;">';
+
 		widgets.addSection("FX");
-		widgets.addTitle("Frame");
-		widgets.addNumber("Exposure", this.exposure,{min:-10,max:10,step:0.1,callback: function(v) { that.exposure = v; }});
-		widgets.addNumber("Offset", this.offset,{min:-0.5,max:0.5,step:0.01,callback: function(v) { that.offset = v; }});
+		widgets.addTitle("Frame exposition");
+		widgets.addNumber("Aperture", this._aperture,{min:0.5,max:64,step: 0.5,callback: function(v) { that.updateExposure(v, 1); }});
+		widgets.addCombo("Shutter speed", this._shutter_speed,{values:this.shs_values, callback: function(v) { that.updateExposure(v, 2); }});
+		widgets.addNumber("Sensitivity"+iso_logo, this._sensitivity,{min:100,max:3200,step:100, callback: function(v) { that.updateExposure(v, 3); }});
 		widgets.widgets_per_row = 2;
+		widgets.addNumber("Offset", this.offset,{min:-0.5,max:0.5,step:0.01,callback: function(v) { that.offset = v; }});
 		widgets.addCheckbox("FXAA",  this.fxaa, {name_width: '50%', callback: function(v){ that.fxaa = v; }});
 		widgets.widgets_per_row = 1;
 

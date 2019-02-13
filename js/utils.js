@@ -36,7 +36,7 @@ function processDrop(e)
         name = file.name,
         tokens = name.split("."),
         extension = tokens[tokens.length-1].toLowerCase(),
-        valid_extensions = [ 'exr', 'hdre', 'png', 'jpg', 'obj', 'json' ];
+        valid_extensions = [ 'exr', 'hdre', 'png', 'jpg', 'obj', 'json', 'hdrec' ];
 
         if(valid_extensions.lastIndexOf(extension) < 0)
         {
@@ -79,7 +79,7 @@ function includes(str, find)
             return true;
 }
 
-async function resize()
+async function resize( fullscreen )
 {
     if(!renderer)
     throw("no renderer: cannot set new dimensions");
@@ -89,7 +89,7 @@ async function resize()
 
     var w = window.innerWidth, h = window.innerHeight;
 
-    if(gui)
+    if(gui && !fullscreen)
     {
         w = gui._mainarea.root.clientWidth - gui._sidepanel.root.clientWidth - 4;
 		h = gui._mainarea.root.clientHeight;

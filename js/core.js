@@ -126,7 +126,7 @@ Core.prototype.setup = function()
     this.setUniform("near", camera.near);
     this.setUniform("far", camera.far);
     this.setUniform("rotation", 0.0);
-    this.setUniform("exposure", 0.0);
+    //this.setUniform("exposure", 0.0);
     this.setUniform("offset", 0.0);
     this.setUniform("channel", 0.0);
     this.setUniform("enable_ao", true);

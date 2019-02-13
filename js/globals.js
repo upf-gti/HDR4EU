@@ -28,6 +28,8 @@ var ResourceManager = RM = {
         FORWARD:	00,
         DEFERRED:	01,
 
+		MULTI_BRDF: 01,
+
     init: function()
     {
         console.log("%cLoading...","color: #5AF; font-size: 20px" );
