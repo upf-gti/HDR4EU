@@ -125,6 +125,7 @@ Object.assign( SFX.prototype, {
 		widgets.addNumber("Aperture", this._aperture,{min:0.5,max:64,step: 0.5,callback: function(v) { that.updateExposure(v, 1); }});
 		widgets.addCombo("Shutter speed", this._shutter_speed,{values:this.shs_values, callback: function(v) { that.updateExposure(v, 2); }});
 		widgets.addNumber("Sensitivity"+iso_logo, this._sensitivity,{min:100,max:3200,step:100, callback: function(v) { that.updateExposure(v, 3); }});
+		widgets.addSeparator();
 		widgets.widgets_per_row = 2;
 		widgets.addNumber("Offset", this.offset,{min:-0.5,max:0.5,step:0.01,callback: function(v) { that.offset = v; }});
 		widgets.addCheckbox("FXAA",  this.fxaa, {name_width: '50%', callback: function(v){ that.fxaa = v; }});

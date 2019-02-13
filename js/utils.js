@@ -35,14 +35,14 @@ function processDrop(e)
         file = files[i],
         name = file.name,
         tokens = name.split("."),
-        extension = tokens[tokens.length-1].toLowerCase(),
+        extension = tokens[tokens.length-1].toLowerCase()/*,
         valid_extensions = [ 'exr', 'hdre', 'png', 'jpg', 'obj', 'json', 'hdrec' ];
 
         if(valid_extensions.lastIndexOf(extension) < 0)
         {
             LiteGUI.showMessage("Invalid file extension", {title: "Error"});
             return;
-        }
+        }*/
         
         gui.onDragFile( file, extension );
     }

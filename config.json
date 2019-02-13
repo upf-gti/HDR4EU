@@ -3,6 +3,8 @@
     
     "imports" : [
         "js/lib/tinyexr.js",
+	"js/lib/pako.js",
+	"js/lib/UTIF.js",
         "js/lib/bootstrap.min.js",
         "js/lib/jscolor/jscolor.js",
         "js/lib/gl-matrix-min.js",

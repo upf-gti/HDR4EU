@@ -157,10 +157,11 @@ GUI.prototype.init = function()
         downloadBinary( mesh, "wbin" );
     } });
 
-    mainmenu.add("Help/Version", { callback: function() { LiteGUI.showMessage("APP v" + RM.version, {title: "App Info"}) } });
-    mainmenu.add("Help/Github page", { callback: function() { LiteGUI.showMessage("<a href='https://github.com/jxarco'>@jxarco</a>", {title: "App Info"}) } });
-    mainmenu.add("Help/Other demos", { callback: function() { LiteGUI.showMessage("<a href='https://webglstudio.org/users/arodriguez/demos/atmos'>Atmospherical scattering</a><br>"+
-    "<a href='https://webglstudio.org/latest/player.html?url=fileserver%2Ffiles%2Farodriguez%2Fprojects%2FHDR4EU%2Fgreen.scene.json'>Chroma Keying</a><br>", {title: "App Info"}) } });
+    mainmenu.add("Help/Version", { callback: function() { LiteGUI.alert("APP v" + RM.version, {title: "App Info"}) } });
+    mainmenu.add("Help/Github page", { callback: function() { LiteGUI.alert("<a href='https://github.com/jxarco'>@jxarco</a>", {title: "App Info"}) } });
+    mainmenu.add("Help/Other demos", { callback: function() { LiteGUI.alert("<a href='https://webglstudio.org/users/arodriguez/demos/atmos'>Atmospherical scattering</a><br>"+
+    "<a href='https://webglstudio.org/latest/player.html?url=fileserver%2Ffiles%2Farodriguez%2Fprojects%2FHDR4EU%2Fgreen.scene.json'>Chroma Keying</a><br>" +
+	"<a href='https://webglstudio.org/users/arodriguez/projects/cr2parser'>HDRE Exporter</a><br>", {title: "App Info"}) } });
     
     resize();
 }
@@ -774,6 +775,25 @@ GUI.prototype.onDragFile = function(file, extension)
                 that.onDragTexture(file, event.target.result);
             };
             reader.readAsDataURL(file);
+            return false;
+			break;
+		case 'cr2':
+            var reader = new FileReader();
+            reader.onprogress = function(e){  $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%") };
+            reader.onload = function (e) {
+                
+				var ifds = UTIF.decode(e.target.result);
+				var img = ifds[0];
+
+				UTIF.decodeImage(e.target.result, img)
+				var rgb_data = UTIF.toRGBA8( img );
+				window.img_cr2 = img;
+
+				var tex = new Texture(img.width, img.height, { format: gl.RGB, pixel_data: img.data});
+				gl.textures['cr2'] = tex;
+
+            };
+            reader.readAsArrayBuffer(file);
             return false;
     }
 }
