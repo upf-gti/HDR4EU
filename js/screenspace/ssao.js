@@ -16,11 +16,12 @@ var ssao = {
 	
 	init: async function()
 	{
+		console.time('SSAO init');
 		this.initTextures();
 		this.generateSampleKernel(true);
 		CORE.setUniform('kernel', GL.linearizeArray( this.kernel ));
 		CORE.setUniform('noise_tiling', 4);
-		/*await CORE.reloadShaders();*/
+		console.timeEnd('SSAO init');
 	},
 
 	initTextures: function()

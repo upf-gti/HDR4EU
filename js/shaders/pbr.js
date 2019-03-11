@@ -70,6 +70,54 @@ PBR_Shader.FS_MAIN_CODE_FORWARD = `
 
 		if(u_isEmissive)
 			 color += texture2D(u_emissive_texture, v_coord).rgb * u_emissiveScale;
+
+		const int channels = 6; // 5: add one extra for limits
+		  
+		float x = (gl_FragCoord.x / u_viewport.z);
+		float y = (gl_FragCoord.y / u_viewport.w);
+
+		/*struct PBRMat
+		{
+			float linearRoughness;
+			float roughness;
+			float metallic;
+			float f90;
+			vec3 f0;
+			vec3 diffuseColor;
+			vec3 reflection;
+			vec3 N;
+			float NoV;
+			float NoL;
+			float NoH;
+			float LoH;
+			float clearCoat;
+			float clearCoatRoughness;
+			float clearCoatLinearRoughness;
+		};		*/
+
+		  
+		if(u_show_layers)
+		{
+
+			for( int i = 0; i < channels; i++ )
+			{
+				float f = float(i)/float(channels) + (0.765 - float(channels)/10.0)*y;
+				if(x > f){
+					if(i == 0)
+						 color *= 1.0;
+					else if(i == 1)
+						color = vec3(material.roughness);
+					else if(i == 2)
+						color = vec3(material.metallic);
+					else if(i == 3)
+						color = material.N;
+					else if(i == 4)
+						color = vec3(material.linearRoughness);
+					else if(i == 5)
+						color *= 1.0;
+				}
+			}
+		}
         
         gl_FragColor = vec4(color, alpha);
     }
@@ -144,6 +192,8 @@ PBR_Shader.FS_CODE = `
     uniform vec3 u_light_position;
     uniform vec3 u_camera_position;
     uniform vec4 background_color;
+	uniform vec4 u_viewport;
+	uniform bool u_show_layers;
 
     uniform sampler2D u_brdf_texture;
 	uniform sampler2D u_brdf_texture_multi;
@@ -462,7 +512,7 @@ PBR_Shader.FS_CODE = `
 		vec2 brdf = texture2D( u_brdf_texture, vec2(material.NoV, material.roughness) ).rg;
 		vec3 F = F_Schlick( material.NoV, material.f0 );
 		Fr = radiance * ( F * brdf.x + brdf.y);
-		Fd = irradiance * material.diffuseColor;
+		Fd = cosineWeightedIrradiance * material.diffuseColor;
 
 		/*vec2 multi_DFG = texture2D(u_brdf_texture_multi, vec2(material.NoV, material.roughness) ).xy;
 		float dfgx = max(1e-8, multi_DFG.x);

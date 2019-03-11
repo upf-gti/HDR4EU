@@ -8,6 +8,9 @@
 * @class GUI
 * @constructor
 */
+	
+	locations = {};
+
 function GUI()
 {
     if(this.constructor !== GUI)
@@ -32,6 +35,10 @@ GUI.prototype._ctor = function()
     this._allow_drop = true;
     this._enable_log = false;
     this._color_picker = true;
+	this._show_layers = false;
+
+    // tabs 
+    this.editor = 0;
 }
 
 /**
@@ -40,57 +47,68 @@ GUI.prototype._ctor = function()
  */
 GUI.prototype.init = function()
 {
-    LiteGUI.init(); 
+	this.createTabPanel();
 
-    var log = document.createElement('div');
+	LiteGUI.init(); 
+	
+	var log = document.createElement('div');
     log.id = "log";
 	document.body.appendChild(log);
 
-    var mainmenu = new LiteGUI.Menubar("mainmenubar");
-    LiteGUI.add( mainmenu );
-
-    this._mainarea = new LiteGUI.Area({id: "mainarea", content_id:"canvasarea", height: "calc( 100% - 26px )", main:true});
+    // create main area
+    this._mainarea = new LiteGUI.Area({id: "mainarea", content_id:"canvasarea", height: "calc( 100% - 31px )", main:true});
     LiteGUI.add( this._mainarea );
 
-    var that = this;
+    // create second area for HDRI
+    this.boo = new LiteGUI.Area({id: "boo", content_id:"booarea", height: "calc( 100% - 31px )", main:true});
+    this.boo.root.style.display = "none";
+    LiteGUI.add( this.boo );
 
-    var canvas = renderer.canvas;
+    // by now fill here boo area
+
+    this.boo.root.ondragover = () => {return false};
+    this.boo.root.ondragend = () => {return false};
+    this.boo.root.ondrop = (e) => processDrop(e);
+
+	this.fillHDRIArea();
+	locations[ "#boo" ] = this.boo.content;
+
+    // *****
+
+    // get main area root and insert all canvas buttons
+    var tools = document.querySelector("#canvas-tools");
+    var picker = document.querySelector(".pixelPicker");
+    this._mainarea.root.appendChild( tools );
+    this._mainarea.root.appendChild( picker );
+        
+    // create menu bar
+	var mainmenu = new LiteGUI.Menubar("mainmenubar");
+    this._mainarea.add( mainmenu );
+    this.fillMenubar( mainmenu );
+
     this._mainarea.onresize = resize;
-    this._mainarea.content.appendChild(canvas);
+    this._mainarea.content.appendChild(renderer.canvas);
     
-    var push = document.createElement('div');
-    push.id = "push";
-    push.style.position = "absolute";
-
-    this._mainarea.content.appendChild(push);
-
     // create 2d canvas 
-
     var canvas = document.createElement("canvas");
-    canvas.style.position = "relative";
     canvas.style.width = "60px";
     canvas.style.height = "30px";
-    this._mainarea.content.appendChild(canvas);
     canvas.style.position = "absolute";
-    canvas.style.bottom = "10px";
-    // canvas.style.borderBottom = "2px solid  rgb(30, 211, 111)";
-
-    // create variable visualzation canvas
-
-    var canvas2 = document.createElement("canvas");
-    canvas2.style.position = "relative";
-    canvas2.style.border = "2px solid  rgb(30, 211, 111)";
-    canvas2.style.width = "100px";
-    canvas2.style.height = "50px";
-    // this._mainarea.content.appendChild(canvas2);
-    canvas2.style.position = "absolute";
-    canvas2.style.bottom = "100px";
-    
+    canvas.style.bottom = "4px";
+	canvas.style.left = "0px";
+    canvas.style.border = "none";
+    this._mainarea.content.appendChild(canvas);
     this._canvas2d = canvas;
 
-    //split mainarea
-    this.createSidePanel();
+    // create right panel for main area
+    // if( !CORE.mobile() )
+        this.createSidePanel();
+    
+    resize();
+}
 
+GUI.prototype.fillMenubar = function( mainmenu )
+{
     var that = this;
 
     mainmenu.add("File/Save scene", { callback: function() { that.onExport() } });
@@ -100,19 +118,20 @@ GUI.prototype.init = function()
     } });
 
     mainmenu.add("File/Preferences/Allow drop", { type: "checkbox", instance: this, property: "_allow_drop"});
-
-    var scenes = RM.scenes;
-
-    for(let s in scenes)
-        mainmenu.add("Scene/Shade Model/" + scenes[s].name, { callback: function() {
-            CORE.parse( scenes[s].name );
-            gui.updateSidePanel(null, scenes[s].name );
-        }});
-
-    mainmenu.add("Scene/Add Primitive/Sphere", { callback: function() { CORE.addPrimitive('sphere'); } });
-    mainmenu.add("Scene/Add Primitive/Plane", { callback: function() { CORE.addPrimitive('plane'); } });
-    mainmenu.add("Scene/Add Primitive/Cube", { callback: function() { CORE.addPrimitive('cube'); } });
-    mainmenu.add("Scene/Add Light", { callback: function() { CORE.addLight(); } });
+    mainmenu.add("File/Preferences/FPS counter", { type: "checkbox", instance: this, property: "_fps_enable", callback: function() { 
+        if(!that._fps_enable) that.closeFPS();
+        else that._canvas2d.style.display = "block";
+    }});
+    mainmenu.add("File/Preferences/Color picker", { type: "checkbox", instance: this, property: "_color_picker", callback: function() { 
+        if(!that._color_picker) document.querySelector(".pixelPicker").style.display = 'none';
+        else document.querySelector(".pixelPicker").style.display = 'block';
+    }});
+    mainmenu.add("File/Preferences/Log", { type: "checkbox", instance: this, property: "_enable_log", callback: function(){ 
+        $("#log").toggle();
+    }});
+	mainmenu.add("File/Preferences/Show channels", { type: "checkbox", instance: this, property: "_show_layers", callback: function(){ 
+        CORE.setUniform("show_layers", that._show_layers);
+    }});
 
     for(let i = 0; i < 5; i++)
         mainmenu.add("View/PREM/Level "+i, { callback: function() {
@@ -126,28 +145,36 @@ GUI.prototype.init = function()
             node.textures['albedo'] = "ssao_noise";
         }});
     mainmenu.separator("View");     
-    mainmenu.add("View/FPS counter", { type: "checkbox", instance: this, property: "_fps_enable", callback: function() { 
-        if(!that._fps_enable) that.closeFPS();
-        else that._canvas2d.style.display = "block";
-    }});
-    mainmenu.add("View/Color picker", { type: "checkbox", instance: this, property: "_color_picker", callback: function() { 
-        if(!that._color_picker) document.querySelector(".pixelPicker").style.display = 'none';
-        else document.querySelector(".pixelPicker").style.display = 'block';
-    }});
-    mainmenu.add("View/Log", { type: "checkbox", instance: this, property: "_enable_log", callback: function(){ 
-        $("#log").toggle();
-    }});
+    mainmenu.add("View/Atmospherical scattering", { callback: function() { that.showAtmos() } });
     mainmenu.separator("View");    
     mainmenu.add("View/Fullscreen", { callback: function() { gl.fullscreen() } });
+    mainmenu.add("View/Low panel", { callback: function() { $(that._hdri_bottompanel.root).toggle(); } });
+
+	var scenes = RM.scenes;
+
+    for(let s in scenes)
+        mainmenu.add("Actions/Add model/" + scenes[s].name, { callback: function() {
+            CORE.parse( scenes[s].name );
+            gui.updateSidePanel(null, scenes[s].name );
+        }});
+
+    mainmenu.add("Actions/Add primitive/Sphere", { callback: function() { CORE.addPrimitive('sphere'); } });
+    mainmenu.add("Actions/Add primitive/Plane", { callback: function() { CORE.addPrimitive('plane'); } });
+    mainmenu.add("Actions/Add primitive/Cube", { callback: function() { CORE.addPrimitive('cube'); } });
+    mainmenu.add("Actions/Add light", { callback: function() { CORE.addLight(); } });
 
     mainmenu.add("Actions/Reset scene", { callback: function() { 
         CORE.reset();
         that.updateSidePanel(that._sidepanel, 'root');
     }});
+	mainmenu.separator("Actions");    
     mainmenu.add("Actions/Reload shaders", { callback: function() { CORE.reloadShaders() } });
+    mainmenu.add("Actions/Fit canvas", { callback: function() { resize(); } });
+	mainmenu.add("Actions/Update HDRE preview", { callback: function() { gui.createPreview( CORE._environment ) } });
     mainmenu.separator("Actions");    
-    mainmenu.add("Actions/Get Environment/HDRE (8 bits)", { callback: function() { HDRTool.getSkybox( CORE._environment, GL.UNSIGNED_BYTE ) } });
-    mainmenu.add("Actions/Get Environment/HDRE (32 bits)", { callback: function() { HDRTool.getSkybox( CORE._environment, GL.FLOAT ) } });
+    mainmenu.add("Actions/Get Environment/HDRE (8 bits)", { callback: function() { HDRTool.getSkybox( CORE._environment, Uint8Array ) } });
+    mainmenu.add("Actions/Get Environment/HDRE (16 bits)", { callback: function() { HDRTool.getSkybox( CORE._environment, Uint16Array ) } });
+    mainmenu.add("Actions/Get Environment/HDRE (32 bits)", { callback: function() { HDRTool.getSkybox( CORE._environment, Float32Array ) } });
     mainmenu.add("Actions/Get Mesh (wBin)", { callback: function() {
         var picker = RM.get('NodePicker');
         var node = picker ? picker.selected : null;
@@ -162,8 +189,76 @@ GUI.prototype.init = function()
     mainmenu.add("Help/Other demos", { callback: function() { LiteGUI.alert("<a href='https://webglstudio.org/users/arodriguez/demos/atmos'>Atmospherical scattering</a><br>"+
     "<a href='https://webglstudio.org/latest/player.html?url=fileserver%2Ffiles%2Farodriguez%2Fprojects%2FHDR4EU%2Fgreen.scene.json'>Chroma Keying</a><br>" +
 	"<a href='https://webglstudio.org/users/arodriguez/projects/cr2parser'>HDRE Exporter</a><br>", {title: "App Info"}) } });
+}
+
+GUI.prototype.createTabPanel = function()
+{
+    var tabs = document.createElement('div');
+    tabs.id = "tabs";
+	document.body.appendChild(tabs);
+	var panelIcon = document.createElement('div');
+	panelIcon.id = "tabicon";
+	var content = document.createElement('div');
+	content.id = "tabcontent";
+	tabs.appendChild(panelIcon);
+    tabs.appendChild(content);
     
-    resize();
+    var SceneTab = this.createTab("Scene", "<img src='https://webglstudio.org/latest/imgs/mini-icon-cube.png'>", true);
+    var hdriTab = this.createTab("HDRI", "<img src='https://webglstudio.org/latest/imgs/mini-icon-texture.png'>");
+
+    SceneTab.id = 'maintab';
+    hdriTab.id = 'bootab';
+    
+    SceneTab.dataset['target'] = '#mainarea';
+    hdriTab.dataset['target'] = '#boo';
+
+	// create each tab
+	content.appendChild( SceneTab );
+	content.appendChild( hdriTab );
+}
+
+GUI.prototype.createTab = function(name, icon, selected)
+{
+    var that = this;
+	var tab = document.createElement('div');
+	tab.className = "tab" + (selected ? " selected" : "");
+
+	var nameDiv = document.createElement('div');
+	nameDiv.className = "tabname";
+	var iconDiv = document.createElement('div');
+	iconDiv.className = "tabicon";
+
+	nameDiv.innerHTML = name;
+	iconDiv.innerHTML = icon;
+
+	tab.appendChild(nameDiv);
+	tab.appendChild(iconDiv);
+
+	tab.addEventListener('click', function(e){
+		
+		document.querySelector(".tab.selected").classList.remove("selected");
+        this.classList.add("selected");
+        
+        if(this.id == 'maintab')
+            that.editor = 0;
+        else
+            that.editor = 1;
+
+        // hide all
+        $("#mainarea").hide();
+        $("#boo").hide();
+
+        // show selected
+        $(this.dataset['target']).show();
+
+		// put canvas there
+		var root = locations[ this.dataset['target'] ];
+
+		root.appendChild( $("#canvasarea")[0] );
+		resize();
+	})
+
+	return tab;
 }
 
 GUI.prototype.createSidePanel = function()
@@ -173,8 +268,9 @@ GUI.prototype.createSidePanel = function()
     this._mainarea.getSection(1).add( docked );
     $(docked).bind("closed", function() { this._mainarea.merge(); });
     this._sidepanel = docked;
-
     this.updateSidePanel( docked, 'root' );
+
+	locations[ "#mainarea" ] = this._mainarea.getSection(0).root;
 }
 
 GUI.prototype.updateSidePanel = function( root, item_selected )
@@ -202,6 +298,7 @@ GUI.prototype.updateSidePanel = function( root, item_selected )
 
     $(root.content).append( litetree.root );
 
+
     //side panel widget
     var widgets = new LiteGUI.Inspector();
     $(root.content).append(widgets.root);
@@ -213,16 +310,16 @@ GUI.prototype.updateSidePanel = function( root, item_selected )
     var camera = CORE.controller._camera, skybox = CORE.cubemap;
     var SFXComponent = RM.get('ScreenFX');
     var RenderComponent = RM.get('Render');
-    var AtmosComponent = RM.get('Atmos');
 
     if(item_selected == 'root')
     {
         var current_env = CORE._environment_set || {};
 
         widgets.addSection("Skybox");
-        widgets.addList("Environment", RM.textures, {selected: current_env, height: "125px", callback: function(v){
+		widgets.addHDRE( "Environment", CORE._environment );
+        widgets.addList(null, RM.textures, {selected: current_env, height: "75px", callback: function(v){
             gui.loading();
-            CORE.set( v);
+            CORE.set( v );
         }});
         widgets.widgets_per_row = 1;
         widgets.addSeparator();
@@ -230,13 +327,8 @@ GUI.prototype.updateSidePanel = function( root, item_selected )
         widgets.addNumber("Rotation", renderer._uniforms["u_rotation"], {min:-720*DEG2RAD,max:720*DEG2RAD,step:0.05, callback: function(v){ CORE.setUniform("rotation",v);}});
         widgets.addCheckbox("Visible", skybox.flags.visible, {callback: function(v) { skybox.visible = v}});
         widgets.addSeparator();
-        
-        // Atmos Component
-        if(AtmosComponent && AtmosComponent.create)
-            AtmosComponent.create( widgets, root );
 
-        widgets.addSection("Controller");
-
+        widgets.addSection("Camera");
         widgets.addVector3("Position",  camera.position, {callback: function(v){
             camera.position = v;
         }});
@@ -256,18 +348,17 @@ GUI.prototype.updateSidePanel = function( root, item_selected )
 
         widgets.widgets_per_row = 1;
         widgets.addSeparator();
-        widgets.addSlider("Mouse Speed", CORE.controller._mouse_speed, {min: 0.01, max: 1, step: 0.01, callback: function(v){
+        
+        // useful???? put into a future preferences dialog
+        /*widgets.addSlider("Mouse Speed", CORE.controller._mouse_speed, {min: 0.01, max: 1, step: 0.01, callback: function(v){
             CORE.controller._mouse_speed = v;
-            CORE.controller.setBindings(renderer.context);
-        }});
-        /*widgets.addSlider("Wheel Speed", CORE.controller._wheel_speed, {min: 0.1, max: 1, step: 0.05, callback: function(v){
-            CORE.controller._wheel_speed = v;
             CORE.controller.setBindings(renderer.context);
         }});*/
         
         // Render Component
-        if(RenderComponent && RenderComponent.create)
-            RenderComponent.create( widgets, root );
+        // Leave this until de meeting is done
+        /*if(RenderComponent && RenderComponent.create)
+            RenderComponent.create( widgets, root );*/
 
         // Screen FX Component
         if(SFXComponent && SFXComponent.create)
@@ -401,20 +492,14 @@ GUI.prototype.addMaterial = function(inspector, node)
         }, {});
 
 
-    inspector.widgets_per_row = 3;
+    inspector.widgets_per_row = 1;
 
     // OJO CON ESTE
     for(let t in filtered) {
-        inspector.addString( t, node.textures[t], {width: "80%", callback: function(v){
 
-			if(gl.textures[v])
-				node.textures[t] = v;
-			else
-				node.textures[t] = "";
+        inspector.addTexture(t == "notfound" ? "" : t, node.textures[t], {node: node});
 
-			node.setTextureProperties(); 
-		}});
-        inspector.addButton( null, '<i data-texture='+ t +' style="font-size: 16px;" class="material-icons">delete_forever</i>', {micro: true, width: "10%", callback: function(v) { 
+        /*inspector.addButton( null, '<i data-texture='+ t +' style="font-size: 16px;" class="material-icons">delete_forever</i>', {micro: true, width: "10%", callback: function(v) { 
 
             var t = $(v).data('texture');
 
@@ -422,19 +507,15 @@ GUI.prototype.addMaterial = function(inspector, node)
             delete node.textures[t]; 
             node.setTextureProperties();              
             that.updateSidePanel(null, node.name);
-        }});
-		inspector.addButton( null, '<i data-texture='+ t +' style="font-size: 16px;" class="material-icons">folder_open</i>', {micro: true, width: "10%", callback: function(v) { 
+        }});*/
 
-            that.selectResource( node, t );
-			
-        }});
     }
 
 	inspector.widgets_per_row = 1;
 	inspector.addSeparator();
 	inspector.addString("Add", "", {callback: function(v) {
 			
-			node.textures[v] = ""; 
+			node.textures[v] = "notfound"; 
             node.setTextureProperties(); 
 			that.updateSidePanel(null, node.name);
         }});
@@ -474,6 +555,264 @@ GUI.prototype.updateNodeTree = function(root)
     return mytree;
 }
 
+GUI.prototype.fillHDRIArea = function()
+{
+	this.boo.split("horizontal",[null,400],true);
+	this.boo.onresize = function(){ resize() };
+    var docked = new LiteGUI.Panel("hdri_right_panel", {title:'Detailed HDRI', scroll: true});
+    this.boo.getSection(1).add( docked );
+    $(docked).bind("closed", function() { this.boo.merge(); });
+    this._hdri_sidepanel = docked;
+	this.boo.root.style.background = "#3D3D3D";
+
+	var left = this.boo.getSection(0);
+	// left.split("vertical",[null,300],false);
+    // var bottom = new LiteGUI.Panel("hdri_bottom_panel", {scroll: false});
+    // left.getSection(1).add( bottom );
+    // $(bottom).bind("closed", function() { left.merge(); });
+
+    var id = "bottom_panel_dialog";
+    var dialog_id = id.replace(" ", "-").toLowerCase();
+    var bottom = new LiteGUI.Dialog( {id: dialog_id, title: "Resource drop", parent: this.boo.getSection(0).content});
+
+    $("#bottom_panel_dialog .buttons").append( "<button class='litebutton mini-button close-button'>"+ LiteGUI.special_codes.close +"</button>" );
+    $("#bottom_panel_dialog .close-button")[0].addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        $(bottom.root).toggle();
+    });
+	$("#bottom_panel_dialog .content")[0].style.height = "100%";
+
+    bottom.show('fade');
+    bottom.root.style.width = "100%";
+    bottom.root.style.height = "30%";
+    bottom.root.style.top = "70%";
+
+    this._hdri_bottompanel = bottom;
+
+	var widgets = new LiteGUI.Inspector();
+    $(bottom.content).append(widgets.root);
+	widgets.root.style.height = "100%";
+	
+	var panel_content = widgets.addContainer("content");
+	panel_content.className = "low_panel_content";
+    bottom.panel_content = panel_content;
+    // panel_content.style.overflow = "hidden";
+	// panel_content.style.overflowX = "scroll";
+
+	this.updateHDRIArea();
+}
+
+function getImageByName( name ){
+
+	return HDRTool.files_loaded.find(function(e) {
+	  return e.name == name;
+	});
+	
+}
+
+GUI.prototype.updateHDRIArea = function(right, bottom)
+{
+	var right = this._hdri_sidepanel;
+    var bottom = this._hdri_bottompanel;
+    var that = this;
+	
+	// empty containers
+	$(right.content).empty();
+	$(bottom.panel_content).empty();
+
+	// right
+	var widgets = new LiteGUI.Inspector();
+    $(right.content).append(widgets.root);
+    
+    var options = {disabled: true, name_width: "40%", precision:6};
+
+    widgets.addTitle("Averages per RGB");
+    widgets.addVector3("Final image", HDRTool.hdr_avg, options);
+    widgets.addVector3("Template", HDRTool.tmp_avg, options);
+    widgets.addSeparator();
+    widgets.addTitle("Luminance");
+    widgets.widgets_per_row = 2;
+    widgets.addNumber("Max", HDRTool.max_lum, options);
+    widgets.addNumber("Min", HDRTool.min_lum, options);
+    widgets.widgets_per_row = 1;
+    widgets.addVector3("Max. Pixel", HDRTool.max_lum_pixel, options);
+    widgets.addVector3("Min. Pixel", HDRTool.min_lum_pixel, options);
+    
+    widgets.addSection("Tonemapping");
+
+    var SFX = RM.get("ScreenFX");
+    var tonemapper_names = Object.keys(RM.tonemappers);
+    var name = SFX.tonemapping;
+    var tonemapper = RM.tonemappers[ name ];
+
+    widgets.addCombo(null, name, {values: tonemapper_names, callback: function(v){
+        SFX.tonemapping = v;
+    }});
+    
+    if(tonemapper && tonemapper.params)
+        for( let p in tonemapper.params ) // important let!!
+        {
+            var tm = tonemapper.params[p];
+            var options = tm.options || {};
+
+            CORE.setUniform(p, tm.value); 
+
+            widgets.addSlider(p, tm.value, {min:options.min || 0,max:options.max||1,step:options.step||0.1,name_width: '50%', callback: function(v) {  
+                CORE.setUniform(p, v); 
+                tonemapper.setParam(p, v);
+            }});
+        }
+	
+	if(!gl.textures["combined_scaled"]) {
+	
+		widgets.addSection("HDR control");
+		widgets.addSlider("Exposure", renderer._uniforms["u_exp"], {min:-10,max:10,step:0.1, callback: function(v) {  
+			CORE.setUniform('exp', v);
+		}});
+		widgets.addSlider("Max. Radiance", HDRTool.max_radiance, {min:1,max:250,step:1, callback: function(v) {  
+			HDRTool.max_radiance = v;
+		}});
+	}
+
+
+	// bottom
+	widgets = new LiteGUI.Inspector();
+    $(bottom.panel_content).append(widgets.root);
+	widgets.root.style.height = "100%";
+
+	var image_content = widgets.addContainer("images");
+	image_content.className = "low_panel_images";
+
+	// add images loaded
+
+	var images = HDRTool.files_loaded;
+
+	for(var i = 0; i < images.length; i++)
+		image_content.appendChild( this._generateLDRIThumb(images[i]) );
+    
+    if(!images.length)
+    return;
+
+	widgets.addSeparator();
+	widgets.widgets_per_row = 5;
+	widgets.addButton(null, "Compute HDR", {callback: function(){ 
+        HDRTool.computeOutput();
+        that.updateHDRIArea();
+     }});
+	 widgets.addButton(null, "Download", {callback: function(){ 
+	
+		if(true) {
+			
+			var tex = HDRTool._CPU_downloadHDR(); 
+			var data = {
+				width: tex.width,
+				height: tex.height,
+				rgba: tex.getPixels(),
+				numChannels: 4
+			};
+
+			LiteGUI.prompt("Environment name", function(v){
+			
+				gl.textures[v] = HDRTool.toTexture(data, 256, {no_flip: true});
+
+				HDRTool.prefilter(v, {oncomplete: function(){
+					
+					CORE.set(v);
+				
+				}});
+
+			}, {title: "Download HDRE"})
+		}
+		else
+		 {
+			// HDRTool._GPU_downloadHDR(); 
+		}
+		 
+	}});
+	widgets.addButton(null, "Upload", {callback: function(){ 
+	
+		console.warn("TODO");
+		 
+	}});
+//	widgets.addButton(null, "Export (CPU)", {callback: function(){ HDRTool._CPU_downloadHDR(); }});
+//	widgets.addButton(null, "Export (GPU)", {callback: function(){ HDRTool._GPU_downloadHDR(); }});
+
+	$(".low_panel_image .edit-button").click(function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        
+		var target_name = $(this).data("target");
+		var img = getImageByName(target_name);
+		var index = HDRTool.files_loaded.indexOf(img);
+
+		var dialog = new LiteGUI.Dialog({id: "edit-mode", parent: "body", title: "Edit "+img.name, close: true});
+		var widgets = new LiteGUI.Inspector();
+		$(dialog.root).append(widgets.root);
+
+		widgets.addString( "Shutter speed", img.exp_time, {callback: function(v){ 
+
+			var tkns = v.split("/"), f;
+
+			if(tkns.length == 2)
+				f = parseFloat(tkns[0]) / parseFloat(tkns[1]);
+			else
+				f = parseFloat(tkns[0]);
+			HDRTool.files_loaded[index].exp_time = f;
+			HDRTool._sortFiles();
+			that.updateHDRIArea();
+			dialog.close();
+		}});
+
+    });
+
+	$(".low_panel_image .remove-button").click(function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        
+		var target_name = $(this).data("target");
+
+		HDRTool.files_loaded = HDRTool.files_loaded.filter( function(e){
+			return e.name != target_name;
+		} );
+
+		that.updateHDRIArea();
+
+    });
+	
+}
+
+GUI.prototype._generateLDRIThumb = function( img )
+{
+	// save image
+	let current_image = img;
+
+	var container = document.createElement("div");
+	container.className = "low_panel_image";
+
+	var image = new Image();
+	image.src = current_image.url || "";
+
+	var info = document.createElement("div");
+	info.style.display = "flex";
+
+	var text = document.createElement("div");
+	text.className = "low_panel_image info_text";
+	text.innerHTML = current_image.name || "resource";
+	text.innerHTML += "<br><b>" + current_image.exp_time || "" + "</b>";
+
+	var buttons = document.createElement("div");
+	buttons.innerHTML = "<button data-target='" + current_image.name + "' class='litebutton mini-button edit-button'><i style='font-size:12px;'class='material-icons'>edit</i></button>";
+	buttons.innerHTML += "<button data-target='" + current_image.name + "' class='litebutton mini-button remove-button'>" + LiteGUI.special_codes.close + "</button>";
+	
+	container.appendChild( image );
+	container.appendChild( info );
+	info.appendChild( text );
+	info.appendChild( buttons );
+
+	return container;
+}
+
 /**
  * Export scene dialog
  * @method onExport
@@ -484,8 +823,7 @@ GUI.prototype.onExport = function()
 
     // is not in server
     if(!isInServer) {
-        LiteGUI.alert("Files not in server");
-        return;
+        console.warn("Save Files in server");
     }
 
 	var boo;
@@ -493,6 +831,7 @@ GUI.prototype.onExport = function()
 	try
 	{
 		boo = CORE.toJSON();
+		console.log(boo);
 		boo = JSON.stringify(boo);
 	}
 	catch (e)
@@ -619,6 +958,30 @@ GUI.prototype.onImportFromServer = function(data)
     }
 
     widgets.on_refresh();
+    dialog.add(widgets);  
+    var w = 400;
+    dialog.setPosition( window.innerWidth/2 - w/2, window.innerHeight/2 - 50 );       
+}
+
+/**
+ * Show atmospherical scattering options in dialog
+ * @method showAtmos
+ */
+GUI.prototype.showAtmos = function(data)
+{
+    var id = "Atmospherical scattering";
+    var dialog_id = id.replace(" ", "-").toLowerCase();
+    var w = 400;
+    var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", close: true, title: id, width: w, draggable: true });
+    dialog.show('fade');
+    var widgets = new LiteGUI.Inspector();
+
+    // Atmos Component
+    var AtmosComponent = RM.get('Atmos');
+
+    if(AtmosComponent && AtmosComponent.create)
+        AtmosComponent.create( widgets );
+
     dialog.add(widgets);  
     var w = 400;
     dialog.setPosition( window.innerWidth/2 - w/2, window.innerHeight/2 - 50 );       
@@ -1019,13 +1382,20 @@ GUI.prototype.selectResource = function(node, tex_name)
     dialog.show('fade');
 
     var area = new LiteGUI.Area(null);
-	area.split("vertical",[50, null]);
+	area.split("vertical");
 	
 	var section1 = area.getSection(0);
 
 	var widgets_top = new LiteGUI.Inspector();
-	widgets_top.addString( "Filter", "" );
+	widgets_top.widgets_per_row = 2;
+	widgets_top.addString( "Filter", "", {width: "80%"} );
+	widgets_top.addButton( null, "Import", {width: "20%", callback: function(){
+	
+		console.log("TODO");
+	
+	}} );
 	widgets_top.addSeparator();
+	widgets_top.widgets_per_row = 1;
 	section1.add( widgets_top );
 
 	var section2 = area.getSection(1);
@@ -1035,8 +1405,10 @@ GUI.prototype.selectResource = function(node, tex_name)
 	bottom.on_refresh = function(){
 	
 		var container = bottom.addContainer("cont-textures");
+		container.className = "cont-textures";
 		container.style.boxSizing = "border-box";
-		//container.style.overflowWrap = "break-word";
+		container.style.height = "390px";
+		container.style.overflowY = "scroll";
 
 		that.showResources( container );
 	}
@@ -1089,25 +1461,270 @@ GUI.prototype.showResources = function(parent)
 			url = canvas.toDataURL();
 		}
 
-		var image = document.createElement('img');
+		let  image = document.createElement('img');
+		image.style.height = "12.5vh";
+		image.style.marginTop = "-30px";
 		image.src = url;
 		image.style.width = "100%";
-		image.style.height = "auto";
 		image.dataset['path'] = name;
 
 		var text = document.createElement('p');
-		text.style.width = "120px";
-		text.style.overflow = "hidden";
 		name = name.split("/");
 		name = name[name.length-1];
 		text.innerHTML = name;
 	
-		block.appendChild(image);
 		block.appendChild(text);
+		block.appendChild(image);
 		responsive.appendChild( block );
 		parent.appendChild( responsive );
 	
 	}
+}
 
+
+/* COLLABORATIVE TOOL THING */
+
+/**
+ * Shows the dialog for selecting HDRE
+ * @method selectHDRE 
+ */
+GUI.prototype.selectHDRE = function( files )
+{
+    var options = options || {};
+	var that = this;
+
+    var id = "Select HDRE";
+    var dialog_id = replaceAll(id, ' ', '').toLowerCase();
+    var w = gl.canvas.width / 2.5;
+    var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", title: id, close: true, width: w, draggable: true });
+    dialog.show('fade');
+
+    var area = new LiteGUI.Area(null);
+	area.split("vertical");
+	
+	var section1 = area.getSection(0);
+
+	var widgets_top = new LiteGUI.Inspector();
+	widgets_top.widgets_per_row = 2;
+
+	let filtered_files = [].concat(files);
+	tags = [];
+	filter = "";
+
+	var filter_input = widgets_top.addString( "Filter", "", {width: "80%", callback: function(v){
+	
+		var input = filter_input.children[1].children[0].children[0];
+		filter = v.toLowerCase();
+
+		filtered_files = files.filter( function(e){
 		
+			if(!tags.length)
+				return true;
+
+			if(!e.metadata.tags)
+				return false;
+
+			for(var i in tags)
+				if( e.metadata.tags.indexOf( tags[i] ) < 0 )
+					return false;
+			return true;
+		} ).filter(e=> e.filename.toLowerCase().includes(filter));
+
+		if(!filtered_files.length)
+			input.style.color = "red";
+		else
+			input.style.color = "";
+		
+		bottom.on_refresh();
+
+	}} );
+	
+	/*widgets_top.addButton( null, "Download", {width: "20%", callback: function(){
+	
+		console.log("TODO");
+	
+	}} );*/
+	widgets_top.addButton( null, "Import", {width: "20%", callback: function(){
+	
+		that.uploadHDRE( bottom );
+	
+	}} );
+	widgets_top.addSeparator();
+	widgets_top.widgets_per_row = 1;
+		
+	
+
+	widgets_top.addTags( "Tags","empty", {values: ["empty", "outdoor","indoor","nature","urban","night","skies"], callback: function(e){
+	
+		tags = Object.keys(e);
+
+		filtered_files = files.filter( function(e){
+		
+			if(!tags.length)
+				return true;
+
+			if(!e.metadata.tags)
+				return false;
+
+			for(var i in tags)
+				if( e.metadata.tags.indexOf( tags[i] ) < 0 )
+					return false;
+			return true;
+		} ).filter(e=> e.filename.toLowerCase().includes(filter));
+
+		bottom.on_refresh();
+	
+	}} );
+
+	section1.add( widgets_top );
+
+	var section2 = area.getSection(1);
+	var bottom = new LiteGUI.Inspector();
+	section2.add( bottom );	
+
+	bottom.on_refresh = function(){
+	
+		$(bottom.root).empty();
+
+		var container = bottom.addContainer("cont-hdre");
+		container.className = "cont-hdre";
+		container.style.boxSizing = "border-box";
+		container.style.height = "390px";
+		container.style.overflowY = "scroll";
+
+		that.showHDRES( container, filtered_files );
+	}
+
+	bottom.on_refresh();
+
+	LiteGUI.bind( area, "resource_selected", function(e){
+		
+		let path = e.target.dataset['path'];
+		let name = e.target.dataset['name'];
+		$("#"+dialog_id).remove();
+
+		// set environment
+		that.loading();
+        CORE.set( CORE.FS.root + path, {onImport: function(){
+			
+			if(e.target.src == "")
+				that.createPreview( CORE._environment )
+
+		}} );
+		that.updateSidePanel(null, 'root');
+	} );
+
+    dialog.add(area);  
+    dialog.setPosition( renderer.canvas.width/2 - w/2, renderer.canvas.height/2 - renderer.canvas.height/4 );                  
+}
+
+GUI.prototype.uploadHDRE = function( root )
+{
+    var options = options || {};
+	var that = this;
+
+    var id = "Upload HDRE";
+    var dialog_id = replaceAll(id, ' ', '').toLowerCase();
+    var w = gl.canvas.width / 4;
+    var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", title: id, close: true, width: w, draggable: true });
+    dialog.show('fade');
+
+    var area = new LiteGUI.Area(null);
+	var widgets_top = new LiteGUI.Inspector();
+	var selected_tags = {};
+	var file = null;
+
+	widgets_top.addFile( "File", "", {callback: function(v){
+	
+		file = v.files[0];
+
+
+	}} );
+
+	widgets_top.addSeparator();
+
+	widgets_top.addTags( "Tags","empty", {values: ["empty","outdoor","indoor","nature","urban","night","skies"], callback: function(v){
+
+		selected_tags = {};
+		Object.assign(selected_tags, v);
+	
+	}} );
+	
+	widgets_top.addButton( null,"Upload", {callback: function(v){
+	
+		if(file)
+			CORE.FS.uploadFile("hdre", file, Object.keys(selected_tags)).then( function(){ $("#"+dialog_id).remove(); root.on_refresh();  } );
+	}} );
+
+	area.add( widgets_top );
+    dialog.add(area);  
+    dialog.setPosition( renderer.canvas.width/2 - w/2, renderer.canvas.height/2 - renderer.canvas.height/5 );                  
+}
+
+GUI.prototype.showHDRES = function(parent, files)
+{
+	for(var f in files)
+	{
+		let name = files[f].filename;
+		// console.log(files[f]);
+
+		var responsive = document.createElement('div');
+		responsive.className = "responsive";
+
+		var block = document.createElement('div');
+		block.className = "resource-block";
+
+		let  image = document.createElement('img');
+		image.style.width = "100%";
+		image.style.height = "12.5vh";
+		image.style.marginTop = "-30px";
+		image.dataset['path'] = files[f].fullpath;
+		image.dataset['name'] = name;
+		
+		LiteGUI.requestBinary("https://webglstudio.org/users/hermann/files/sauce_dev/files/8efb30d54aee665af72c445acf53284b/thb/thb_" + name + ".png", function(e){
+		
+			image.src = "https://webglstudio.org/users/hermann/files/sauce_dev/files/8efb30d54aee665af72c445acf53284b/thb/thb_" + name + ".png";
+	
+		} );
+
+		image.addEventListener( 'click', function(e){ 
+		
+			LiteGUI.trigger( e.target, "resource_selected");
+		} );
+
+		var text = document.createElement('p');
+		text.innerHTML = name.replace(".hdre", "");
+	
+		block.appendChild(text);
+		block.appendChild(image);
+		responsive.appendChild( block );
+		parent.appendChild( responsive );
+	
+	}
+		
+}
+
+GUI.prototype.createPreview = function( tex_name )
+{
+    var options = options || {};
+	var that = this;
+	
+	console.log(tex_name);
+	var tex = gl.textures[ tex_name ];
+
+	if( !tex )
+		throw("no texture loaded");
+
+	var preview = new Texture(tex.width, tex.height);
+	preview.drawTo( function(){
+		tex.toViewport( gl.shaders["flipY"] );
+	} );
+
+	var canvas = preview.toCanvas();
+	var base64 = canvas.toDataURL();
+	
+	canvas.toBlob(function(e){
+		CORE.FS.uploadFile( "thb", new File([e], "thb_" + tex_name + ".png"), [] );
+	});
+
 }

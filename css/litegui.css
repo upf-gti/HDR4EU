@@ -832,10 +832,10 @@ div {
 .litepanel .panel-header, .litedialog .panel-header {
 	font-size: 1.35em;
 	padding: 0.2em 0 0 0.2em;
-	/* background-color: #778;
+	background-color: #778;
     background-image: linear-gradient(right , #555, #333);
     background-image: -moz-linear-gradient(right , #555, #333);
-    background-image: -webkit-linear-gradient(right , #555, #333); */
+    background-image: -webkit-linear-gradient(right , #555, #333);
 
 	-moz-box-sizing: border-box;	
 	-webkit-box-sizing: border-box;	
@@ -849,7 +849,6 @@ div {
 	user-select: none; 
 	/*overflow: hidden;*/
 	padding: 6px;
-	/*border-top: 2px solid #aaaaff;*/
 }
 
 .litepanel .panel-header button, .litedialog .panel-header button {
@@ -1362,11 +1361,11 @@ a:hover {
 .litemenubar ul {
 	font-family:Tahoma, sans-serif;
 	margin: 0;
-	padding: 6px;
+	padding: 3px;
 }
 
 .litemenubar li {
-	font-size: 18px;
+	font-size: 15px;
 	color: #999;
 	display: inline-block;
 	min-width: 50px;
@@ -1395,7 +1394,7 @@ a:hover {
 }
 
 .litemenu-entry, .litemenu-title {
-	font-size: 16px;
+	font-size: 13px;
 	color: #AAA;
 	padding: 0 0 0 4px;
 	margin: 2px;

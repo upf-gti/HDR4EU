@@ -136,13 +136,14 @@
         }
 
 		// set max value for luminance
-		var maxValue = getFloat32Max( data );
-		view.setFloat32(18, maxValue); 
+		view.setFloat32(18, _getMax( data )); 
 
 		var type = FLOAT;
-		if( array_type == Uint8Array)
-			type = U_BYTE;
-		
+		if( array_type === Uint8Array)
+            type = U_BYTE;
+        if( array_type === Uint16Array)
+            type = HALF_FLOAT;
+            
 		// set write array type 
 		view.setUint16(22, type); 
 
@@ -157,7 +158,9 @@
         {
 			if(type == U_BYTE) {
 	            view.setUint8(offset, data[i], true);
-			}else if(type == FLOAT) {
+			}else if(type == HALF_FLOAT) {
+	            view.setUint16(offset, data[i], true);
+			}else {
 	            view.setFloat32(offset, data[i], true);
 			}
 
@@ -168,7 +171,7 @@
         return contentBuffer;
     }
 
-	function getFloat32Max(data) {
+	function _getMax(data) {
 	  return data.reduce((max, p) => p > max ? p : max, data[0]);
 	}
 
@@ -238,8 +241,8 @@
         };
 
 //		console.table(header);
-		window.parsedFile = {buffer: buffer, header: header};
-
+        window.parsedFile = {buffer: buffer, header: header};
+        
 		if(fileSizeInKBytes > m)
         throw('file not accepted: too big');
 
@@ -254,7 +257,13 @@
 
         var dataBuffer = buffer.slice(s);
 
-		var array_type = (a == U_BYTE) ? Uint8Array : Float32Array;
+        var array_type = Float32Array;
+        
+        if(a == U_BYTE)
+            array_type = Uint8Array;
+        else if(a == HALF_FLOAT)
+            array_type = Uint16Array;
+         
         var data = new array_type(dataBuffer);
         var numChannels = c;
 
@@ -349,7 +358,7 @@
         while ( uintBuffer[ offset + endOffset ] != 0 ) 
             endOffset += 1;
 
-        return new TextDecoder().decode(new Uint8Array( buffer ).slice( offset, offset + endOffset ));
+        return window.TextDecoder !== undefined ? new TextDecoder().decode(new Uint8Array( buffer ).slice( offset, offset + endOffset )) : "";
     }
 
     function parseFloat32( buffer, offset ) {

@@ -39,14 +39,17 @@ var ResourceManager = RM = {
 
     setup: function()
     {
-        $(document.body).append(`
-        <div id="canvas-tools">
-            <div class="tool-section tool-section-manipulate">
-                <div class="tool-button tool-colorpicker" title="Pick color" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-colorpicker.png)"></div>
-                <div class="tool-button tool-sphereprem" title="Show sphere PREM" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-circle.png)"></div>
-                <div class="tool-button tool-deferredtex" title="Show deferred textures" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-depth.png)"></div>
-            </div>
-        </div>`);
+		console.log(navigator.userAgent);
+
+        $(document.body).append(
+        '<div id="canvas-tools">' +
+        '    <div class="tool-section tool-section-manipulate">' +
+        '        <div class="tool-button tool-colorpicker" title="Pick color" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-colorpicker.png)"></div>' +
+        '        <div class="tool-button tool-sphereprem" title="Show sphere PREM" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-circle.png)"></div>' +
+        '        <div class="tool-button tool-deferredtex" title="Show deferred textures" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-depth.png)"></div>' +
+        '    </div>' +
+        '</div>'
+		);
     },
 
     onInit: function()
@@ -114,12 +117,13 @@ var ResourceManager = RM = {
             var last_loaded = loaded_scripts[ loaded_scripts.length - 1 ];
             var name = last_loaded.original_src.split('?')[0];
 
-            name = `<div class="script-loaded"><img class="jsicon" src='assets/js_icon.png'><p>
-                ` + name;
+            name = '<div class="script-loaded"><img class="jsicon" src="assets/js_icon.png"><p>' + name;
             $("#import-names").append(name+"</p></div>");
             $("#import-names").append("</br>Loaded</br>");    
             $("#import-names").append("Setting up environment</br>");
             CORE = new Core();
+            $("#import-bar").css('width', "0%");
+            $("#import-bar").css('background', "#AAF");
         }
 
         function onProgress(name, num)
@@ -129,8 +133,7 @@ var ResourceManager = RM = {
             $("#import-text").html(parseInt(factor)+"%");
             $("#import-bar").css('width', parseInt(factor)+"%");
 
-            name = `<div class="script-loaded"><img class="jsicon" src='assets/js_icon.png'><p>
-                ` + name.split('?')[0];
+            name = '<div class="script-loaded"><img class="jsicon" src="assets/js_icon.png"><p>' + name.split('?')[0];
             $("#import-names").append(name+"</p></div>");
             pageScroll();
 

@@ -72,7 +72,7 @@ Core.prototype._ctor = function()
     var type = gl.FLOAT;
     
     this._viewport_tex = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
-    this._fx_tex = new GL.Texture(w,h, {type: gl.HALF_FLOAT_OES});
+    this._fx_tex = new GL.Texture(w,h, {type: type});
     this._background_color = vec4.fromValues(0.2, 0.2, 0.2,1);
 
     this.fxaa_shader = Shader.getFXAAShader();
@@ -106,6 +106,7 @@ Core.prototype.setup = function()
     var last = now = getTime();
 
     canvas = this.getCanvas();
+	canvas.id = "webgl_canvas";
 
     canvas.addEventListener("webglcontextlost", function(event) {
         event.preventDefault();
@@ -126,7 +127,8 @@ Core.prototype.setup = function()
     this.setUniform("near", camera.near);
     this.setUniform("far", camera.far);
     this.setUniform("rotation", 0.0);
-    //this.setUniform("exposure", 0.0);
+    this.setUniform("exposure", 0.0);
+	this.setUniform("exp", 0.0);
     this.setUniform("offset", 0.0);
     this.setUniform("channel", 0.0);
     this.setUniform("enable_ao", true);
@@ -134,6 +136,9 @@ Core.prototype.setup = function()
 	this.setUniform("EC", false);
     this.setUniform("ibl_intensity", 1.0);
     this.setUniform("albedo", vec3.fromValues( 1, 1, 1));
+	this.setUniform("viewport", gl.viewport_data);
+	this.setUniform("show_layers", false);
+
     
     // SSAO
     this.setUniform("radius", 16.0);
@@ -159,12 +164,13 @@ Core.prototype.setup = function()
         gl.shaders[shader] = new GL.Shader(RM.shaders[shader].vs_code, RM.shaders[shader].fs_code);
     }
 	
-    
     renderer.context.ondraw = function(){ that.render() };
     renderer.context.onupdate = function(dt){ that.update(dt) };
 
     renderer.context.animate();
-    window.onresize = resize;
+    // window.onresize = resize;
+
+	this.FS = new FileSystem();
 
     // get response from files.php and init app
     LiteGUI.request({
@@ -186,12 +192,12 @@ Core.prototype.setup = function()
             ssao.init();
             gui.init(); 
 
-			/*var url = "exports/";
+			var url = "exports/";
 			// query string params
 			if( QueryString['scene'] ) {
 				url += QueryString['scene'];
 				LiteGUI.requestJSON( url, function(v){ CORE.fromJSON( v ); } );
-			}*/
+			}
         },
         error: function(err){ console.error(err, "Error getting app environments") }
     });
@@ -267,6 +273,8 @@ Core.prototype.browser = function()
         return 'chrome';
     if(isFirefox && isFirefox())
         return 'firefox';
+	if(isEdge && isEdge())
+        return 'edge';
 }
 
 Core.prototype.mobile = function()
@@ -284,6 +292,12 @@ var isSafari = function()
 {
     var match = userAgent.match(/version\/(\d+).+?safari/);
     return match !== null;
+}
+
+var isEdge = function()
+{
+    var match = userAgent.includes("edge");
+    return match;
 }
 
 var isOpera = function()
@@ -339,7 +353,12 @@ Object.defineProperty(Core.prototype, 'blur_samples', {
 */
 Core.prototype.render = function()
 {
-    if(!this.cubemap.ready())
+	if(this._gui.editor == 1){ // i'm in hdri tab
+		this.renderHDRITab();
+		return;
+	}
+
+    if(!this.cubemap.ready()) 
     return;
 
     var RenderComponent = RM.get('Render');
@@ -360,6 +379,53 @@ Core.prototype.render = function()
     if(NodePickerComponent && NodePickerComponent.render)
         NodePickerComponent.render();
 }
+
+Core.prototype.renderHDRITab = function()
+{
+	 // Render scene to texture
+    this._viewport_tex.drawTo( function() {
+        renderer.clear( this._background_color );
+		Object.assign( renderer._uniforms, HDRTool.getUniforms() );
+
+		if(gl.textures["combined_scaled"])
+			gl.textures["combined_scaled"].toViewport( null, renderer._uniforms);
+
+		else if(gl.textures["combined"])
+			gl.textures["combined"].toViewport( gl.shaders["combineHDR"], renderer._uniforms );
+    });
+    
+    gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+
+    // Fill renderer uniforms with average, max lum, etc.
+    try
+    {
+        if (info_check())
+        {
+            perblock_getmax();
+            downsampled_getaverage();
+        }
+    }
+    catch (e)
+    {
+        if(!this._errors[e])
+        this._errors[e] = 1;
+    }
+
+    /*var render_texture = this._viewport_tex;*/
+    var SFXComponent = RM.get("ScreenFX");
+
+    if(SFXComponent) {
+        var myToneMapper = RM.tonemappers[ SFXComponent.tonemapping ];
+        myToneMapper.apply( this._viewport_tex, this._fx_tex ); 
+		this._fx_tex.toViewport();
+    }else{
+        this._viewport_tex.toViewport();
+    }
+	
+	 // Render GUI
+    this._gui.render();
+}
+
 
 /**
 * Render all the scene using forward rendering
@@ -640,10 +706,11 @@ Core.prototype.display = function( no_free_memory )
     var that = this;
     // gui
     setTimeout(function(){
+        that._gui.updateSidePanel(null, 'root');
         that._gui.loading(0);
         $("#import-loader").hide();            
         console.log("%c" + that._environment, 'font-weight: bold;');
-    }, 1000);
+    }, 250);
 }
 
 /**
@@ -820,7 +887,7 @@ Core.prototype.reset = function()
 Core.prototype.cubemapToTexture = async function(oncomplete)
 {
     var that = this,
-        d = this._renderer._camera.position;
+        d = camera.position;
 
     var size = 256;
 
@@ -1401,6 +1468,7 @@ Core.prototype.fromJSON = function( o, only_settings )
 		}
 			
 		gui.updateSidePanel(null, 'root');
+		resize();
 		
 	}
 	

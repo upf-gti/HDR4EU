@@ -16,9 +16,19 @@ var temp_vec3b = vec3.create();
 var temp_vec4 = vec4.create();
 var temp_quat = quat.create();
 
+numbers.matrix.pinv = function(M) {
+
+	if(M.length < M[0].length)
+		return linalg.transposeSync(linalg.pinvSync(linalg.transposeSync(M)))
+	else
+		return linalg.pinvSync(M)
+}
+
 function processDrop(e)
 {
     e.preventDefault();
+    e.stopPropagation();
+
     var type = e.dataTransfer.getData("type");
 
     if(type == "text") {
@@ -35,16 +45,25 @@ function processDrop(e)
         file = files[i],
         name = file.name,
         tokens = name.split("."),
-        extension = tokens[tokens.length-1].toLowerCase()/*,
+        extension = tokens[tokens.length-1].toLowerCase(),
         valid_extensions = [ 'exr', 'hdre', 'png', 'jpg', 'obj', 'json', 'hdrec' ];
 
         if(valid_extensions.lastIndexOf(extension) < 0)
         {
             LiteGUI.showMessage("Invalid file extension", {title: "Error"});
             return;
-        }*/
+        }
         
-        gui.onDragFile( file, extension );
+        if(gui.editor == 1){
+            
+            HDRTool.files_to_load = e.dataTransfer.files.length;
+            HDRTool.files_loaded.length = 0;
+            HDRTool.loadLDRI( file, extension, name, function(){
+				gui.updateHDRIArea();
+			} );
+        }
+        else
+            gui.onDragFile( file, extension, name );
     }
 }
 
@@ -79,8 +98,30 @@ function includes(str, find)
             return true;
 }
 
+var rtime;
+var timeout = false;
+var delta = 500;
+
+$(window).resize(function() {
+    rtime = new Date();
+    if (timeout === false) {
+        timeout = true;
+        setTimeout(resizeend, delta);
+    }
+});
+
+function resizeend() {
+    if (new Date() - rtime < delta) {
+        setTimeout(resizeend, delta);
+    } else {
+        timeout = false;
+        resize()
+    }               
+}
+
 async function resize( fullscreen )
 {
+    console.log("resizing");
     if(!renderer)
     throw("no renderer: cannot set new dimensions");
 
@@ -91,8 +132,19 @@ async function resize( fullscreen )
 
     if(gui && !fullscreen)
     {
-        w = gui._mainarea.root.clientWidth - gui._sidepanel.root.clientWidth - 4;
-		h = gui._mainarea.root.clientHeight;
+		switch(gui.editor){
+		
+			case 0:
+				w = gui._mainarea.root.clientWidth - (gui._sidepanel ? gui._sidepanel.root.clientWidth - 4 : 0);
+				h = gui._mainarea.root.clientHeight - 20;
+				break;
+			case 1:
+				h = gui.boo.getSection(0).root.clientHeight - 20;
+				w = gui.boo.getSection(0).root.clientWidth;
+				break;
+		}
+
+       
     }
 
     renderer.canvas.height = h;
@@ -100,8 +152,7 @@ async function resize( fullscreen )
     renderer.context.viewport(0, 0, w, h);
 
     // change viewport texture properties
-    CORE._viewport_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: gl.FLOAT, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
-
+	CORE._viewport_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: gl.FLOAT, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
     camera.perspective(camera.fov, w / h, camera.near, camera.far);
 	
 	CORE.setUniform('viewport', gl.viewport_data);
@@ -609,4 +660,181 @@ function info_check()
 function size( object )
 {
    return Object.keys(object).length;
+}
+
+LiteGUI.Inspector.prototype.addTexture = function( name, value, options )
+{
+	options = options || {};
+	value = value || "";
+	var that = this;
+
+	var error_color = "#F43";
+	var modified_color = "#E4E";
+
+	var resource_classname = "Texture";
+
+	if(value.constructor !== String)
+		value = "@Object";
+
+	this.values[name] = value;
+
+	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button title='show folders' class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>", options);
+
+	//INPUT
+	var input = element.querySelector(".wcontent input");
+
+	//resource missing
+	if(value && value.constructor === String && value[0] != ":" && value[0] != "@")
+	{
+		var res = gl.textures[ value ];
+		if( !res )
+			input.style.color = error_color;
+		else if( res._modified )
+			input.style.color = modified_color;
+	}
+
+	if( options.align && options.align == "right" )
+		input.style.direction = "rtl";
+
+	if( options.placeHolder )
+		input.setAttribute( "placeHolder", options.placeHolder );
+	else if(resource_classname)
+		input.setAttribute( "placeHolder", resource_classname );
+
+	input.addEventListener( "change", function(e) { 
+		var v = e.target.value;
+		if(v && v[0] != "@" && v[0] != ":" && !options.skip_load)
+		{
+			input.style.color = "#EA8";
+			CORE._renderer.loadTexture(v, {}, function(t, name){
+                input.style.color = "";
+                
+                if(!gl.textures[ v ])
+			        input.style.color = error_color;
+			});
+        }
+
+        if(!v || !gl.textures[ v ])
+        input.style.color = error_color;
+		
+	});
+
+	//INPUT ICON
+	element.setIcon = function(img)
+	{
+		if(!img)
+		{
+			input.style.background = "";
+			input.style.paddingLeft = "";
+		}
+		else
+		{
+			input.style.background = "transparent url('"+img+"') no-repeat left 4px center";
+			input.style.paddingLeft = "1.7em";
+		}
+	}
+	if(options.icon)
+		element.setIcon( options.icon );
+	else
+		element.setIcon( "https://webglstudio.org/latest/imgs/mini-icon-texture.png" );
+	
+	//BUTTON select resource
+	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
+
+		gui.selectResource( options.node || null, name );
+	});
+
+	this.tab_index += 1;
+    this.append(element, options);
+    
+	return element;
+}
+
+LiteGUI.Inspector.prototype.addHDRE = function( name, value, options )
+{
+	options = options || {};
+	value = value || "";
+	var that = this;
+
+	var error_color = "#F43";
+	var modified_color = "#E4E";
+
+	var resource_classname = "Skybox";
+
+	if(value.constructor !== String)
+		value = "@Object";
+
+	this.values[name] = value;
+
+	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button title='show folders' class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>", options);
+
+	//INPUT
+	var input = element.querySelector(".wcontent input");
+
+	//resource missing
+	/*if(value && value.constructor === String && value[0] != ":" && value[0] != "@")
+	{
+		var res = gl.textures[ value ];
+		if( !res )
+			input.style.color = error_color;
+		else if( res._modified )
+			input.style.color = modified_color;
+	}*/
+
+	if( options.align && options.align == "right" )
+		input.style.direction = "rtl";
+
+	if( options.placeHolder )
+		input.setAttribute( "placeHolder", options.placeHolder );
+	else if(resource_classname)
+		input.setAttribute( "placeHolder", resource_classname );
+
+	input.addEventListener( "change", function(e) { 
+		
+		/*var v = e.target.value;
+		if(v && v[0] != "@" && v[0] != ":" && !options.skip_load)
+		{
+			input.style.color = "#EA8";
+			CORE._renderer.loadTexture(v, {}, function(t, name){
+                input.style.color = "";
+                
+                if(!gl.textures[ v ])
+			        input.style.color = error_color;
+			});
+        }
+
+        if(!v || !gl.textures[ v ])
+        input.style.color = error_color;*/
+		
+	});
+
+	//INPUT ICON
+	element.setIcon = function(img)
+	{
+		if(!img)
+		{
+			input.style.background = "";
+			input.style.paddingLeft = "";
+		}
+		else
+		{
+			input.style.background = "transparent url('"+img+"') no-repeat left 4px center";
+			input.style.paddingLeft = "1.7em";
+		}
+	}
+	if(options.icon)
+		element.setIcon( options.icon );
+	else
+		element.setIcon( "https://webglstudio.org/latest/imgs/mini-icon-texture.png" );
+	
+	//BUTTON select resource
+	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
+
+		CORE.FS.getFiles( "hdre" ).then( function(e) { gui.selectHDRE( e ); } )
+	});
+
+	this.tab_index += 1;
+    this.append(element, options);
+    
+	return element;
 }

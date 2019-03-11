@@ -208,6 +208,9 @@ Controller.prototype.setBindings = function()
 
         if(e.rightButton && !ctx.keys["L"])
         {
+			if(CORE.browser === "edge")
+				return;
+
             var shaded_models = [];
             var scenes = RM.scenes;
 			var RenderComponent = RM.get("Render");
@@ -221,7 +224,7 @@ Controller.prototype.setBindings = function()
 
             var actions = [
             {
-                title: "Shade model", //text to show
+                title: "Add model", //text to show
                 has_submenu: true,
                 submenu: {
                     options: shaded_models
@@ -248,7 +251,7 @@ Controller.prototype.setBindings = function()
             {
                 title: "Add light", //text to show
                 callback: function() { CORE.addLight() }
-            },
+            }/*,
 			{
                 title: "Render mode", //text to show
                 has_submenu: true,
@@ -262,7 +265,7 @@ Controller.prototype.setBindings = function()
                         callback: function() { if(RenderComponent) RenderComponent.render_mode = RM.DEFERRED; gui.updateSidePanel(null, 'root');}
                     }]
                 }
-            }
+            }*/
             ];
             var contextmenu = new LiteGUI.ContextMenu( actions, { event: e });
         }

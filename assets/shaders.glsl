@@ -3,10 +3,12 @@
 // Basic shaders
 flat default.vs default.fs
 textured default.vs tex.fs
+flipY screen_shader.vs flipY.fs
 
 // Cubemap shaders
 skybox default.vs skybox.fs
 sphereMap default.vs sphereMap.fs
+copyCubemap screen_shader.vs copyCubemap.fs
 atmos default.vs atmos.fs
 
 // Cubemap FX Shaders
@@ -17,6 +19,7 @@ fromPanoramic screen_shader.vs fromPanoramic.fs
 mirror default.vs mirroredSphere.fs
 
 // Texture FX Shaders
+combineHDR screen_shader.vs combineHDR.fs
 glow screen_shader.vs glow.fs
 maxLum screen_shader.vs maxLum.fs
 luminance screen_shader.vs luminance.fs
@@ -84,6 +87,22 @@ DeferredCubemap default.vs DeferredCubemap.fs
 		gl_FragColor = texture2D(u_albedo_texture, v_coord);
 	}
 
+\flipY.fs
+
+	precision highp float;
+	varying vec3 v_wPosition;
+	varying vec3 v_wNormal;
+	varying vec2 v_coord;
+	uniform vec4 u_color;
+
+	uniform sampler2D u_color_texture;
+
+	void main() {
+
+		vec2 coord = vec2( v_coord.x, 1.0 - v_coord.y );
+		gl_FragColor = texture2D(u_color_texture, coord);
+	}
+
 //
 // Screen shader 
 //
@@ -98,6 +117,93 @@ DeferredCubemap default.vs DeferredCubemap.fs
 	void main() {
 		v_coord = a_coord;
 		gl_Position = vec4(a_coord * 2.0 - 1.0, 0.0, 1.0);
+	}
+
+\combineHDR.fs
+
+	precision highp float;
+	varying vec3 v_wPosition;
+	varying vec3 v_wNormal;
+	varying vec2 v_coord;
+	uniform vec4 u_viewport;
+
+	uniform sampler2D u_hdr_texture;
+
+	uniform vec3 u_hdr_avg;
+	uniform vec3 u_tmp_avg;
+
+	uniform vec3 u_hdr_min;
+	uniform vec3 u_hdr_max;
+
+	uniform vec3 u_max_lum_pixel;
+	uniform float u_max_lum;
+
+	uniform vec3 u_min_lum_pixel;
+	uniform float u_min_lum;
+
+	uniform float u_max_radiance;
+	uniform float u_exp;
+
+	void scale ( inout vec3 Xi ) {
+
+		float A = 20.4730;
+		float B = 44.9280;
+		float C = 36.7912;
+		float D = 13.5250;
+		float E = 2.47270;
+		float F = 0.14253;
+		float G = 0.00032;
+
+		Xi = A * pow(Xi,vec3(6.0))
+		- B * pow(Xi,vec3(5.0))
+		+ C * pow(Xi,vec3(4.0))
+		- D * pow(Xi,vec3(3.0))
+		+ E * pow(Xi,vec3(2.0))
+		- F * Xi
+		+ G;
+
+		Xi *= u_max_radiance;
+	}
+
+
+	vec3 applyGamma ( vec3 Zi, float gamma ) {
+	
+		return pow(Zi, vec3(1.0/gamma));
+	}
+
+	void intensityAdjustment ( inout vec3 Zi, float BIAS ) {
+	
+		vec3 minLum = u_hdr_min;
+		vec3 maxLum = u_hdr_max;
+		
+		vec3 pattern = u_tmp_avg; // pattern is already in range 0-1
+		vec3 average = (1.0)/(maxLum-minLum)*(u_hdr_avg-minLum); // this average is not
+
+		//scale(pattern);
+		//scale(average);
+
+		Zi *= (pattern / average) * BIAS;
+	}
+
+	void main() {
+
+		vec3 Xi = texture2D(u_hdr_texture, v_coord).rgb;
+
+		// linear normalizing to 0-1
+		vec3 minLum = u_min_lum_pixel;
+		vec3 maxLum = u_max_lum_pixel;
+		vec3 Zi = (1.0)/(maxLum-minLum)*(Xi-minLum);
+
+		// scale (not linear) to max intensity (100, 200, 300??)
+		scale(Zi);
+
+		// adjust with pattern intensities
+		intensityAdjustment( Zi, 2.0 ); 
+
+		// apply exposure and tonemapping
+		Zi *= pow(2.0, u_exp);
+		
+		gl_FragColor = vec4(Zi,1.0);
 	}
 
 //
@@ -210,6 +316,27 @@ DeferredCubemap default.vs DeferredCubemap.fs
 		gl_FragColor = u_color * color;
 	}
 
+// Draw skybox
+
+\copyCubemap.fs
+
+		precision highp float;
+		varying vec2 v_coord;
+		uniform vec4 u_color;
+		uniform vec4 background_color;
+		uniform vec3 u_camera_position;
+		uniform samplerCube u_color_texture;
+		uniform mat3 u_rotation;
+
+		void main() {
+
+			vec2 uv = vec2( v_coord.x, 1.0 - v_coord.y );
+			vec3 dir = vec3( uv - vec2(0.5), 0.5 );
+			dir = u_rotation * dir;
+
+			gl_FragColor = textureCube(u_color_texture, dir);;
+		}
+
 //
 // Shader used to show skybox 
 //
@@ -243,6 +370,8 @@ DeferredCubemap default.vs DeferredCubemap.fs
 	void main() {
 		vec3 E = normalize(u_camera_position - v_wPosition);
 		E = (rotationMatrix(vec3(0.0,1.0,0.0),u_rotation) * vec4(E,1.0)).xyz;
+
+		E.x = -E.x;
 
 		vec4 color = textureCube(u_color_texture, E);
 		// color = pow(color, vec4(2.2));
@@ -284,7 +413,8 @@ DeferredCubemap default.vs DeferredCubemap.fs
 			vec2 uv = vec2( v_coord.x, 1.0 - v_coord.y );
 			vec3 dir = vec3( uv - vec2(0.5), 0.5 );
 			dir = u_rotation * dir;
-			// dir.z += u_correction;
+			
+			dir.x = -dir.x;
 
 			// use dir to calculate spherical uvs
 			vec2 spherical_uv = getSphericalUVs( dir );

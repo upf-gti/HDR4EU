@@ -66,8 +66,15 @@ Object.assign( AtmosphericScattering.prototype, {
 		
 		var that = this;
 	
-		widgets.addTitle("Atmospheric scattering");
-		widgets.addButton("Apply and update", '<i style="font-size: 16px;" class="material-icons">refresh</i>',{name_width: "40%", callback: function(v) {
+		widgets.widgets_per_row = 2;
+		widgets.addNumber("Sun Position", this.sunPosition, {min: 0,step:0.01, callback: function(v){ that.sunPosition = v; }});
+		widgets.addNumber("Mie Direction", this.mieDirection, {min:0, max:1,step:0.01,callback: function(v){ that.mieDirection = v; }});
+		widgets.addNumber("Sun Intensity", this.sunIntensity, {min:0, max:50,step:0.05,callback: function(v){ that.sunIntensity = v; }});
+		widgets.addNumber("Mie Coefficient", this.mieCoeff, {min:0, max:50,step:0.05,callback: function(v){ that.mieCoeff = v; }});
+		widgets.widgets_per_row = 1;
+        widgets.addNumber("Origin Offset", this.originOffset, {step: 50, min: 0,max: 7000, callback: function(v){ that.originOffset = v; }});
+        widgets.addSeparator();
+        widgets.addButton("Apply and update", '<i style="font-size: 16px;" class="material-icons">refresh</i>',{name_width: "40%", callback: function(v) {
 
 			if(!gl.shaders['atmos'])
 				LiteGUI.showMessage("Error: shader missing", {title: "App info"});
@@ -79,14 +86,6 @@ Object.assign( AtmosphericScattering.prototype, {
 				CORE.cubemap.shader = old_shader;
 			}
 		}});
-		widgets.addSeparator();
-		widgets.widgets_per_row = 2;
-		widgets.addNumber("Sun Position", this.sunPosition, {min: 0,step:0.01, callback: function(v){ that.sunPosition = v; }});
-		widgets.addNumber("Mie Direction", this.mieDirection, {min:0, max:1,step:0.01,callback: function(v){ that.mieDirection = v; }});
-		widgets.addNumber("Sun Intensity", this.sunIntensity, {min:0, max:50,step:0.05,callback: function(v){ that.sunIntensity = v; }});
-		widgets.addNumber("Mie Coefficient", this.mieCoeff, {min:0, max:50,step:0.05,callback: function(v){ that.mieCoeff = v; }});
-		widgets.widgets_per_row = 1;
-		widgets.addNumber("Origin Offset", this.originOffset, {step: 50, min: 0,max: 7000, callback: function(v){ that.originOffset = v; }});
 	}
 
 } );

@@ -1,15 +1,20 @@
 @import url('https://fonts.googleapis.com/css?family=Kreon|Share+Tech+Mono|VT323');
 
+html, body{
+	overflow: hidden;
+}
+
 :-moz-full-screen canvas {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
     margin: auto;
 }
 
-#canvasarea{
+#canvasarea canvas{
 	
+	width: 100%;
 	border-top: 1px solid #8a8a8a;
-	border-left: 1px solid #8a8a8a;
+	/* border-left: 1px solid #8a8a8a; */
 }
 
 .canvas-message{
@@ -32,6 +37,119 @@
 	background-color: rgba( 77, 166, 65, 1 );
 	white-space: nowrap;
 }
+
+#tabs{
+
+  width: 100%;
+  height: 30px;
+  z-index: 100;
+  display: flex;
+  background: -webkit-linear-gradient(#7D7D7D, #3D3D3D) repeat scroll 0 0 transparent;
+  background: -moz-linear-gradient(#7D7D7D, #3D3D3D) repeat scroll 0 0 transparent;
+  background: linear-gradient(#7D7D7D, #3D3D3D) repeat scroll 0 0 transparent;
+}
+
+#tabs div{
+
+	height: 100%;
+}
+
+#tabicon{
+	
+	background: url("../assets/favicon.png") no-repeat;
+	background-position: center; 
+  width: 20px;
+  margin-left: 4px;
+}
+
+#tabcontent{
+	width: calc( 100% - 20px );
+	display: flex;
+	padding-left: 7px;
+}
+
+#tabcontent .tab{
+	margin-top: 3px;
+	height: calc(100% - 2px);
+	background: -webkit-linear-gradient(#999, #3D3D3D) repeat scroll 0 0 transparent;
+    background: -moz-linear-gradient(#999, #3D3D3D) repeat scroll 0 0 transparent;
+    background: linear-gradient(#999, #3D3D3D) repeat scroll 0 0 transparent;
+
+	color: #fff;
+	text-shadow: 1px 1px 3px #000; 
+	padding-left: 13px;
+	padding-right: 13px;
+	border-top-right-radius: 5px;
+	border-top-left-radius: 5px;
+	margin-right: 3px;
+	user-select:none;
+	cursor: pointer;
+	font-size: 16px;
+	display: flex;
+}
+
+#tabcontent .tabname{
+	
+	padding-top: 3px;
+	/* width: 13px; */
+}
+
+#tabcontent .tabicon{
+	
+	padding-top: 5px;
+    padding-left: 7px;
+}
+
+#tabcontent .tab:hover{
+	background: #ddd;
+	color: #4D4D4D;
+}
+
+#tabcontent .tab.selected{
+	background: -webkit-linear-gradient(#32302D, #3D3D3D) repeat scroll 0 0 transparent;
+    background: -moz-linear-gradient(#32302D, #3D3D3D) repeat scroll 0 0 transparent;
+    background: linear-gradient(#32302D, #3D3D3D) repeat scroll 0 0 transparent;
+	color: white;
+}
+
+/*       HDRI         */
+
+.low_panel_content{
+	width: 100%;
+	height: calc(100% - 25px);
+}
+
+.low_panel_images{
+	width: 100%;
+	height: 80%;
+	display: -webkit-inline-box;
+}
+
+.low_panel_image{
+
+	width: 7%;
+	/* background: #3D3D3D; */
+	margin-right: 10px;
+	margin-left: 10px;
+}
+
+.low_panel_image img{
+
+  width: 100%;
+}
+
+.low_panel_image div{
+
+  padding: 2px;
+}
+
+.low_panel_image .info_text{
+
+  width: 70%;
+  overflow: hidden;
+}
+
+/*       END HDRI         */
 
 #log{
   width: 30%;
@@ -138,7 +256,7 @@
   left: 60px;
   height: 30px;
   font-size: 14px;
-  bottom: 2px;
+  bottom: 4px;
   color: white;
   z-index: 5;
   font-family: monospace;
@@ -161,8 +279,8 @@
 
 #canvas-tools {
   position: absolute;
-  top: 50px;
-  left: 10px;
+  top: 45px;
+  left: 15px;
   z-index: 5;
 }
 
@@ -187,6 +305,7 @@
   background-position: center center;
   background-repeat: no-repeat;
   text-align: center;
+  z-index: 10;
 }
 
 .tool-button.enabled {
@@ -212,18 +331,39 @@
 /* resource panel */
 .responsive{
 
-	padding: 0 6px;
+	padding: 0px;
 	float: left;
 	width: 24.99999%;
 	cursor: pointer;
 }
 
-.responsive div{
+.resource-block p{
 
-	padding: 4px;
+    width: 100%;
+    height: 30px;
+    overflow: hidden;
+    font-size: 18px;
+    margin: 0 !important;
+    background-color: rgba(0,0,0,0.75);
+    line-height: 30px;
+    text-align: center;
+    position: relative;
 }
 
-.responsive:hover{
+.responsive div{
 
-	background: #222;
+	margin-top: 3px;
+	transition: 0.2s;
+}
+
+.responsive:hover p{
+	
+	background: #DDD;
+	color: #3D3D3D;
+}
+
+.cont-hdre::-webkit-scrollbar, .cont-textures::-webkit-scrollbar{
+
+	display: none;
+
 }
