@@ -128,6 +128,7 @@ var ResourceManager = RM = {
 
         function onProgress(name, num)
         {
+
             var factor = (num) / parseFloat(that.totalImports) * 100;
 
             $("#import-text").html(parseInt(factor)+"%");
@@ -143,8 +144,8 @@ var ResourceManager = RM = {
                 var max = (that.totalImports) * magic;
 
                 if($("#import-names")[0].scrollTop < max) {
-                    $("#import-names")[0].scrollBy(0,2);
-                    scrolldelay = setTimeout(pageScroll,30);
+                    $("#import-names")[0].scrollBy(0,1);
+                    scrolldelay = setTimeout(pageScroll,10);
                 }
                 else
                 {

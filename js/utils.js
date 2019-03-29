@@ -5,7 +5,7 @@
 
 var MAX_LUM_VALUES = [];
 var LOG_MEAN_VALUES = [];
-var SMOOTH_SHIFT = 50;
+var SMOOTH_SHIFT = 200;
 
 var identity_mat4 = mat4.create();
 var temp_mat3 = mat3.create();
@@ -15,14 +15,6 @@ var temp_vec3 = vec3.create();
 var temp_vec3b = vec3.create();
 var temp_vec4 = vec4.create();
 var temp_quat = quat.create();
-
-numbers.matrix.pinv = function(M) {
-
-	if(M.length < M[0].length)
-		return linalg.transposeSync(linalg.pinvSync(linalg.transposeSync(M)))
-	else
-		return linalg.pinvSync(M)
-}
 
 function processDrop(e)
 {
@@ -69,10 +61,10 @@ function processDrop(e)
 
 function textInCanvas(e)
 {
-    if(!e) return;
+    if(!e || !gui) return;
 
-    var uniform = "u_" + e.dataTransfer.getData('uniform');
-    console.log("Showing " + uniform);
+	var uniform = e.dataTransfer.getData('uniform');
+	gui._uniform_list.push(uniform);
 }
 
 function arrayBufferToBase64( buffer ) {
@@ -121,14 +113,14 @@ function resizeend() {
 
 async function resize( fullscreen )
 {
-    console.log("resizing");
+   // console.log("resizing");
     if(!renderer)
     throw("no renderer: cannot set new dimensions");
 
     if(!camera)
     throw("no camera: cannot apply new perspective");
 
-    var w = window.innerWidth, h = window.innerHeight;
+    var w = nearestPowerOfTwo(window.innerWidth), h = nearestPowerOfTwo(window.innerHeight);
 
     if(gui && !fullscreen)
     {
@@ -139,12 +131,10 @@ async function resize( fullscreen )
 				h = gui._mainarea.root.clientHeight - 20;
 				break;
 			case 1:
-				h = gui.boo.getSection(0).root.clientHeight - 20;
-				w = gui.boo.getSection(0).root.clientWidth;
+				h = gui.assemblyarea.getSection(0).root.clientHeight - 20;
+				w = gui.assemblyarea.getSection(0).root.clientWidth;
 				break;
 		}
-
-       
     }
 
     renderer.canvas.height = h;
@@ -267,6 +257,18 @@ function nearestMult(num, mult)
     return rem >= 5 ? (num - rem + mult) : (num - rem); 
 } 
 
+function nearestPowerOfTwo(v)
+{
+	v -= 1;
+	v |= v >> 1;
+	v |= v >> 2;
+	v |= v >> 4;
+	v |= v >> 8;
+	v |= v >> 16;
+	v += 1;
+	return v;
+}
+
 function tendTo(v, f)
 {
     if(!f)
@@ -366,7 +368,67 @@ function getDate()
     today = h+'a'+mins;
     return today;
 }
-  
+
+function getDiffTexture( textureA, textureB, options) {
+
+	textureA = textureA.constructor === String ? gl.textures[textureA] : textureA;
+	textureB = textureB.constructor === String ? gl.textures[textureB] : textureB;
+
+	if(!textureA || !textureB)
+		throw("texture missing");
+
+	var width = textureA.width;
+	var height = textureA.height;
+	var temp = new Texture( width, height, {type: textureA.type, texture_type: GL.TEXTURE_CUBE_MAP} );
+	var shader = gl.shaders["diffCubemap"];
+	
+	//save state
+	var current_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
+	var viewport = gl.getViewport();
+	var fb = gl.createFramebuffer();
+	gl.bindFramebuffer( gl.FRAMEBUFFER, fb );
+	gl.viewport(0,0, width, height);
+
+	var mesh = Mesh.getScreenQuad();
+	
+	// Bind original texture
+	textureA.bind(0);
+	textureB.bind(1);
+	mesh.bindBuffers( shader );
+	shader.bind();
+
+	var rot_matrix = GL.temp_mat3;
+	var cams = GL.Texture.cubemap_camera_parameters;
+
+	for(var i = 0; i < 6; i++)
+	{
+		gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, temp.handler, 0);
+		var face_info = cams[i];
+
+		mat3.identity( rot_matrix );
+		rot_matrix.set( face_info.right, 0 );
+		rot_matrix.set( face_info.up, 3 );
+		rot_matrix.set( face_info.dir, 6 );
+		shader._setUniform( "u_rotation", rot_matrix );
+		shader._setUniform( "u_color_texture0", 0);
+		shader._setUniform( "u_color_texture1", 1);
+		shader._setUniform( "u_scale", options.scale);
+		gl.drawArrays( gl.TRIANGLES, 0, 6 );
+	}
+
+	mesh.unbindBuffers( shader );
+	//restore previous state
+	gl.setViewport(viewport); //restore viewport
+	gl.bindFramebuffer( gl.FRAMEBUFFER, current_fbo ); //restore fbo
+	gl.bindTexture(temp.texture_type, null); //disable
+
+	textureA.unbind();
+	textureB.unbind();
+
+	gl.textures["diffTex"] = temp;
+	return temp;
+}
+
 
 // glow effect (litegraph.js @javiagenjo) (https://github.com/jagenjo/litegraph.js/blob/master/src/nodes/gltextures.js )
 function createGlow( tex, options )
@@ -494,153 +556,14 @@ function createGlow( tex, options )
     return final_texture; // ?Â¿?Â¿?Â¿?
 }
 
-// https://github.com/jagenjo/litegraph.js/blob/master/src/nodes/gltextures.js @jagenjo 
-
-/*
-	Down sample frame and get average 
-*/
-function downsampled_getaverage( input )
-{
-	// check browser compatibility 
-	if (CORE && CORE.browser == 'safari')
-		throw( 'using safari' );
-
-    if(!input)
-        input = CORE._viewport_tex || null;
-	
-	if(!input)
-		throw('no valid input');
-
-    var temp = null;
-    var type = gl.FLOAT;
-
-	var input_width = input.width;
-	var input_height = input.height;
-		
-	var mipmap_level = 2;
-
-	var size = Math.pow(2, Math.floor(Math.log(input_width)/Math.log(2))) / Math.pow(2, mipmap_level);
-	size = 256;
-
-	var shader = gl.shaders['luminance'];
-
-	if(!shader)
-		throw("no luminance shader");
-
-	if(!temp || temp.type != type )
-		temp = new GL.Texture( size, size, { type: type, format: gl.RGBA, minFilter: gl.LINEAR_MIPMAP_LINEAR });
-
-	temp.drawTo(function(){
-		input.toViewport();
-	});
-
-	temp.bind(0);
-	gl.generateMipmap(gl.TEXTURE_2D);
-	temp.unbind(0);
-
-	var pixelColor = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
-
-	var properties = { mipmap_offset: 0, low_precision: false };
-	var uniforms = { u_mipmap_offset: properties.mipmap_offset };
-
-	pixelColor.drawTo(function(){
-		temp.toViewport( shader, uniforms );
-	});
-
-	var pixel = pixelColor.getPixels();
-	if(pixel)
-	{
-		var v = new Float32Array(4);
-		var type = temp.type;
-		v.set( pixel );
-		if(type == gl.UNSIGNED_BYTE)
-			vec4.scale( v,v, 1/255 );
-		else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
-			vec4.scale( v,v, 1/(255*255) ); //is this correct?
-
-		if(!CORE)
-		return;
-
-		var logMean = Math.exp( v[0] );
-		LOG_MEAN_VALUES.push( logMean );
-
-		var k = LOG_MEAN_VALUES.length;
-
-		if(k > SMOOTH_SHIFT)
-		LOG_MEAN_VALUES.shift();
-
-		var smooth_logmean = LOG_MEAN_VALUES.reduce( function(e, r){ return e + r } ) / k;
-		CORE.setUniform('logMean', smooth_logmean);
-	}
-
-}
-
-/*
-	Frame per blocks and get max
-*/
-function perblock_getmax( input )
-{
-	// check browser compatibility 
-	if (CORE && CORE.browser == 'safari')
-		throw( 'using safari' );
-
-    if(!input)
-        input = CORE._viewport_tex || null;
-	
-	if(!input)
-		throw('no valid input');
-
-    var temp = null;
-    var type = gl.FLOAT;
-
-	var input_width = input.width;
-	var input_height = input.height;
-	var blockSize = 16;
-
-	var shader = gl.shaders['maxLum'];
-
-	if(!shader)
-		throw("no max luminance shader");
-
-	if(!temp || temp.type != type )
-		temp = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
-
-	var uniforms = {};
-
-	temp.drawTo(function(){
-		input.toViewport(shader, uniforms);
-	});
-
-	var pixel = temp.getPixels();
-	if(pixel)
-	{	
-		var v = new Float32Array(4);
-		var type = temp.type;
-		v.set( pixel );
-		if(type == gl.UNSIGNED_BYTE)
-			vec4.scale( v,v, 1/255 );
-		else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
-			vec4.scale( v,v, 1/(255*255) ); //is this correct?
-
-		if(!CORE)
-		return;
-
-		var maxLum = v[0];			
-		MAX_LUM_VALUES.push( maxLum );
-
-		var k = MAX_LUM_VALUES.length;
-
-		if(k > SMOOTH_SHIFT)
-		MAX_LUM_VALUES.shift();
-	
-		var smooth_maxlum = MAX_LUM_VALUES.reduce( function(e, r){ return e + r } ) / k;
-        CORE.setUniform('maxLum', smooth_maxlum);
-	}
-
-}
-
 function info_check()
 {
+	// check browser compatibility 
+	if (this.browser == 'safari') {
+		console.warn( 'browser not supported' );
+		return false;
+	}
+
     var SFXComponent = RM.get('ScreenFX');
 
     if(!SFXComponent || !SFXComponent.tonemapping)
@@ -649,12 +572,7 @@ function info_check()
 	var myToneMapper = RM.tonemappers[ SFXComponent.tonemapping ];
 	var fs = myToneMapper.constructor.Uniforms; // declared uniforms
 
-	if (fs.includes('u_maxLum') || fs.includes('u_logMean'))
-	{
-		return true;
-	}
-
-	return false;
+	return (fs.includes('u_maxLum') || fs.includes('u_logMean'));
 }
 
 function size( object )
@@ -741,7 +659,7 @@ LiteGUI.Inspector.prototype.addTexture = function( name, value, options )
 	//BUTTON select resource
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
 
-		gui.selectResource( options.node || null, name );
+		gui.selectResource( options, name );
 	});
 
 	this.tab_index += 1;
@@ -830,7 +748,7 @@ LiteGUI.Inspector.prototype.addHDRE = function( name, value, options )
 	//BUTTON select resource
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
 
-		CORE.FS.getFiles( "hdre" ).then( function(e) { gui.selectHDRE( e ); } )
+		CORE.FS.getFiles( "hdre" ).then( function(e) { gui.selectHDRE( e, options ); } )
 	});
 
 	this.tab_index += 1;

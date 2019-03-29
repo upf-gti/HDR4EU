@@ -10,6 +10,7 @@ function Render()
 	
 	this.render_mode = RM.FORWARD;
 	this.show_more = false;
+	this.mark = true;
 }
 
 Object.assign( Render.prototype, {

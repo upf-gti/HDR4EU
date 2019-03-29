@@ -19,6 +19,7 @@
 	var U_BYTE		= 01;
 	var HALF_FLOAT	= 02;
 	var FLOAT		= 03;
+	var U_BYTE_RGBE	= 04;
 
     var HDRE = global.HDRE = {
 
@@ -49,6 +50,7 @@
      * Number of channels                       1 byte
      * Bits per channel                         1 byte
 	 * Header size		                        1 byte
+	 * Max luminance							4 byte
      * Flags                                    1 byte
      */
     
@@ -58,19 +60,23 @@
     * @param {Object} package - [lvl0: { w, h, pixeldata: [faces] }, lvl1: ...]
     * @param {Number} width
     * @param {Number} height
-    * @param {Number} buffer size
     * @param {Object} options
     */
-    HDRE.write = function( package, width, height, size, options )
+    HDRE.write = function( package, width, height, options )
     {
-
 		options = options || {};
 
 		var array_type = options.type ? options.type : Float32Array;
+		var format = options.format ? options.format : null;
 
         /*
         *   Create header
         */
+
+		// get total pixels
+		var size = 0;
+		for(var i = 0; i < package.length; i++)
+            size += package[i].width * package[i].height;
 
         // File format information
         var numFaces = 6;
@@ -143,6 +149,9 @@
             type = U_BYTE;
         if( array_type === Uint16Array)
             type = HALF_FLOAT;
+
+		if(format)
+			type = U_BYTE_RGBE;
             
 		// set write array type 
 		view.setUint16(22, type); 
@@ -156,7 +165,7 @@
         // Set data into the content buffer
         for(var i = 0; i < data.length; i++)
         {
-			if(type == U_BYTE) {
+			if(type == U_BYTE || type == U_BYTE_RGBE) {
 	            view.setUint8(offset, data[i], true);
 			}else if(type == HALF_FLOAT) {
 	            view.setUint16(offset, data[i], true);
@@ -259,7 +268,7 @@
 
         var array_type = Float32Array;
         
-        if(a == U_BYTE)
+        if(a == U_BYTE || a == U_BYTE_RGBE)
             array_type = Uint8Array;
         else if(a == HALF_FLOAT)
             array_type = Uint16Array;

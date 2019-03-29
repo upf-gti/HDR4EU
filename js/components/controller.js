@@ -139,6 +139,29 @@ Controller.prototype.setBindings = function()
 			}
 
         }
+		if(e.keyCode === 49)
+        {
+			$("#maintab").click();
+
+        }
+		if(e.keyCode === 50)
+        {
+			$("#assemblytab").click();
+
+        }
+		if(e.keyCode === 79)
+        {
+			if(e.ctrlKey)
+			{
+				CORE.FS.getFiles("scenes").then(data=>gui.onImportFromServer(data));
+				e.preventDefault();
+				e.stopPropagation();
+			}else{
+				e.preventDefault();
+				e.stopPropagation();
+			}
+
+        }
         if(e.keyCode === 27) // ESC
         {
             RM.get('NodePicker').selected = null;
@@ -224,14 +247,14 @@ Controller.prototype.setBindings = function()
 
             var actions = [
             {
-                title: "Add model", //text to show
+                title: "Model", //text to show
                 has_submenu: true,
                 submenu: {
                     options: shaded_models
                 }
             },
             {
-                title: "Add primitive", //text to show
+                title: "Primitive", //text to show
                 has_submenu: true,
                 submenu: {
                     options: 
@@ -248,10 +271,22 @@ Controller.prototype.setBindings = function()
                 }
                 
             },
+			{
+                title: "Component", //text to show
+                has_submenu: true,
+                submenu: {
+                    options: 
+                    [{
+                        title: "Histogram",
+                        callback: function() { RM.registerComponent( Histogram, 'Histogram'); gui.updateSidePanel(null, "root", {maxScroll: true}); }
+                    }]
+                }
+            },
             {
-                title: "Add light", //text to show
+                title: "Light", //text to show
                 callback: function() { CORE.addLight() }
-            }/*,
+            },
+			/*,
 			{
                 title: "Render mode", //text to show
                 has_submenu: true,

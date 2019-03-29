@@ -85,6 +85,24 @@ function No_Tonemapper()
     this.uniforms = {};
 }
 
+No_Tonemapper.prototype.injectCode = function(){
+
+        var fs_code = `
+            precision highp float;
+            varying vec2 v_coord;
+            uniform sampler2D u_color_texture;
+
+            void main() {
+
+                vec3 color = texture2D(u_color_texture, v_coord).rgb;
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        return fs_code;
+
+}
+
 No_Tonemapper.Uniforms = `
 
 `;    
@@ -268,8 +286,8 @@ PTRTonemapper.Code = `
     float lum = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
     float lum_scaled = lum * scale;
 
-    //float lum_TM = lum_scaled * (1.0 + lum_scaled/(u_maxLum * u_maxLum)) / (1.0 + lum_scaled) ;
-    float lum_TM = lum_scaled / (1.0+lum_scaled);
+    float lum_TM = lum_scaled * (1.0 + lum_scaled/(u_maxLum * u_maxLum)) / (1.0 + lum_scaled) ;
+    //float lum_TM = lum_scaled / (1.0+lum_scaled);
 
     color = color.rgb * lum_TM/lum;
 `;

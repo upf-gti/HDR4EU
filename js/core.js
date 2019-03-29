@@ -8,6 +8,9 @@
 * @class Core
 * @constructor
 */
+
+
+
 function Core( o )
 {
     if(this.constructor !== Core)
@@ -59,6 +62,7 @@ Core.prototype._ctor = function()
     this._root.addChild(cubemap);
 
     this._context = GL.create({width: window.innerWidth, height: window.innerHeight, 
+		// version: 2,
         // alpha: true, 
         //premultipliedAlpha: false
     });
@@ -124,33 +128,37 @@ Core.prototype.setup = function()
     camera = this.controller._camera;
     
     // declare renderer uniforms
-    this.setUniform("near", camera.near);
-    this.setUniform("far", camera.far);
-    this.setUniform("rotation", 0.0);
-    this.setUniform("exposure", 0.0);
-	this.setUniform("exp", 0.0);
-    this.setUniform("offset", 0.0);
-    this.setUniform("channel", 0.0);
-    this.setUniform("enable_ao", true);
-    this.setUniform("correctAlbedo", true);
-	this.setUniform("EC", false);
-    this.setUniform("ibl_intensity", 1.0);
-    this.setUniform("albedo", vec3.fromValues( 1, 1, 1));
-	this.setUniform("viewport", gl.viewport_data);
-	this.setUniform("show_layers", false);
+	this.setUniform({
+	
+		"u_ambient": vec3.fromValues(0.2, 0.4, 0.8),
+		"u_near": camera.near,
+		"u_far": camera.far,
+		"u_rotation": 0.0,
+		"u_exposure": 0.0,
+		"u_exp": 0.0,
+		"u_offset": 0.0,
+		"u_channel": 0.0,
+		"u_enable_ao": true,
+		"u_correctAlbedo": true,
+		"u_EC": false,
+		"u_ibl_intensity": 1.0,
+		"u_albedo": vec3.fromValues( 1, 1, 1),
+		"u_viewport": gl.viewport_data,
+		"u_show_layers": false,
+		"u_flipX": false,
+		
+		// SSAO
+		"u_radius": 16.0,
+		"u_enableSSAO": true,
+		"u_outputChannel": 0.0,
 
-    
-    // SSAO
-    this.setUniform("radius", 16.0);
-    this.setUniform("enableSSAO", true);
-    this.setUniform("outputChannel", 0.0);
-
-    // Atmospheric Scattering
-    this.setUniform('SunPos', 0.4);
-    this.setUniform('SunIntensity', 22.0);
-    this.setUniform("MieDirection", 0.76);
-    this.setUniform('originOffset', 0.0);
-    this.setUniform('MieCoeff', 21);
+		// Atmospheric Scattering
+		'u_SunPos': 0.4,
+		'u_SunIntensity': 22.0,
+		"u_MieDirection": 0.76,
+		'u_originOffset': 0.0,
+		'u_MieCoeff': 21
+	});
 
     // set param macros
     RM.shader_macros[ 'INPUT_TEX_WIDTH' ] = gl.viewport_data[2];
@@ -186,7 +194,7 @@ Core.prototype.setup = function()
 			HDRTool.brdf("multibrdfIntegrator", RM.MULTI_BRDF);
             
             // Set environment 
-            that.set( RM.textures['Pillars'] );
+            that.set( RM.textures['Pisa'] );
             
             // Init things
             ssao.init();
@@ -380,53 +388,6 @@ Core.prototype.render = function()
         NodePickerComponent.render();
 }
 
-Core.prototype.renderHDRITab = function()
-{
-	 // Render scene to texture
-    this._viewport_tex.drawTo( function() {
-        renderer.clear( this._background_color );
-		Object.assign( renderer._uniforms, HDRTool.getUniforms() );
-
-		if(gl.textures["combined_scaled"])
-			gl.textures["combined_scaled"].toViewport( null, renderer._uniforms);
-
-		else if(gl.textures["combined"])
-			gl.textures["combined"].toViewport( gl.shaders["combineHDR"], renderer._uniforms );
-    });
-    
-    gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
-
-    // Fill renderer uniforms with average, max lum, etc.
-    try
-    {
-        if (info_check())
-        {
-            perblock_getmax();
-            downsampled_getaverage();
-        }
-    }
-    catch (e)
-    {
-        if(!this._errors[e])
-        this._errors[e] = 1;
-    }
-
-    /*var render_texture = this._viewport_tex;*/
-    var SFXComponent = RM.get("ScreenFX");
-
-    if(SFXComponent) {
-        var myToneMapper = RM.tonemappers[ SFXComponent.tonemapping ];
-        myToneMapper.apply( this._viewport_tex, this._fx_tex ); 
-		this._fx_tex.toViewport();
-    }else{
-        this._viewport_tex.toViewport();
-    }
-	
-	 // Render GUI
-    this._gui.render();
-}
-
-
 /**
 * Render all the scene using forward rendering
 * @method forwardRender
@@ -449,8 +410,8 @@ Core.prototype.forwardRender = function()
     {
         if (info_check())
         {
-            perblock_getmax();
-            downsampled_getaverage();
+            this.getMaxLuminance();
+            this.getAverageLuminance();
         }
     }
     catch (e)
@@ -477,8 +438,10 @@ Core.prototype.forwardRender = function()
     // Apply antialiasing (FXAA)
     if( SFXComponent && SFXComponent.fxaa )
         this._fx_tex.toViewport( this.fxaa_shader );
-    else
-        this._fx_tex.toViewport();
+    else {
+	
+		this._fx_tex.toViewport();
+	}
 }
 
 /**
@@ -574,14 +537,8 @@ Core.prototype.deferredRender = function()
 
 	this.texture_final.drawTo( () => {
         
-        /*renderer.clear( this._background_color );
-        gl.disable( gl.DEPTH_TEST );
-        gl.disable( gl.BLEND );*/
-        
         gl.shaders['finalDeferred'].uniforms(renderer._uniforms).draw(Mesh.getScreenQuad());
     });
-
-	// .....
 
     // Apply (or not) bloom effect
     var render_texture = this.texture_final; 
@@ -613,6 +570,56 @@ Core.prototype.deferredRender = function()
         gl.drawTexture( this.texture_depth, w*3, gl.canvas.height - h, w,  h );
     }
     
+}
+
+Core.prototype.renderHDRITab = function()
+{
+
+	gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+
+	 // Render scene to texture
+    this._viewport_tex.drawTo( function() {
+        renderer.clear( this._background_color );
+		Object.assign( renderer._uniforms, HDRTool.getUniforms() );
+
+		if(gl.textures["combined_scaled"])
+			gl.textures["combined_scaled"].toViewport( null, renderer._uniforms);
+
+		else if(gl.textures["combined"])
+			gl.textures["combined"].toViewport( gl.shaders["combineHDR"], renderer._uniforms );
+
+		else if(gl.textures["ASSEMBLED"])
+			gl.textures["ASSEMBLED"].toViewport( gl.shaders["assemblyViewer"], renderer._uniforms  );
+    });
+    
+    // Fill renderer uniforms with average, max lum, etc.
+    try
+    {
+        if (info_check())
+        {
+            perblock_getmax();
+            downsampled_getaverage();
+        }
+    }
+    catch (e)
+    {
+        if(!this._errors[e])
+        this._errors[e] = 1;
+    }
+
+    /*var render_texture = this._viewport_tex;*/
+    var SFXComponent = RM.get("ScreenFX");
+
+    if(SFXComponent) {
+        var myToneMapper = RM.tonemappers[ SFXComponent.tonemapping ];
+        myToneMapper.apply( this._viewport_tex, this._fx_tex ); 
+		this._fx_tex.toViewport();
+    }else{
+        this._viewport_tex.toViewport();
+    }
+	
+	 // Render GUI
+    this._gui.render();
 }
 
 /**
@@ -659,11 +666,12 @@ Core.prototype.set = function(env_set, options)
             
     var that = this;
     var oncomplete = function() { 
+		// console.log( options );
 		that.display( options.no_free_memory ); 
 		if(options.onImport)
 			options.onImport();
 	};
-    var params = {oncomplete: oncomplete};
+    var params = Object.assign(options, {oncomplete: oncomplete});
 
     if(tex_name != ":atmos")
         this.cubemap.shader = "skybox";
@@ -935,7 +943,7 @@ Core.prototype.reloadShaders = async function(macros, callback)
     return new Promise( function(resolve) {
         that._renderer.loadShaders("assets/shaders.glsl", function() {
             
-            console.log("Shaders reloaded!", {macros: RM.shader_macros});
+            console.log("shaders reloaded!", {macros: RM.shader_macros});
 
 			// now reload shaders from /shaders/js
 			for(var i in RM.shaders) {
@@ -957,6 +965,146 @@ Core.prototype.reloadShaders = async function(macros, callback)
 
         }, RM.shader_macros);
     } );
+}
+
+/*
+	get average luminance from rendered frame
+	https://github.com/jagenjo/litegraph.js/blob/master/src/nodes/gltextures.js @jagenjo 
+*/
+Core.prototype.getAverageLuminance = function( input )
+{
+	var t1 = getTime();
+
+    if(!input)
+        input = this._viewport_tex;
+	
+	if(!input)
+		throw('no valid input');
+
+    var temp = null;
+    var type = gl.FLOAT;
+
+	var input_width = input.width;
+	var input_height = input.height;
+		
+	var mipmap_level = 2;
+
+	var size = Math.pow(2, Math.floor(Math.log(input_width)/Math.log(2))) / Math.pow(2, mipmap_level);
+	size = 128;
+
+	var shader = gl.shaders['luminance'];
+
+	if(!shader)
+		throw("no luminance shader");
+
+	if(!temp || temp.type != type )
+		temp = new GL.Texture( size*2, size, { type: type, format: gl.RGBA, minFilter: gl.LINEAR_MIPMAP_LINEAR });
+
+	temp.drawTo(function(){
+		input.toViewport();
+	});
+
+	temp.bind(0);
+	gl.generateMipmap(gl.TEXTURE_2D);
+	temp.unbind(0);
+
+	var pixelColor = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
+
+	var properties = { mipmap_offset: 0, low_precision: false };
+	var uniforms = { u_mipmap_offset: properties.mipmap_offset };
+
+	pixelColor.drawTo(function(){
+		temp.toViewport( shader, uniforms );
+	});
+
+	var pixel = pixelColor.getPixels();
+	if(pixel)
+	{
+		var v = new Float32Array(4);
+		var type = temp.type;
+		v.set( pixel );
+		if(type == gl.UNSIGNED_BYTE)
+			vec4.scale( v,v, 1/255 );
+		else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
+			vec4.scale( v,v, 1/(255*255) ); //is this correct?
+
+		if(!LOG_MEAN_VALUES || !SMOOTH_SHIFT)
+		return;
+
+		var logMean = Math.exp( v[0] );
+		LOG_MEAN_VALUES.push( logMean );
+
+		var k = LOG_MEAN_VALUES.length;
+
+		if(k > SMOOTH_SHIFT)
+		LOG_MEAN_VALUES.shift();
+
+		var smooth_logmean = LOG_MEAN_VALUES.reduce( function(e, r){ return e + r } ) / k;
+		this.setUniform('logMean', smooth_logmean);
+
+		var t2 = getTime();
+		this.setUniform('getaverage_t', (t2 - t1).toFixed(3));
+	}
+}
+
+/*
+	get max luminance from rendered frame
+	https://github.com/jagenjo/litegraph.js/blob/master/src/nodes/gltextures.js @jagenjo 
+*/
+Core.prototype.getMaxLuminance = function( input )
+{
+	var t1 = getTime();
+
+    if(!input)
+        input = this._viewport_tex;
+	
+	if(!input)
+		throw('no valid input');
+
+    var temp = null;
+    var type = gl.FLOAT;
+
+	var input_width = input.width;
+	var input_height = input.height;
+
+	var shader = gl.shaders['maxLum'];
+
+	if(!shader)
+		throw("no max luminance shader");
+
+	if(!temp || temp.type != type )
+		temp = new GL.Texture( 1, 1, { type: type, format: gl.RGB });
+
+	var uniforms = {};
+
+	temp.drawTo(function(){
+		input.toViewport(shader, uniforms);
+	});
+
+	var pixel = temp.getPixels();
+	if(pixel)
+	{	
+		var v = new Float32Array(4);
+		v.set( pixel );
+
+		if(!MAX_LUM_VALUES || !SMOOTH_SHIFT)
+		return;
+
+		var maxLum = v[0];			
+		MAX_LUM_VALUES.push( maxLum );
+
+		var k = MAX_LUM_VALUES.length;
+
+		if(k > SMOOTH_SHIFT)
+		MAX_LUM_VALUES.shift();
+	
+		var smooth_maxlum = MAX_LUM_VALUES.reduce( function(e, r){ return e + r } ) / k;
+        this.setUniform('maxLum', smooth_maxlum);
+
+		var t2 = getTime();
+		this.setUniform('getmax_t', (t2 - t1).toFixed(3));
+	}
+
 }
 
 /**
@@ -1058,7 +1206,7 @@ Core.prototype.createMatrix = function(visible)
         node.addChild(mn);
     }
 
-	var floor = new RD.SceneNode();
+	/*var floor = new RD.SceneNode();
 	floor.mesh = "planeXZ";
 	floor.shader = "pbr";
 	floor.position = [3 * 2.0, 0, 3 * 2.0];
@@ -1066,7 +1214,7 @@ Core.prototype.createMatrix = function(visible)
 	floor._uniforms["u_roughness"] = 1;
 	floor._uniforms["u_metalness"] = 1;
     floor.flags.visible = visible;
-    node.addChild(floor);
+    node.addChild(floor);*/
 
     this.updateNodes();
     this.selected_radius = 1;
@@ -1134,8 +1282,15 @@ Core.prototype.setUniform = function(name, value)
 {
     if(!this._renderer)
         throw('no renderer');
-    
-    this._renderer._uniforms['u_' + name] = value;
+
+	if( name.constructor === String && value !== undefined){
+		
+		if(!name.includes("u_"))
+			name = "u_" + name;
+		this._renderer._uniforms[name] = value;
+	}
+    else if( name.constructor === Object )
+		Object.assign( this._renderer._uniforms, name); // name is an object with all uniforms
 }
 
 /**

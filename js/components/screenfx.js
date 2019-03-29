@@ -18,10 +18,10 @@ function SFX()
 		throw("Use new");
 	
 	this._exposure = 0;
-	this._aperture = 0.5;
+	this._aperture = 1.5;
 	this._ec = 0.0;
-	this._shutter_speed = "1/15";
-	this._sensitivity = 200;
+	this._shutter_speed = "1/4";
+	this._sensitivity = 100;
 	this._offset= 0;
 	this._camera_luminance = this.luminance();
 
@@ -39,13 +39,17 @@ function SFX()
 		1,
 		"1/2",
 		"1/4",
+		"1/8",
 		"1/15",
+		"1/30",
 		"1/60",
 		"1/125",
 		"1/500",
 		"1/1000",
 		"1/2500",
 	];
+
+	this.mark = true;
 
 }
 

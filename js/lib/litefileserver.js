@@ -39,7 +39,7 @@ var LiteFileServer = {
 
 		//fetch info
 		return this.request(this.server_url, { action:"user/login", loginkey: userpass}, function(resp){
-			console.log(resp);
+			console.log(resp.msg);
 			session.last_resp = resp;
 			session.user = resp.user;
 			session.status = resp.status > 0 ? LiteFileServer.LOGGED : LiteFileServer.NOT_LOGGED;
@@ -55,7 +55,7 @@ var LiteFileServer = {
 	//get server info status and config
 	checkServer: function( on_complete )
 	{
-		console.log("Checking Server");
+		// console.log("Checking Server");
 		return this.request(this.server_url, { action:"system/ready" }, function(resp) {
 			LFS.system_info = resp.info;
 			LFS.files_path = resp.info.files_path;

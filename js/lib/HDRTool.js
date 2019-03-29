@@ -4,7 +4,7 @@
 */
 
 // HDRTool.js 
-// Dependencies: litegl.js & tinyexr.js
+// Dependencies: litegl.js
 
 //main namespace
 (function(global){
@@ -16,9 +16,6 @@
 
     if(!GL)
     throw( "HDRTool.js needs litegl.js to work" );
-
-    /*if(!Module.EXRLoader)
-    throw( "HDRTool.js needs tinyexr.js to work" );*/
     
     
     var HDRTool = global.HDRTool = RT = {
@@ -153,24 +150,38 @@
                 type = GL.UNSIGNED_BYTE;
             if(header.array_type == 02) // HALF FLOAT
                 type = GL.HALF_FLOAT_OES;
+			// for rgbe visualization we use floats
+			if(header.array_type == 04) { // RGBE
+				var floats = [];
+				for(var f = 0; f < 6; f++)
+					floats.push( data[f].toFloat() );
+				data = floats;
+			}
 
             var options = {
                 format: gl.RGBA,
                 type: type,
                 texture_type: GL.TEXTURE_CUBE_MAP,
-                pixel_data: data
+                pixel_data: data,
+				// minFilter: GL.LINEAR_MIPMAP_LINEAR
             };
 
             Texture.setUploadOptions( {no_flip: true} );
-            textures.push( new GL.Texture( _envs[i].width, _envs[i].width, options) );
+			let tex = new GL.Texture( _envs[i].width, _envs[i].width, options);
             Texture.setUploadOptions();
+
+			/*tex.bind(0);
+			gl.generateMipmap( gl.TEXTURE_CUBE_MAP );
+			tex.unbind();*/
+			
+			textures.push( tex );
         }
 
 		var version = header.version;
 
 		if(version < 1.3)
 		{
-			console.error('old version, update file!');
+			console.warn('old version, update file!');
 		}
 
         printVersion( version );
@@ -343,7 +354,48 @@
             params.pixel_data = faces;
 
             texture = new GL.Texture( width, height, params);
-            texture.is_cubemap = is_cubemap;
+
+			var temp = texture.clone();
+			var shader = gl.shaders["copyCubemap"];
+            
+            //save state
+            var current_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
+            var viewport = gl.getViewport();
+            var fb = gl.createFramebuffer();
+            gl.bindFramebuffer( gl.FRAMEBUFFER, fb );
+            gl.viewport(0,0, width, height);
+
+            var mesh = Mesh.getScreenQuad();
+            
+            // Bind original texture
+            texture.bind(0);
+            mesh.bindBuffers( shader );
+            shader.bind();
+
+            var rot_matrix = GL.temp_mat3;
+            var cams = GL.Texture.cubemap_camera_parameters;
+
+            for(var i = 0; i < 6; i++)
+            {
+                gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, temp.handler, 0);
+                var face_info = cams[i];
+
+                mat3.identity( rot_matrix );
+                rot_matrix.set( face_info.right, 0 );
+                rot_matrix.set( face_info.up, 3 );
+                rot_matrix.set( face_info.dir, 6 );
+                shader._setUniform( "u_rotation", rot_matrix );
+				shader._setUniform( "u_flip", true );
+                gl.drawArrays( gl.TRIANGLES, 0, 6 );
+            }
+
+            mesh.unbindBuffers( shader );
+            //restore previous state
+            gl.setViewport(viewport); //restore viewport
+            gl.bindFramebuffer( gl.FRAMEBUFFER, current_fbo ); //restore fbo
+            gl.bindTexture(temp.texture_type, null); //disable
+
+            temp.is_cubemap = is_cubemap;
         }
         else // basic texture or sphere map
             texture = new GL.Texture( width, height, params);
@@ -358,7 +410,7 @@
 		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 
         if(is_cubemap)
-            return texture;
+            return temp;
         
         return this.toCubemap( texture, cubemap_size );
     }
@@ -445,16 +497,17 @@
 		var blocks = 8;
         var that = this;
 
-		this.LOAD_STEPS = 5 /*Levels*/ * 6 /*Faces*/ * blocks;
-
         var shader = options.shader || "defblur";
         if(shader.constructor !== GL.Shader)
             shader = gl.shaders[ shader ];
 
         var inner = function( tex )
         {
+			var levels = Math.log2(tex.width);
+			that.LOAD_STEPS = levels * 6 * blocks;
+
             // prefilter texture 5 times to get some blurred samples
-            for( let level = 0; level < 5; level++ )
+            /*for( let level = 0; level < 5; level++ )
             {
 				let name = '_prem_'+level+'_'+tex_name;
 				// prefilter (result tex dimensions depends on the level of blur)
@@ -463,6 +516,18 @@
 					gl.textures[name] = result;
 
 					if(options.oncomplete && level == 4)
+						options.oncomplete();
+				});
+            }*/
+			for( let level = 0; level < levels; level++ )
+            {
+				let name = '_prem_'+level+'_'+tex_name;
+				// prefilter (result tex dimensions depends on the level of blur)
+				that.deferredBlur( tex, (level+1), shader, blocks, function(result) {
+					// store
+					gl.textures[name] = result;
+
+					if(options.oncomplete && level == (levels-1))
 						options.oncomplete();
 				});
             }
@@ -735,15 +800,11 @@
         if(!shader)
             throw( "No shader" );
 
-        var tex = gl.textures[tex_name] = new GL.Texture(512,512, { type: gl.HIGH_PRECISION_FORMAT, texture_type: gl.TEXTURE_2D, wrap: gl.CLAMP_TO_EDGE, minFilter: gl.LINEAR_MIPMAP_LINEAR, magFilter: gl.LINEAR });
+        var tex = gl.textures[tex_name] = new GL.Texture(1024,1024, { type: gl.FLOAT, texture_type: gl.TEXTURE_2D, filter: gl.LINEAR});
 
         tex.drawTo(function(texture) {
             shader.uniforms({}).draw(Mesh.getScreenQuad(), gl.TRIANGLES);
         });
-
-        tex.bind(0);
-        gl.generateMipmap(gl.TEXTURE_2D);
-        tex.unbind(0);
     }
 
     /**
@@ -765,14 +826,17 @@
     */
     HDRTool.getSkybox = function( environment, array )
     {
-		if(!array) 
-            array = Float32Array;
-
-        var texture = gl.textures[ environment ];
+		var texture = gl.textures[ environment ];
         var temp = null;
         var width = texture.width;
         var height = texture.height;
-        var totalSize = width * height;
+		var isRGBE = false;
+
+		if(!array) {
+			// is RGBE format
+			array = Uint8Array;
+			isRGBE = true;
+		}
             
         if(array === Uint16Array) {
             // in case of half_float: convert to 16 bits from 32 using gpu
@@ -817,29 +881,26 @@
             gl.bindTexture(temp.texture_type, null); //disable
         }
         
-        var env = this.processSkybox( temp ? temp : texture );
+        var env = this.processSkybox( temp ? temp : texture, isRGBE );
         var data = [ env ];
 
         // Get all roughness levels
         for(var i = 0; i < 5; i++)
         {
             let name = '_prem_' + i +'_' + environment;
-            let _processed = this.processSkybox(name);
+            let _processed = this.processSkybox(name, isRGBE);
             data.push( _processed );
-
-            // update final size
-            totalSize += _processed.width * _processed.height;
         }
 
-        var buffer = HDRE.write( data, width, height, totalSize, {type: array} );
-        LiteGUI.downloadFile( environment.replace(".exr", ".hdre"), new array(buffer) );
+        var buffer = HDRE.write( data, width, height, {type: array, format: isRGBE ? "rgbe" : null} );
+		LiteGUI.downloadFile( environment.replace(".exr", ".hdre"), new array(buffer) );
     }
 
     /**
     * Get info of a texture (pixel data per face, width and height )
     * @method processSkybox
     */
-    HDRTool.processSkybox = function( e )
+    HDRTool.processSkybox = function( e, isRGBE )
     {
         if(!gl)
         throw( 'no webgl' );
@@ -852,8 +913,12 @@
 
         var info = {width: e.width, height: e.height, pixelData: []};
 
-        for(var i = 0; i < 6; i++)
-            info.pixelData.push( e.getPixels(i) );
+        for(var i = 0; i < 6; i++) {
+
+			// get data for each face
+			var faceData = e.getPixels(i);
+            info.pixelData.push( isRGBE ? faceData.toRGBE() : faceData);
+		}
 
         return info;
     }
@@ -937,6 +1002,70 @@
         xhr.send();
 		return xhr;
     }
+
+	/**
+    * Assemble HDR image from bracketed stack of ldr images
+    * @method assembleHDR
+    * @param {} 
+    */
+	HDRTool.assembleHDR = function(images)
+	{
+
+		console.time('assembly');
+
+		images = images || this.files_loaded;
+		this._sortFiles(images);
+
+		var that = this;
+		var ext = gl.extensions["EXT_sRGB"];
+
+		if(!ext)
+			throw("EXT_sRGB not supported");
+
+		const numImages = images.length;
+		const width = images[0].width;
+		const height = images[0].height;
+
+		// output texture
+		var hdr = new GL.Texture( nearestPowerOfTwo(width), nearestPowerOfTwo(height), { type: GL.FLOAT, format: GL.RGBA, minFilter: GL.LINEAR_MIPMAP_LINEAR} );
+
+		// stack
+		var stack = [];
+		for(var i = 0; i < numImages; i++)
+		{
+			var tex = new GL.Texture( width, height, { internalFormat: ext.SRGB_EXT, format: ext.SRGB_EXT, pixel_data: images[i].data });
+			stack.push( tex );
+			tex.bind(i);
+		}
+
+		var shader = gl.shaders['HDRassembly'];
+		if(!shader)
+		throw("no shader");
+
+		hdr.drawTo(function(){
+
+			shader.uniforms({
+				u_numImages: numImages,
+			}).draw(Mesh.getScreenQuad(), gl.TRIANGLES);
+
+		});
+
+		for(var i = 0; i < numImages; i++)
+			stack[i].unbind();
+		
+		console.timeEnd('assembly');
+
+		CORE.setUniform('Key', 0.18);
+		CORE.setUniform('Ywhite', 1e6);
+		CORE.setUniform('Saturation', 1);
+
+		
+		hdr.bind(0);
+		gl.generateMipmap(gl.TEXTURE_2D);
+		hdr.unbind();
+
+		gl.textures["ASSEMBLED"] = hdr;
+	}
     
     Object.assign( HDRTool, {
 
@@ -989,7 +1118,10 @@
 		_sortFiles: function()
 		{
 			this.files_loaded.sort(function(a, b){
-			
+
+				if(a.name.includes("sample-"))
+					return parseInt(a.name[7]) - parseInt(b.name[7]);
+
 				if(!a.exp_time || !b.exp_time)
 					console.warn("missing exp times");
 
@@ -1617,7 +1749,7 @@
 
     function printVersion( v )
     {
-        console.log( '%cHDRE v'+v, 'padding: 3px; background: black; color: #6E6; font-weight: bold;' );
+        console.log( '%cHDRE v'+v, 'padding: 3px; background: rgba(0, 0, 0, 0.75); color: #6E6; font-weight: bold;' );
     }
 
     function isHDRE( texture_name )
@@ -1904,7 +2036,157 @@
             return parseV2f( buffer, offset );
         } 
     }
-    
+
+	numbers.matrix.pinv = function(M) {
+
+		if(M.length < M[0].length)
+			return linalg.transposeSync(linalg.pinvSync(linalg.transposeSync(M)))
+		else
+			return linalg.pinvSync(M)
+	}
+
+	// http://locutus.io/c/math/frexp/
+	Math.frexp = function(arg) {
+
+	  arg = Number(arg)
+
+	  const result = [arg, 0]
+
+	  if (arg !== 0 && Number.isFinite(arg)) {
+		const absArg = Math.abs(arg)
+		// Math.log2 was introduced in ES2015, use it when available
+		const log2 = Math.log2 || function log2 (n) { return Math.log(n) * Math.LOG2E }
+		let exp = Math.max(-1023, Math.floor(log2(absArg)) + 1)
+		let x = absArg * Math.pow(2, -exp)
+
+		while (x < 0.5) {
+		  x *= 2
+		  exp--
+		}
+		while (x >= 1) {
+		  x *= 0.5
+		  exp++
+		}
+
+		if (arg < 0) {
+		  x = -x
+		}
+		result[0] = x
+		result[1] = exp
+	  }
+	  return result
+	}
+
+	Math.ldexp = function(mantissa, exponent) {
+		var steps = Math.min(3, Math.ceil(Math.abs(exponent) / 1023));
+		var result = mantissa;
+		for (var i = 0; i < steps; i++)
+			result *= Math.pow(2, Math.floor((exponent + i) / steps));
+		return result;
+	}
+
+
+	// https://github.com/OpenImageIO/oiio/blob/master/src/hdr.imageio/rgbe.cpp
+	function rgbe2float( rgbe )
+	{
+		var f;
+
+		if (rgbe[3] > 0) {   /*nonzero pixel*/
+			f = Math.ldexp(1.0, rgbe[3] - (128+8));
+			rgbe[0] *= f;
+			rgbe[1] *= f;
+			rgbe[2] *= f;
+			rgbe[3] = 1;
+		}
+		else {
+			rgbe[0] = rgbe[1] = rgbe[2] = 0;
+			rgbe[3] = 1;
+		}
+
+		return rgbe;
+	}
+
+	function float2rgbe(x, y, z)
+	{
+		var m, e;
+		var rgbe = new Float32Array(4);
+		var r, g, b;
+
+		if(y === undefined && z === undefined) {
+			// x is a vector
+			if(x.length < 3)
+				throw("bad params")
+			r = x[0];
+			g = x[1];
+			b = x[2];
+		}
+		else {
+			r = x;
+			g = y;
+			b = z;
+		}
+
+		var v = Math.max(r, g, b);
+
+		if(isNaN(v)) {
+		
+			console.log(x, y, z);
+			console.log(r, g, b);
+			throw("NaN");
+		
+		}
+		
+		if (v == 0.0) {
+			rgbe[0] = rgbe[1] = rgbe[2] = rgbe[3] = 0;
+		}
+		else {
+			[m, e] = Math.frexp(v);
+			v = m * (256.0 / v);
+			rgbe[0] = parseInt((r * v));
+			rgbe[1] = parseInt((g * v));
+			rgbe[2] = parseInt((b * v));
+			rgbe[3] = parseInt((e + 128));
+		}
+
+		return rgbe;
+	}
+
+	Float32Array.prototype.toRGBE = function(){
+
+		var length = this.length;
+		var data = new Uint8Array( length );
+		
+		for( var i = 0; i < length; i+=4 )
+		{
+			var rgbei = float2rgbe( this[i],this[i+1],this[i+2] );
+			data[i] = rgbei[0];
+			data[i+1] = rgbei[1];
+			data[i+2] = rgbei[2];
+			data[i+3] = rgbei[3];
+		}
+		
+		return data;
+
+	}
+
+	Uint8Array.prototype.toFloat = function(){
+
+		var length = this.length;
+		var data = new Float32Array( length );
+
+		for( var i = 0; i < length; i+=4 )
+		{
+			var floated = rgbe2float( [this[i],this[i+1],this[i+2],this[i+3]] );
+			data[i] = floated[0];
+			data[i+1] = floated[1];
+			data[i+2] = floated[2];
+			data[i+3] = 1.0;
+		}
+		
+		return data;
+
+	}
+
     //footer
     
     })( typeof(window) != "undefined" ? window : (typeof(self) != "undefined" ? self : global ) );

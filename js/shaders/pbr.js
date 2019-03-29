@@ -228,6 +228,8 @@ PBR_Shader.FS_CODE = `
 	uniform float u_reflectance;
 	uniform float u_clearCoat;
 	uniform float u_clearCoatRoughness;
+	uniform float u_energy;
+	uniform bool u_flipX;
 
     struct PBRMat
     {
@@ -422,6 +424,7 @@ PBR_Shader.FS_CODE = `
         vec3 h = normalize(v + l);
 
         material.reflection = normalize(reflect(-v, n));
+		// material.reflection.x = -material.reflection.x;
 		material.N = n;
         material.NoV = abs(dot(-n, v)) + 1e-5;
         material.NoL = clamp(dot(-n, l), 0.0, 1.0);
@@ -480,14 +483,13 @@ PBR_Shader.FS_CODE = `
 	// http://www.jcgt.org/published/0008/01/03/
 	void BRDF_Specular_Multiscattering ( const in PBRMat material, inout vec3 singleScatter, inout vec3 multiScatter ) {
 		
-		float NoV = material.NoV;
-		vec3 F = F_Schlick( NoV, material.f0 );
-		vec2 brdf = texture2D( u_brdf_texture, vec2(NoV, material.linearRoughness) ).xy;
+		vec3 F = F_Schlick( material.NoV, material.f0 );
+		vec2 brdf = texture2D( u_brdf_texture, vec2(material.NoV, material.roughness) ).rg;
 		vec3 FssEss = F * brdf.x + brdf.y;
 		float Ess = brdf.x + brdf.y;
 		float Ems = 1.0 - Ess;
 
-		vec3 Favg = material.f0 + ( 1.0 - material.f0 ) * 0.047619; // 1/21
+		vec3 Favg = F + ( 1.0 - F ) * 0.047619; // 1/21
 		vec3 Fms = FssEss * Favg / ( 1.0 - Ems * Favg );
 		singleScatter += FssEss;
 		multiScatter += Fms * Ems;
@@ -508,23 +510,14 @@ PBR_Shader.FS_CODE = `
 		vec3 irradiance = prem(material.reflection, 1.0, u_rotation);
 		vec3 cosineWeightedIrradiance = irradiance * RECIPROCAL_PI;
 
-		// update reflected color
-		vec2 brdf = texture2D( u_brdf_texture, vec2(material.NoV, material.roughness) ).rg;
-		vec3 F = F_Schlick( material.NoV, material.f0 );
-		Fr = radiance * ( F * brdf.x + brdf.y);
-		Fd = cosineWeightedIrradiance * material.diffuseColor;
+		vec3 singleScatter;
+		vec3 multiScatter;
 
-		/*vec2 multi_DFG = texture2D(u_brdf_texture_multi, vec2(material.NoV, material.roughness) ).xy;
-		float dfgx = max(1e-8, multi_DFG.x);
-		float dfgy = max(1e-8, multi_DFG.y);
-		vec3 spec = mix(vec3(dfgx), vec3(dfgy), material.f0);
-		vec3 energyCompensation = 1.0 + spec * ((1.0 / dfgy) - 1.0);
-		Fr *= (energyCompensation * 0.16);*/
+		BRDF_Specular_Multiscattering( material, singleScatter, multiScatter );
+		Fr = radiance * singleScatter;
+		Fd = material.diffuseColor * cosineWeightedIrradiance;
+		Fd += cosineWeightedIrradiance * multiScatter * u_energy;
 		
-		// Compute energy compensation
-		float energyCompensation = 1.0;
-		Fr *= energyCompensation;
-
 		// Apply ambient oclusion 
 		if(u_hasAO && u_enable_ao) {
 			
@@ -535,13 +528,13 @@ PBR_Shader.FS_CODE = `
 			Clear coat lobe
 		*/
 		float Fc = F_Schlick( material.NoV, 0.04, 1.0) * material.clearCoat;
-		float att = 1.0 - Fc;
+		float att = (1.0 - Fc);
 
 		Fd *= att;
 		Fr *= (att * att);
 		Fr += prem(material.reflection, material.clearCoatRoughness, u_rotation) * Fc;
 		
-		vec3 indirect = Fd + Fr;
+		vec3 indirect = Fd+Fr;
 
 		vec3 lightScale = vec3(u_light_intensity);
 		vec3 finalColor = indirect * u_ibl_intensity + direct * (material.NoL * u_light_color * lightScale);
