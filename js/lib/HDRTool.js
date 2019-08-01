@@ -43,14 +43,7 @@
         // ldr stuff
         files_loaded: [],
         files_to_load: 0,
-        log_exposure_times: [ 
-            //1/160,	
-            // 1/125,
-            //1/80,
-            // 1/60,	
-            //1/40,	
-            // 1/15
-        ],
+        log_exposure_times: [],
         hdr_min: new Float32Array(3),
         hdr_max: new Float32Array(3),
         hdr_avg: new Float32Array(3),
@@ -99,9 +92,15 @@
             console.time('Parsed in');
             var result = null;
 
-            if(isHDRE(tex_name))
-                that.parseHDRE( buffer, tex_name, onprogress );
+            if(isHDRE(tex_name)) {
+			
+				var found = that.parseHDRE( buffer, tex_name, onprogress );
+				if(!found) {
+					throw("reading error");
+				}
 
+			}
+                
             else if(isEXR(tex_name))
             {
                 var data = that.parseEXR( buffer );
@@ -136,9 +135,16 @@
     {
         var onprogress = onprogress || this.default_progress;
         var r = HDRE.parse(buffer, {onprogress: onprogress});
+
+		if(!r)
+			return false;
+
         var _envs = r._envs;
         var header = r.header;
         var textures = [];
+
+		if(CORE)
+			CORE.setUniform("is_rgbe", false);
 
         // create textures
         for(var i = 0; i < _envs.length; i++)
@@ -150,49 +156,49 @@
                 type = GL.UNSIGNED_BYTE;
             if(header.array_type == 02) // HALF FLOAT
                 type = GL.HALF_FLOAT_OES;
-			// for rgbe visualization we use floats
+			
+			
+			// OPTION 1: USE FLOATS
+			// OPTION 2 (correct): USE UBYTE
+			
 			if(header.array_type == 04) { // RGBE
-				var floats = [];
+				/*var floats = [];
 				for(var f = 0; f < 6; f++)
 					floats.push( data[f].toFloat() );
-				data = floats;
+				data = floats;*/
+				
+				type = GL.UNSIGNED_BYTE;
+				if(CORE)
+					CORE.setUniform("is_rgbe", true);
 			}
 
             var options = {
                 format: gl.RGBA,
                 type: type,
                 texture_type: GL.TEXTURE_CUBE_MAP,
-                pixel_data: data,
-				// minFilter: GL.LINEAR_MIPMAP_LINEAR
+                pixel_data: data
             };
 
             Texture.setUploadOptions( {no_flip: true} );
 			let tex = new GL.Texture( _envs[i].width, _envs[i].width, options);
             Texture.setUploadOptions();
-
-			/*tex.bind(0);
-			gl.generateMipmap( gl.TEXTURE_CUBE_MAP );
-			tex.unbind();*/
 			
 			textures.push( tex );
         }
 
 		var version = header.version;
 
-		if(version < 1.3)
-		{
-			console.warn('old version, update file!');
-		}
-
         printVersion( version );
 
         // store the texture 
         gl.textures[tex_name] = textures[0];
-        gl.textures["_prem_0_"+tex_name] = textures[1];
-        gl.textures["_prem_1_"+tex_name] = textures[2];
-        gl.textures["_prem_2_"+tex_name] = textures[3];
-        gl.textures["_prem_3_"+tex_name] = textures[4];
-        gl.textures["_prem_4_"+tex_name] = textures[5];
+
+		for(var i = 0; i < 5; i++){
+			// console.log(i);
+			gl.textures["_prem_" + i + "_" + tex_name] = textures[i + 1];
+		}
+
+		return true;
     }
 
     /**
@@ -356,7 +362,7 @@
             texture = new GL.Texture( width, height, params);
 
 			var temp = texture.clone();
-			var shader = gl.shaders["copyCubemap"];
+			var shader = new GL.Shader(Shader.SCREEN_VERTEX_SHADER, HDRTool.COPY_CUBEMAP_FSHADER);
             
             //save state
             var current_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
@@ -411,6 +417,9 @@
 
         if(is_cubemap)
             return temp;
+
+		if(!options.discard_spheremap)
+			gl.textures["tmp_spheremap"] = texture;
         
         return this.toCubemap( texture, cubemap_size );
     }
@@ -435,8 +444,8 @@
         gl.bindFramebuffer( gl.FRAMEBUFFER, fb );
         gl.viewport(0,0, size, size);
 
-        var shader_name = (tex.width == tex.height * 2) ? "fromPanoramic" : "fromSphere";
-        var shader = gl.shaders[ shader_name ];
+        var shader_type = (tex.width == tex.height * 2) ? HDRTool.LATLONG_MAP_FSHADER : HDRTool.SPHERE_MAP_FSHADER;
+        var shader = new GL.Shader(Shader.SCREEN_VERTEX_SHADER, shader_type);
 
         if(!shader)
             throw( "No shader" );
@@ -477,10 +486,10 @@
     /**
     * Precalculate different ems blurred for different roughness values 
     * @method prefilter
-    * @param {string} file
+    * @param {string} image
     * @param {Object} options (shader, oncomplete, data)
     */
-    HDRTool.prefilter = function(file, options)
+    HDRTool.prefilter = function(texture, options)
     {
 		if(!this.FIRST_PASS)
 		{
@@ -490,10 +499,20 @@
 		}
 
 		console.warn("STEP: Prefilter");
+
+		console.time("Prefiltered in");
 		
         var options = options || {};
-        var tex_name = this.getName( file );
-        var tex = gl.textures[tex_name];
+
+		var tex = texture;
+		var tex_name = options.name || "texture_prefilter";
+
+		if(texture.constructor === String)
+		{
+			tex_name = this.getName( texture );
+	        tex = gl.textures[tex_name];
+		}
+        
 		var blocks = 8;
         var that = this;
 
@@ -504,21 +523,18 @@
         var inner = function( tex )
         {
 			var levels = Math.log2(tex.width);
+			levels = 5;
 			that.LOAD_STEPS = levels * 6 * blocks;
 
             // prefilter texture 5 times to get some blurred samples
-            /*for( let level = 0; level < 5; level++ )
+           /* for( let level = 0; level < 5; level++ )
             {
 				let name = '_prem_'+level+'_'+tex_name;
-				// prefilter (result tex dimensions depends on the level of blur)
-				that.deferredBlur( tex, (level+1), shader, blocks, function(result) {
-					// store
-					gl.textures[name] = result;
+				gl.textures[name] = that.blur( tex, (level+1), shader);
+            }
+	
+			options.oncomplete();*/
 
-					if(options.oncomplete && level == 4)
-						options.oncomplete();
-				});
-            }*/
 			for( let level = 0; level < levels; level++ )
             {
 				let name = '_prem_'+level+'_'+tex_name;
@@ -527,24 +543,26 @@
 					// store
 					gl.textures[name] = result;
 
-					if(options.oncomplete && level == (levels-1))
+					if(options.oncomplete && level == (levels-1)){
+						console.timeEnd("Prefiltered in");
 						options.oncomplete();
+					}
+
 				});
             }
-
-            
         };
 
         if(!tex)
         {
             var params = {oncomplete: inner};
+			var filename = texture;
             
             if(options.data)
                 params['data'] = options.data;
             if(options.size)
                 params['size'] = options.size;
             
-            this.load( file, params );        
+            this.load( filename, params );        
         }
         else
             inner( tex );
@@ -560,13 +578,16 @@
     HDRTool.getBlurData = function(input, level, blocks)
     {
         var size = input.height; // by default
+		size = Math.max(8, size / Math.pow(2, level));
 
-        if(level)
-            size = input.height / Math.pow(2, level);
+		var totalLevels = this.LOAD_STEPS / (6 * blocks);
 
         var roughness_range = [0.2, 0.4, 0.6, 0.8, 1];
         var roughness = roughness_range[ level-1 ] || 0;
-        var blocks = blocks || 32;
+		// var roughness = (level+1) / (totalLevels + 1);
+
+		// console.log(roughness, size);
+
         var deferredInfo = {};
 
         var cams = GL.Texture.cubemap_camera_parameters;
@@ -634,7 +655,7 @@
     */
     HDRTool.deferredBlur = function(input, level, shader, blocks, oncomplete)
     {
-		var blocks = blocks || 4;
+		var blocks = blocks || 8;
         var data = this.getBlurData(input, level, blocks);
 		// The next prefilter is not first pass
 		this.FIRST_PASS = false;
@@ -684,7 +705,7 @@
 
 		var that = this;
 
-        var int = setInterval( function() {
+        var interval = setInterval( function() {
 
             inner_blur();
 			current_draw++;
@@ -702,7 +723,7 @@
 
             if(current_draw == data.draws.length)
             {
-                clearInterval(int);
+                clearInterval(interval);
 
                 if(oncomplete)
                     oncomplete( result );
@@ -784,27 +805,28 @@
     /**
     * Environment BRDF (Store it in a 2D LUT)
     * @method brdf
-    * @param {Shader||String} shader
 	* @param {bool} multiscattering
     */
-    HDRTool.brdf = function( shader, multiscattering )
+    HDRTool.brdf = function( multiscattering )
     {
         var tex_name = '_brdf_integrator';
-     
-		if(multiscattering)
-			tex_name += '_multi';
-
-        if(shader.constructor !== GL.Shader)
-            shader = gl.shaders[ shader ];
-
-        if(!shader)
-            throw( "No shader" );
-
+		var shader = new GL.Shader(HDRTool.BRDF_VSHADER, HDRTool.BRDF_FSHADER);
         var tex = gl.textures[tex_name] = new GL.Texture(1024,1024, { type: gl.FLOAT, texture_type: gl.TEXTURE_2D, filter: gl.LINEAR});
 
         tex.drawTo(function(texture) {
             shader.uniforms({}).draw(Mesh.getScreenQuad(), gl.TRIANGLES);
         });
+
+		if(multiscattering) {
+		
+			tex_name = '_brdf_integrator_multi';
+			var shader = new GL.Shader(HDRTool.BRDF_VSHADER, HDRTool.MULTI_BRDF_FSHADER);
+			var tex_multi = gl.textures[tex_name] = new GL.Texture(1024,1024, { type: gl.FLOAT, texture_type: gl.TEXTURE_2D, filter: gl.LINEAR});
+
+			tex_multi.drawTo(function(texture) {
+				shader.uniforms({}).draw(Mesh.getScreenQuad(), gl.TRIANGLES);
+			});
+		}
     }
 
     /**
@@ -822,27 +844,35 @@
     * Write an HDRE file to store the cubemap and its roughness levels
     * @method getSkybox
     * @param {string} environment
-    * @param {ArrayConstructor} array
+    * @param {Object} options
     */
-    HDRTool.getSkybox = function( environment, array )
+    HDRTool.getSkybox = function( environment, options )
     {
+		options = options || {};
 		var texture = gl.textures[ environment ];
         var temp = null;
         var width = texture.width;
         var height = texture.height;
 		var isRGBE = false;
+		var array = Float32Array;
 
-		if(!array) {
-			// is RGBE format
-			array = Uint8Array;
-			isRGBE = true;
+		if(options.type && options.type.BYTES_PER_ELEMENT) // if has this property is a typedArray
+		{
+			array = options.type;
+
+			// Float32Array cant be rgbe
+			if(options.rgbe !== undefined)
+			{
+				isRGBE = options.rgbe;
+			}
+
 		}
             
         if(array === Uint16Array) {
             // in case of half_float: convert to 16 bits from 32 using gpu
             temp = new Texture( width, height, {type: GL.HALF_FLOAT_OES, texture_type: GL.TEXTURE_CUBE_MAP} );
             
-            var shader = gl.shaders["copyCubemap"];
+            var shader = new GL.Shader(Shader.SCREEN_VERTEX_SHADER, HDRTool.COPY_CUBEMAP_FSHADER);
             
             //save state
             var current_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
@@ -881,18 +911,38 @@
             gl.bindTexture(temp.texture_type, null); //disable
         }
         
-        var env = this.processSkybox( temp ? temp : texture, isRGBE );
-        var data = [ env ];
+        var originalSkybox = this.processSkybox( temp ? temp : texture, isRGBE );
+        var data = [ originalSkybox ];
 
         // Get all roughness levels
         for(var i = 0; i < 5; i++)
         {
             let name = '_prem_' + i +'_' + environment;
             let _processed = this.processSkybox(name, isRGBE);
-            data.push( _processed );
+            if(_processed)
+				data.push( _processed );
         }
 
-        var buffer = HDRE.write( data, width, height, {type: array, format: isRGBE ? "rgbe" : null} );
+		var write_options = {
+			type: array, 
+			rgbe: isRGBE
+		}
+
+		if(options.saveSH && RM.get("IrradianceCache")){
+		
+			var shs = IrradianceCache.SHs[environment];
+
+			if(!shs){
+				console.warn("sh missing, computing now...")
+				shs = RM.get("IrradianceCache").computeSH( gl.textures[environment] );
+			}
+
+			write_options.sh = shs;
+
+		}else if(options.saveSH && !RM.get("IrradianceCache"))
+			throw("Add IrradianceCache component to the project to save SH");
+
+        var buffer = HDRE.write( data, width, height, write_options );
 		LiteGUI.downloadFile( environment.replace(".exr", ".hdre"), new array(buffer) );
     }
 
@@ -909,9 +959,13 @@
             e = gl.textures[ e ];
 
         if(!e)
-        throw( 'no stored texture' );
+        throw( 'no stored texture with name ' + e );
 
-        var info = {width: e.width, height: e.height, pixelData: []};
+        var info = {
+			width: e.width, 
+			height: e.height, 
+			pixelData: []
+		};
 
         for(var i = 0; i < 6; i++) {
 
@@ -930,7 +984,7 @@
     */
     HDRTool.downloadTexture = function(name)
     {
-        var tex = gl.textures[name];
+        var tex = name.constructor === GL.Texture ? name : gl.textures[name];
         if(!tex) {
             console.error("no texture named " + name);
             return;
@@ -1027,13 +1081,14 @@
 		const height = images[0].height;
 
 		// output texture
-		var hdr = new GL.Texture( nearestPowerOfTwo(width), nearestPowerOfTwo(height), { type: GL.FLOAT, format: GL.RGBA, minFilter: GL.LINEAR_MIPMAP_LINEAR} );
+		var hdr = new GL.Texture( width, height, { type: GL.FLOAT, format: GL.RGBA} );
+		// var hdr = new GL.Texture( nearestPowerOfTwo(width), nearestPowerOfTwo(height), { type: GL.FLOAT, format: GL.RGBA, minFilter: GL.LINEAR_MIPMAP_LINEAR} );
 
 		// stack
 		var stack = [];
 		for(var i = 0; i < numImages; i++)
 		{
-			var tex = new GL.Texture( width, height, { internalFormat: ext.SRGB_EXT, format: ext.SRGB_EXT, pixel_data: images[i].data });
+			var tex = new GL.Texture( width, height, {internalFormat: ext.SRGB_EXT, format: ext.SRGB_EXT, pixel_data: images[i].data });
 			stack.push( tex );
 			tex.bind(i);
 		}
@@ -1057,16 +1112,20 @@
 
 		CORE.setUniform('Key', 0.18);
 		CORE.setUniform('Ywhite', 1e6);
+		CORE.setUniform('Yexposure', 1);
 		CORE.setUniform('Saturation', 1);
 
 		
-		hdr.bind(0);
+		/*hdr.bind(0);
 		gl.generateMipmap(gl.TEXTURE_2D);
-		hdr.unbind();
+		hdr.unbind();*/
 
 		gl.textures["ASSEMBLED"] = hdr;
+		delete gl.textures["CROPPED"];
+		HDRI.dragscale.changeScale( 855 / width );
 	}
     
+	// HDR ASSEMBLY + RECOVERING CAMERA RESPONSE
     Object.assign( HDRTool, {
 
         parseCR2: function( buffer )
@@ -1147,7 +1206,7 @@
 
                 img.name = name;
                 img.rgb = that.extractChannels(img.rgba8, img.width*img.height);
-				img.url = URL.createObjectURL( content );
+				img.url = extension == "cr2" ? "https://webglstudio.org/users/arodriguez/projects/HDR4EU/assets/CR2_Example.JPG" : URL.createObjectURL( content );
 
                 // fill exposures in case of CR2
                 if( !img['exifIFD'] ) {
@@ -1175,6 +1234,8 @@
                 that.files_loaded.push( img );
 
                 var prog_width = (that.files_loaded.length / that.files_to_load) * 100;
+
+				$("#xhr-load").css('width', prog_width + "%");
                 
                 // all files loaded
                 if(prog_width == 100)
@@ -1508,7 +1569,6 @@
                 throw("no enough log exposures");
             }
             
-
             var aN = num_images * num_samples + intensity_range;
             var aM = num_samples + intensity_range + 1;
             var mat_A = new Float64Array( aN * aM );// [ aN, aM ] -> inv: 	[ aM, aN ]
@@ -2186,6 +2246,291 @@
 		return data;
 
 	}
+
+	HDRTool.COPY_CUBEMAP_FSHADER = `
+		
+		precision highp float;
+		varying vec2 v_coord;
+		uniform vec4 u_color;
+		uniform vec4 background_color;
+		uniform vec3 u_camera_position;
+		uniform samplerCube u_color_texture;
+		uniform mat3 u_rotation;
+		uniform bool u_flip;
+
+		void main() {
+
+			vec2 uv = vec2( v_coord.x, 1.0 - v_coord.y );
+			vec3 dir = vec3( uv - vec2(0.5), 0.5 );
+			dir = u_rotation * dir;
+
+			if(u_flip)
+				dir.x *= -1.0;
+
+			gl_FragColor = textureCube(u_color_texture, dir);
+		}
+	
+	`;
+
+	HDRTool.SPHERE_MAP_FSHADER = `
+		
+		precision highp float;
+		varying vec2 v_coord;
+		uniform vec4 u_color;
+		uniform vec4 background_color;
+		uniform vec3 u_camera_position;
+		uniform sampler2D u_color_texture;
+		uniform mat3 u_rotation;
+
+		vec2 getSphericalUVs(vec3 dir)
+		{
+			dir = normalize(dir);
+			dir = -dir;
+			float d = sqrt(dir.x * dir.x + dir.y * dir.y);
+			float r = 0.0;
+
+			if(d > 0.0)
+				r = 0.159154943 * acos(dir.z) / d;
+
+	    		float u = 0.5 + dir.x * (r);
+			float v = 0.5 + dir.y * (r);
+
+			return vec2(u, v);
+		}
+
+		void main() {
+
+			vec2 uv = vec2( v_coord.x, 1.0 - v_coord.y );
+			vec3 dir = vec3( uv - vec2(0.5), 0.5 );
+			dir = u_rotation * dir;
+			
+			dir.x = -dir.x;
+
+			// use dir to calculate spherical uvs
+			vec2 spherical_uv = getSphericalUVs( dir );
+			vec4 color = texture2D(u_color_texture, spherical_uv);
+			gl_FragColor = color;
+		}
+	
+	`;
+
+	HDRTool.LATLONG_MAP_FSHADER = `
+		
+		precision highp float;
+		varying vec2 v_coord;
+		uniform vec4 u_color;
+		uniform vec4 background_color;
+		uniform vec3 u_camera_position;
+		uniform sampler2D u_color_texture;
+		uniform mat3 u_rotation;
+
+		#define PI 3.1415926535897932384626433832795
+
+		vec2 getPanoramicUVs(vec3 dir)
+		{
+			dir = -normalize(dir);
+
+	    		float u = 1.0 + (atan(dir.x, -dir.z) / PI);
+			float v = acos(-dir.y) / PI;
+
+			return vec2(u/2.0, v);
+		}
+
+		void main() {
+
+			vec2 uv = vec2( v_coord.x, 1.0 - v_coord.y );
+			vec3 dir = vec3( uv - vec2(0.5), 0.5 );
+			dir = u_rotation * dir;
+
+			vec2 panoramic_uv = getPanoramicUVs( dir );
+			vec4 color = texture2D(u_color_texture, panoramic_uv);
+			gl_FragColor = color;
+		}
+	
+	`;
+
+	HDRTool.BRDF_VSHADER = `
+		
+		precision highp float;
+
+		attribute vec3 a_vertex;
+		attribute vec3 a_normal;
+		attribute vec2 a_coord;
+
+		varying vec2 v_coord;
+		varying vec3 v_vertex;
+
+		void main(){
+			v_vertex = a_vertex;
+			v_coord  = a_coord;
+			vec3 pos = v_vertex * 2.0 - vec3(1.0);
+			gl_Position = vec4(pos, 1.0);
+		}
+	`;
+
+	HDRTool.BRDF_FSHADER = `
+		precision highp float;
+
+		varying vec2 v_coord;
+		varying vec3 v_vertex;
+
+		#define SAMPLES 1024
+		#define PI 3.1415926535897932384626433832795
+
+		float G_Smith(float roughness, float NdotV, float NdotL){
+			float k = (roughness )*(roughness ) / 2.0;
+			return (NdotV / (NdotV * (1.0 - k) + k)) * (NdotV / (NdotV * (1.0 - k) + k));
+		}
+
+		/*float V_SmithGGXCorrelated (const in float linearRoughness, const in float NoV, const in float NoL ) {
+			float a2 = linearRoughness * linearRoughness;
+			float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
+			float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoL + a2);
+			return 0.5 / (GGXV + GGXL);
+		}*/
+
+		vec2 Fib( const in int index, const in int numSamples ) {
+
+			float d_phiAux = PI * (3.0 - sqrt(5.0));
+			float phiAux = 0.0;
+			float d_zAux = 1.0 / float(numSamples);
+			float zAux = 1.0 - (d_zAux / 2.0);
+			float thetaDir;
+			float phiDir;
+
+			zAux -= d_zAux * float(index);
+			phiAux += d_phiAux * float(index);
+
+			thetaDir = acos(zAux);
+			phiDir = mod(phiAux, (2.0 * PI));
+
+			return vec2(thetaDir, phiDir);
+		}
+		vec3 importanceSampleGGX( vec2 Xi, float Roughness, vec3 N ) {
+
+			float a = Roughness * Roughness;
+			float Phi = 2.0 * PI * Xi.x;
+			float CosTheta = sqrt( (1.0 - Xi.y) / ( 1.0 + (a * a - 1.0) * Xi.y ) );
+			float SinTheta = sqrt( 1.0 - CosTheta * CosTheta );
+			vec3 H;
+			H.x = SinTheta * cos( Phi );
+			H.y = SinTheta * sin( Phi );
+			H.z = CosTheta;
+			vec3 UpVector = abs(N.z) < 0.999 ? vec3(0.0,0.0,1.0) : vec3(0.0,1.0,0.0);
+			vec3 TangentX = normalize( cross( UpVector, N ) );
+			vec3 TangentY = normalize( cross( TangentX, N ) );
+			return TangentX * H.x + TangentY * H.y + N * H.z;
+		}
+		void main() {
+
+			float NdotV = clamp(v_coord.x, 0.001, 0.9999);
+			float roughness = v_coord.y;
+			vec3 V = vec3( sqrt(1.0 - NdotV * NdotV), 0.0, NdotV );
+			vec3 N = vec3(0.0, 0.0, 1.0);
+			float A = 0.0;
+			float B = 0.0;
+
+			for(int i = 0; i < SAMPLES; i++) {
+
+				vec2 polar_i = Fib( i, SAMPLES );
+				vec2 Xi = vec2(polar_i.y / (2.0 * PI), cos(polar_i.x));
+				vec3 H = importanceSampleGGX(Xi, roughness, N);
+				vec3 L = 2.0 * dot( V, H ) * H - V;
+
+				float NdotL = clamp( L.z, 0.0, 1.0) + 1e-6;
+				float NdotH = clamp( H.z, 0.0, 1.0) + 1e-6;
+				float VdotH = clamp( dot(V, H), 0.0, 1.0) + 1e-6;
+
+				if(NdotL > 0.0) {
+					float G = G_Smith( roughness, NdotV, NdotL );
+					float Gv = G * VdotH / (NdotH * NdotV);
+					float Fc = pow( 1.0 - VdotH, 5.0 );
+					A += ( 1.0 - Fc ) * Gv;
+					B += ( Fc ) * Gv;
+				}
+			}
+			vec2 result = vec2(A, B) * (1.0 / float(SAMPLES));
+			gl_FragColor = vec4(result, 0.0, 1.0);
+		}
+	`;
+
+	HDRTool.MULTI_BRDF_FSHADER = `
+		precision highp float;
+
+		varying vec2 v_coord;
+		varying vec3 v_vertex;
+
+		#define SAMPLES 1024
+		#define PI 3.1415926535897932384626433832795
+
+		float G_Smith(float roughness, float NdotV, float NdotL){
+			float k = (roughness )*(roughness ) / 2.0;
+			return (NdotV / (NdotV * (1.0 - k) + k)) * (NdotV / (NdotV * (1.0 - k) + k));
+		}
+		vec2 Fib( const in int index, const in int numSamples ) {
+
+			float d_phiAux = PI * (3.0 - sqrt(5.0));
+			float phiAux = 0.0;
+			float d_zAux = 1.0 / float(numSamples);
+			float zAux = 1.0 - (d_zAux / 2.0);
+			float thetaDir;
+			float phiDir;
+
+			zAux -= d_zAux * float(index);
+			phiAux += d_phiAux * float(index);
+
+			thetaDir = acos(zAux);
+			phiDir = mod(phiAux, (2.0 * PI));
+
+			return vec2(thetaDir, phiDir);
+		}
+		vec3 importanceSampleGGX( vec2 Xi, float Roughness, vec3 N ) {
+
+			float a = Roughness * Roughness;
+			float Phi = 2.0 * PI * Xi.x;
+			float CosTheta = sqrt( (1.0 - Xi.y) / ( 1.0 + (a * a - 1.0) * Xi.y ) );
+			float SinTheta = sqrt( 1.0 - CosTheta * CosTheta );
+			vec3 H;
+			H.x = SinTheta * cos( Phi );
+			H.y = SinTheta * sin( Phi );
+			H.z = CosTheta;
+			vec3 UpVector = abs(N.z) < 0.999 ? vec3(0.0,0.0,1.0) : vec3(0.0,1.0,0.0);
+			vec3 TangentX = normalize( cross( UpVector, N ) );
+			vec3 TangentY = normalize( cross( TangentX, N ) );
+			return TangentX * H.x + TangentY * H.y + N * H.z;
+		}
+		void main() {
+
+			float roughness = v_coord.y;
+			float NdotV = v_coord.x;
+			vec3 V = vec3( sqrt(1.0 - NdotV * NdotV), 0.0, NdotV );
+			vec3 N = vec3(0.0, 0.0, 1.0);
+			float A = 0.0;
+			float B = 0.0;
+
+			for(int i = 0; i < SAMPLES; i++) {
+
+				vec2 polar_i = Fib( i, SAMPLES );
+				vec2 Xi = vec2(polar_i.y / (2.0 * PI), cos(polar_i.x));
+				vec3 H = importanceSampleGGX(Xi, roughness, N);
+				vec3 L = 2.0 * dot( V, H ) * H - V;
+
+				float NdotL = clamp( L.z, 0.001, 1.0);
+				float NdotH = clamp( H.z, 0.0001, 1.0);
+				float VdotH = clamp( dot(V, H), 0.001, 1.0);
+
+				if(NdotL > 0.0) {
+					float G = G_Smith( roughness, NdotV, NdotL );
+					float Gv = G * VdotH / (NdotH * NdotV);
+					float Fc = pow( 1.0 - VdotH, 5.0 );
+					A += Gv * Fc;
+					B += Gv;
+				}
+			}
+			vec2 result = vec2(A, B) * (1.0 / float(SAMPLES));
+			gl_FragColor = vec4(result, 0.0, 1.0);
+		}
+	`;
 
     //footer
     

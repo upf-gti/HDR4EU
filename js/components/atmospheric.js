@@ -13,6 +13,10 @@ function AtmosphericScattering()
     this._mieDirection = 0.76;
     this._originOffset = 0;
     this._mieCoeff = 21;
+
+	this.enable = false;
+	this.mark = true;
+	this.collapsed = false;
 }
 
 Object.defineProperty(AtmosphericScattering.prototype, 'sunPosition', {
@@ -62,10 +66,28 @@ Object.defineProperty(AtmosphericScattering.prototype, 'mieCoeff', {
 
 Object.assign( AtmosphericScattering.prototype, {
 
+	toJSON() {
+			
+			var component = {};
+			Object.assign(component, this);
+			return component;
+	},
+
 	create(widgets, root) {
 		
 		var that = this;
 	
+		var element = widgets.addSection("Atmospherical Scattering", {collapsed: that.collapsed, callback: function(no_collapsed){
+				that.collapsed = !no_collapsed;
+			}});
+			
+		element.addEventListener("dragstart", function(e){
+				e.dataTransfer.setData("type", "gui");
+				e.dataTransfer.setData("component", "Atmos");
+		});
+
+		element.setAttribute("draggable", true);
+
 		widgets.widgets_per_row = 2;
 		widgets.addNumber("Sun Position", this.sunPosition, {min: 0,step:0.01, callback: function(v){ that.sunPosition = v; }});
 		widgets.addNumber("Mie Direction", this.mieDirection, {min:0, max:1,step:0.01,callback: function(v){ that.mieDirection = v; }});
@@ -74,20 +96,40 @@ Object.assign( AtmosphericScattering.prototype, {
 		widgets.widgets_per_row = 1;
         widgets.addNumber("Origin Offset", this.originOffset, {step: 50, min: 0,max: 7000, callback: function(v){ that.originOffset = v; }});
         widgets.addSeparator();
-        widgets.addButton("Apply and update", '<i style="font-size: 16px;" class="material-icons">refresh</i>',{name_width: "40%", callback: function(v) {
+		widgets.widgets_per_row = 2;
+        widgets.addCheckbox("Enable", this.enable,{name_width: "40%", callback: function(v) {
+
+			if(v) {
+
+				if(!gl.shaders['atmos'])
+					LiteGUI.showMessage("Error: shader missing", {title: "App info"});
+				else
+				{
+					that.old_shader = CORE.cubemap.shader;
+					CORE.cubemap.shader = "atmos";
+				}
+			}else
+				CORE.cubemap.shader = that.old_shader;
+		}});
+		widgets.addButton(null,"Generate", {name_width: "40%", callback: function(v) {
 
 			if(!gl.shaders['atmos'])
 				LiteGUI.showMessage("Error: shader missing", {title: "App info"});
 			else
 			{
-				var old_shader = CORE.cubemap.shader;
-				CORE.cubemap.shader = "atmos";
+				if(gui)
+					gui.loading();
+
+				//var old_shader = CORE.cubemap.shader;
+				//CORE.cubemap.shader = "atmos";
 				CORE.cubemapToTexture( function() { CORE.set(":atmos", {no_free_memory: true}) });
-				CORE.cubemap.shader = old_shader;
+				//CORE.cubemap.shader = old_shader;
+				//that.enable = false;
 			}
 		}});
+		widgets.widgets_per_row = 1;
 	}
 
 } );
 
-RM.registerComponent( AtmosphericScattering, 'Atmos');
+// RM.registerComponent( AtmosphericScattering, 'Atmos');

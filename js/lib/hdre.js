@@ -23,8 +23,9 @@
 
     var HDRE = global.HDRE = {
 
-        version: 1.3,
-        maxFileSize: 58000 // KBytes
+        version: 2.0,	// v1.5 adds spherical harmonics coeffs for the skybox
+						// v2.0 adds byte padding for C++ uses				
+        maxFileSize: 60e6 // bytes
     };
 
 	// En la v1.4 poner maxFileSize a 58 000 000 (bytes)
@@ -64,10 +65,18 @@
     */
     HDRE.write = function( package, width, height, options )
     {
+		
 		options = options || {};
 
-		var array_type = options.type ? options.type : Float32Array;
-		var format = options.format ? options.format : null;
+		var array_type = Float32Array;
+		
+		if(options.type && options.type.BYTES_PER_ELEMENT)
+			array_type = options.type;
+
+		var RGBE = false;
+
+		if(options.rgbe !== undefined)
+			RGBE = options.rgbe;
 
         /*
         *   Create header
@@ -81,14 +90,16 @@
         // File format information
         var numFaces = 6;
         var numChannels = 4;
-        var headerSize = 128; // Bytes (128 in v1.3)
+        var headerSize = 256; // Bytes (256 in v2.0)
         var contentSize = size * numFaces * numChannels * array_type.BYTES_PER_ELEMENT; // Bytes
         var fileSize = headerSize + contentSize; // Bytes
         var bpChannel = array_type.BYTES_PER_ELEMENT * BYTE2BITS; // Bits
 
         var contentBuffer = new ArrayBuffer(fileSize);
         var view = new DataView(contentBuffer);
-        
+
+		var LE = true;// little endian
+
         // Signature: "HDRE" in ASCII
         // 72, 68, 82, 69
 
@@ -97,23 +108,21 @@
         view.setUint8(1, 68);
         view.setUint8(2, 82);
         view.setUint8(3, 69);
-        view.setUint8(4, 0); // End of string
-
+        
         // Set 4 bytes of version
-        view.setFloat32(5, this.version);
+        view.setFloat32(4, this.version, LE);
 
-        // Set 2 bytes of width, height and max file size
-        view.setUint16(9, width);
-        view.setUint16(11, height);
-        view.setUint16(13, this.maxFileSize);
+        // Set 2 bytes of width, height
+        view.setUint16(8, width, LE);
+        view.setUint16(10, height, LE);
+		// Set max file size
+        view.setFloat32(12, this.maxFileSize, LE);
 
         // Set rest of the bytes
-        view.setUint8(15, numChannels); // Number of channels
-        view.setUint8(16, bpChannel); // Bits per channel
-		view.setUint8(17, headerSize); // max header size
-
-        // Set flags
-        // ...
+        view.setUint16(16, numChannels, LE); // Number of channels
+        view.setUint16(18, bpChannel, LE); // Bits per channel
+		view.setUint16(20, headerSize, LE); // max header size
+		view.setUint16(22, LE ? 1 : 0, LE); // endian encoding
 
         /*
         *   Create data
@@ -142,7 +151,7 @@
         }
 
 		// set max value for luminance
-		view.setFloat32(18, _getMax( data )); 
+		view.setFloat32(24, _getMax( data ), LE); 
 
 		var type = FLOAT;
 		if( array_type === Uint8Array)
@@ -150,11 +159,29 @@
         if( array_type === Uint16Array)
             type = HALF_FLOAT;
 
-		if(format)
+		if(RGBE)
 			type = U_BYTE_RGBE;
             
+		console.log(type);
+
 		// set write array type 
-		view.setUint16(22, type); 
+		view.setUint16(28, type, LE); 
+
+		// SH COEFFS
+		if(options.sh) {
+		
+			var SH = options.sh;
+
+			view.setUint16(30, 1, LE);
+			view.setFloat32(32, SH.length / 3, LE); // number of coeffs
+			var pos = 36;
+			for(var i = 0; i < SH.length; i++) {
+				view.setFloat32(pos, SH[i], LE); 
+				pos += 4;
+			}
+		}
+		else
+			view.setUint16(30, 0, LE);
 
 		/*
 		*  END OF HEADER
@@ -166,7 +193,7 @@
         for(var i = 0; i < data.length; i++)
         {
 			if(type == U_BYTE || type == U_BYTE_RGBE) {
-	            view.setUint8(offset, data[i], true);
+	            view.setUint8(offset, data[i]);
 			}else if(type == HALF_FLOAT) {
 	            view.setUint16(offset, data[i], true);
 			}else {
@@ -210,59 +237,81 @@
         throw( "No data buffer" );
 
         var options = options || {};
-        var fileSizeInKBytes = buffer.byteLength / 1e3;
+        var fileSizeInBytes = buffer.byteLength;
+		var LE = true;
 
         /*
         *   Read header
         */
 
         // Read signature
-        var sg = parseString( buffer, 0 );
+        var sg = parseSignature( buffer, 0 );
 
         // Read version
-        var v = parseFloat32(buffer, 5);
+        var v = parseFloat32(buffer, 4, LE);
 
-        // Set 2 bytes of width, height and max file size
-        var w = parseUint16(buffer, 9);
-        var h = parseUint16(buffer, 11);
-        var m = parseUint16(buffer, 13);
-
-		//console.log(m, fileSizeInKBytes);
+        // Get 2 bytes of width, height
+        var w = parseUint16(buffer, 8, LE);
+        var h = parseUint16(buffer, 10, LE);
+		// Get max file size in bytes
+        var m = parseFloat(parseFloat32(buffer, 12, LE));
 
         // Set rest of the bytes
-        var c = parseUint8(buffer, 15);
-        var b = parseUint8(buffer, 16);
-		var s = parseUint8(buffer, 17);
-		var i = parseFloat(parseFloat32(buffer, 18));
-		var a = parseUint16(buffer, 22);
+        var c = parseUint16(buffer, 16, LE);
+        var b = parseUint16(buffer, 18, LE);
+		var s = parseUint16(buffer, 20, LE);
+		var isLE = parseUint16(buffer, 22, LE);
+
+		var i = parseFloat(parseFloat32(buffer, 24, LE));
+		var a = parseUint16(buffer, 28, LE);
+
+		var shs = null;
+		var hasSH = parseUint16(buffer, 30, LE);
+
+		if(hasSH) {
+		
+			var Ncoeffs = parseFloat32(buffer, 32, LE) * 3;
+			shs = [];
+			var pos = 36;
+
+			for(var i = 0; i < Ncoeffs; i++)  {
+				shs.push( parseFloat32(buffer, pos, LE) );
+				pos += 4;
+			}
+		}
 
         var header = {
             version: v,
             signature: sg,
 			headerSize: s,
-			array_type: a,
+			type: a,
             width: w,
             height: h,
             max_size: m,
             nChannels: c,
             bpChannel: b,
 			maxIrradiance: i,
+			shs: shs,
+			encoding: isLE
         };
 
-//		console.table(header);
+		// console.table(header);
         window.parsedFile = {buffer: buffer, header: header};
         
-		if(fileSizeInKBytes > m)
-        throw('file not accepted: too big');
+		if(v < 2 || v > 1e3){ // bad encoding
+			console.error('old version, please update the HDRE');
+			return false;
+		}
+
+		if(fileSizeInBytes > m){
+			console.error('file too big');
+			return false;
+		}
+
 
         /*
         *   BEGIN READING DATA (Uint8 or Float32)
         */
-		
-
-		if(!s){ // previous versions
-			s = 164;
-		}
 
         var dataBuffer = buffer.slice(s);
 
@@ -272,8 +321,20 @@
             array_type = Uint8Array;
         else if(a == HALF_FLOAT)
             array_type = Uint16Array;
-         
-        var data = new array_type(dataBuffer);
+
+
+		var dataSize = dataBuffer.byteLength / 4;
+		var data = new array_type(dataSize);
+		var view = new DataView(dataBuffer);
+	
+		var pos = 0;
+
+		for(var i = 0 ; i < dataSize; i++)
+		{
+			data[i] = view.getFloat32(pos, LE);
+			pos += 4;
+		}
+
         var numChannels = c;
 
         var begin = 0, 
@@ -282,18 +343,19 @@
             precomputed = [];
 
         var offset = 0;
+		var originalWidth = w;
 
         for(var i = 0; i < 6; i++)
         {
-            ems.push( data.slice(offset, offset + (w*w*numChannels*6)) );
-            offset += (w*w*numChannels*6);
+			var mip_level = i + 1;
 
-			// only v1.0 has first level as big as original em
-			if(v == 1.0)
-                w /= (i == 0) ? 1 : 2;
-            else
-                w /= 2;
+			var offsetEnd = w * w * numChannels * 6;
+            ems.push( data.slice(offset, offset + offsetEnd) );
+            offset += offsetEnd;
+			
+			w = Math.max(8, originalWidth / Math.pow(2, mip_level));
         }
+
 
         /*
             Get bytes
@@ -322,29 +384,14 @@
                 offset += (numChannels * w * w);
             }
 
-            // order faces
-            var facesSorted = [];
-
-            facesSorted.push( 
-                faces[0], // X neg
-                faces[2], // Y neg
-                faces[4], // Z pos
-                faces[1], // X pos
-                faces[3], // Y pos
-                faces[5] // Z neg
-            );
-
             precomputed.push( {
-                data: facesSorted,
+                data: faces,
                 width: w
             });
 
             // resize next textures
-			// only v1.0 has first level as big as original em
-            if(v == 1.0)
-                w /= (i == 0) ? 1 : 2;
-            else
-                w /= 2;
+			var mip_level = i + 1;
+			w = Math.max(8, originalWidth / Math.pow(2, mip_level));
 
             if(options.onprogress)
                 options.onprogress( i );
@@ -359,6 +406,14 @@
         Private library methods
     */
 
+	   function parseSignature( buffer, offset ) {
+
+        var uintBuffer = new Uint8Array( buffer );
+        var endOffset = 4;
+
+        return window.TextDecoder !== undefined ? new TextDecoder().decode(new Uint8Array( buffer ).slice( offset, offset + endOffset )) : "";
+    }
+
     function parseString( buffer, offset ) {
 
         var uintBuffer = new Uint8Array( buffer );
@@ -370,15 +425,15 @@
         return window.TextDecoder !== undefined ? new TextDecoder().decode(new Uint8Array( buffer ).slice( offset, offset + endOffset )) : "";
     }
 
-    function parseFloat32( buffer, offset ) {
+    function parseFloat32( buffer, offset, LE ) {
     
-        var Float32 = new DataView( buffer.slice( offset, offset + 4 ) ).getFloat32( 0 ).toPrecision(3);
+        var Float32 = new DataView( buffer.slice( offset, offset + 4 ) ).getFloat32( 0, LE );
         return Float32;
     }
 
-    function parseUint16( buffer, offset ) {
+    function parseUint16( buffer, offset, LE ) {
     
-        var Uint16 = new DataView( buffer.slice( offset, offset + 2 ) ).getUint16( 0 );
+        var Uint16 = new DataView( buffer.slice( offset, offset + 2 ) ).getUint16( 0, LE );
         return Uint16;
     }
 

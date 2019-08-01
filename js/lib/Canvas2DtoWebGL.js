@@ -287,7 +287,7 @@ function enableWebGLCanvas( canvas, options )
 		return null;
 	}
 
-	ctx.drawImage = function( img, x, y, w, h, shader )
+	ctx.drawImage = function( img, x, y, w, h, shader, shader_uniforms )
 	{
 		if(!img || img.width == 0 || img.height == 0) 
 			return;
@@ -327,6 +327,9 @@ function enableWebGLCanvas( canvas, options )
 		uniforms.u_transform = this._matrix;
 		uniforms.u_texture_transform = tmp_vec4b;
 		uniforms.u_viewport = viewport;
+
+		shader_uniforms = shader_uniforms || {};
+		Object.assign(uniforms, shader_uniforms);
 
 		shader = shader || texture_shader;
 
@@ -908,6 +911,7 @@ function enableWebGLCanvas( canvas, options )
 		gl.lineWidth = 1;
 		window.gl = prev_gl;
 		gl.disable( gl.STENCIL_TEST );
+		gl.disable( gl.BLEND );
 	}
 
 	//extra

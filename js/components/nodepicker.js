@@ -32,8 +32,12 @@ Object.assign( NodePicker.prototype, {
         return;
 
         if(this.selected.name === 'light') {
-            // WS.Components.LIGHT.color = [0, 0, 0];
-            light = null;
+
+			var LightComponent = RM.get('Light');
+			
+            LightComponent.node = null;
+			LightComponent.color = RD.WHITE;
+			LightComponent.intensity = 0;
         }
 
         this.selected.destroy();
@@ -106,6 +110,7 @@ Object.assign( NodePicker.prototype, {
             var l = new RD.SceneNode();
             l.flags.ignore_collisions = true;
             l.primitive = gl.LINES;
+			l.layers = 4;
             l.mesh = "lines";
             l.name = "lines";
             l.color = [1,1,1,1];

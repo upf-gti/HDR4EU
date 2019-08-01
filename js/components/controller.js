@@ -21,12 +21,12 @@ function Controller(context, o)
 Controller.prototype._ctor = function( context )
 {
     this._fov = 45;
-    this._near = 0.35;
-    this._far = 10000;
+    this._near = 0.25;
+    this._far = 25 * 40;
     this._aspect = gl.canvas.width / gl.canvas.height;
 
-    this._eye = [0, 5, 5];
-    this._target = [0, 5, 0];
+    this._eye = [-1.5, 2, 6];
+    this._target = [0, 0, 0];
     this._up = [0, 1, 0];
     
     this._camera = new RD.Camera();
@@ -38,18 +38,19 @@ Controller.prototype._ctor = function( context )
     this._mouse_speed = 0.25;
     this._wheel_speed = 0.5;
 	this._keys = {};
-	this.setBindings();
+	this.bindEvents();
+	this.collapsed = false;
 }
 
 Controller.prototype.reset = function()
 {
     this._fov = 45;
-    this._near = 0.35;
-    this._far = 10000;
+    this._near = 0.25;
+    this._far = 25 * 40;
     this._aspect = gl.canvas.width / gl.canvas.height;
     
-    this._eye = [0, 5, 5];
-    this._target = [0, 5, 0];
+     this._eye = [-1.5, 2, 6];
+    this._target = [0, 0, 0];
     this._up = [0, 1, 0];
     
     this._camera.perspective( this._fov, this._aspect, this._near, this._far);
@@ -101,10 +102,10 @@ Controller.prototype.getCameraPosition = function()
 
 /**
  * Set key bindings
- * @method setBindings
+ * @method bindEvents
  * @param {WebGLRenderingContext} ctx
  */
-Controller.prototype.setBindings = function()
+Controller.prototype.bindEvents = function()
 {
     var ctx = this._context;
     if(!ctx)
@@ -234,77 +235,15 @@ Controller.prototype.setBindings = function()
 			if(CORE.browser === "edge")
 				return;
 
-            var shaded_models = [];
-            var scenes = RM.scenes;
-			var RenderComponent = RM.get("Render");
-
-            // OJO CON ESTE
-            for(var s in scenes)
-                shaded_models.push( {title: scenes[s].name, callback: function(v) {
-                    CORE.parse( v.title );
-                    gui.updateSidePanel(null, v.title );
-                }});
-
-            var actions = [
-            {
-                title: "Model", //text to show
-                has_submenu: true,
-                submenu: {
-                    options: shaded_models
-                }
-            },
-            {
-                title: "Primitive", //text to show
-                has_submenu: true,
-                submenu: {
-                    options: 
-                    [{
-                        title: "Sphere",
-                        callback: function() { CORE.addPrimitive("sphere") }
-                    },{
-                        title: "Plane",
-                        callback: function() { CORE.addPrimitive("plane") }
-                    },{
-                        title: "Cube",
-                        callback: function() { CORE.addPrimitive("cube") }
-                    }]
-                }
-                
-            },
-			{
-                title: "Component", //text to show
-                has_submenu: true,
-                submenu: {
-                    options: 
-                    [{
-                        title: "Histogram",
-                        callback: function() { RM.registerComponent( Histogram, 'Histogram'); gui.updateSidePanel(null, "root", {maxScroll: true}); }
-                    }]
-                }
-            },
-            {
-                title: "Light", //text to show
-                callback: function() { CORE.addLight() }
-            },
-			/*,
-			{
-                title: "Render mode", //text to show
-                has_submenu: true,
-                submenu: {
-                    options: 
-                    [{
-                        title: "FORWARD",
-                        callback: function() { if(RenderComponent) RenderComponent.render_mode = RM.FORWARD; gui.updateSidePanel(null, 'root');}
-                    },{
-                        title: "DEFERRED",
-                        callback: function() { if(RenderComponent) RenderComponent.render_mode = RM.DEFERRED; gui.updateSidePanel(null, 'root');}
-                    }]
-                }
-            }*/
-            ];
-            var contextmenu = new LiteGUI.ContextMenu( actions, { event: e });
+            var contextmenu = new LiteGUI.ContextMenu( getContextMenuActions(), { event: e });
         }
     }
+
+	ctx.onmouseup = function(e){
+	
+		
+	
+	}
 }
 
 /**
@@ -317,6 +256,9 @@ Controller.prototype.update = function(dt, ctx)
 {
     if(!ctx)
         throw('no WebGLRenderingContext');
+
+	if(gui.editor == 1)
+		return;
 
     var camera = this._camera;
     if(window.destination_eye)
@@ -334,3 +276,23 @@ Controller.prototype.update = function(dt, ctx)
     if(ctx.keys["SPACE"]){                              this._camera.moveLocal([0,dt * s,0]);}
     else if(ctx.keys["SHIFT"]){                         this._camera.moveLocal([0,dt * -s,0]);}
 }
+
+Object.defineProperty(Controller.prototype, 'near', {
+    get: function() { return this._near; },
+    set: function(v) { 
+		this._near = v;
+		CORE.setUniform("near", v);
+		this._camera.near = v;
+	},
+    enumerable: true //avoid problems
+});
+
+Object.defineProperty(Controller.prototype, 'far', {
+    get: function() { return this._far; },
+    set: function(v) { 
+		this._far = v; 
+		CORE.setUniform("far", v);
+		this._camera.far = v;
+	},
+    enumerable: true //avoid problems
+});

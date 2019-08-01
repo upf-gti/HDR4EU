@@ -8,6 +8,9 @@ function TextureTools()
 	this.scale = 1;
 	this.diffA = "";
 	this.diffB = "";
+
+	this.mark = true;
+	this.collapsed = false;
 }
 
 Object.assign( TextureTools.prototype, {
@@ -24,19 +27,27 @@ Object.assign( TextureTools.prototype, {
 
 		widgets.on_refresh = function(){
 
-			widgets.clear();
+			//widgets.clear();
 
 			that.diffA = CORE._environment;
 			that.diffB = CORE._last_environment;
 
 			const textures = Object.keys(gl.textures).filter( e => gl.textures[e].texture_type === GL.TEXTURE_CUBE_MAP && !e.includes("prem") );
 
-			// TODO: select A and B 
-			widgets.addTitle("Texture Difference");
+			var element = widgets.addSection("Texture Tools", {collapsed: that.collapsed, callback: function(no_collapsed){
+				that.collapsed = !no_collapsed;
+			}});
+			
+			element.addEventListener("dragstart", function(e){
+					e.dataTransfer.setData("type", "gui");
+					e.dataTransfer.setData("component", "TextureTools");
+			});
+
+			element.setAttribute("draggable", true);
+
+			widgets.addTitle("Difference");
 			widgets.addCombo("A", that.diffA, { values: textures, callback: function(v){ that.diffA = v; } });
 			widgets.addCombo("B", that.diffA, { values: textures, callback: function(v){ that.diffB = v; } });
-			/*widgets.addString("Tex A", that.diffA, { callback: function(v){ that.diffA = v; } });
-			widgets.addString("Tex B", that.diffB, { callback: function(v){ that.diffB = v; } });*/
 			widgets.addSlider("Scale", that.scale, { min: 1, max: 10, step: 0.1,callback: function(v){ that.scale = v; } });
 			widgets.widgets_per_row = 2;
 			widgets.addButton(null, "Reset", { callback: function(v){ 
@@ -46,7 +57,7 @@ Object.assign( TextureTools.prototype, {
 			} });
 			widgets.addButton(null, "Update", { callback: function(v){ 
 				
-					widgets.on_refresh();
+				//	widgets.on_refresh();
 					if( getDiffTexture( that.diffA, that.diffB, that ) );
 						CORE.cubemap.textures["color"] = "diffTex";
 			} });
@@ -57,4 +68,4 @@ Object.assign( TextureTools.prototype, {
 	}
 });
 		
-RM.registerComponent( TextureTools, 'TextureTools');
+//RM.registerComponent( TextureTools, 'TextureTools');

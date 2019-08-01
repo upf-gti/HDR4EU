@@ -7,15 +7,16 @@
         "js/lib/UTIF.js",
         "js/lib/UPNG.js",
         "js/lib/jpg.js",
-        "js/lib/linearAlgebra.js",
-        "js/lib/numbers.js",
-        "js/lib/numeric.js",
-        "js/lib/bootstrap.min.js",
+	"js/lib/math/linearAlgebra.js",
+        "js/lib/math/numbers.js",
+        "js/lib/math/numeric.js",
+	"js/lib/stats.min.js",
+	"js/lib/bootstrap.min.js",
         "js/lib/jscolor/jscolor.js",
         "js/lib/gl-matrix-min.js",
-        "js/lib/dat.gui.min.js",
         "js/lib/litegl.js",
-        "js/lib/Canvas2DtoWebGL.js",
+	"js/lib/Canvas2DtoWebGL.js",
+	"js/lib/dragAndScale.js",
         "js/lib/wbin.js",
         "js/lib/litescene.js",
         "js/lib/litegraph.js",
@@ -27,25 +28,48 @@
         "js/lib/SimplexNoise.js",
 	"js/filesystem.js",
         "js/gui.js",
+	"js/actions.js",
         "js/utils.js",
-        "js/core.js",
-        "js/components/atmospheric.js",
+        "js/hdri.js",
+	"js/core.js",
+        "js/components/irradiance.js",
+	"js/components/atmospheric.js",
+	"js/components/histogram.js",
+	"js/components/textureTools.js",
         "js/components/colorpicker.js",
         "js/components/nodepicker.js",
         "js/components/controller.js",
         "js/components/light.js",
         "js/components/render.js",
         "js/components/screenfx.js",
-        "js/shaders/tonemapping.js",
+        "js/shaders/histogram.js",
+	"js/shaders/tonemapping.js",
         "js/shaders/pbr.js",
         "js/shaders/defpbr.js",
-        "js/screenspace/ssao.js",
-        "js/screenspace/ssr.js"
+	"js/shaders/defflat.js",
+        "js/shaders/assembly.js",
+	"js/screenspace/ssao.js"
     ],
 
     "scenes" : {
 
-        "Pbr": {
+        "Test": {
+            "name": "Test",
+            "mesh": "@sphere",
+            "textures": {
+                "roughness": "../assets/gradient.jpg",
+                "metalness": "../assets/noise.jpg",
+                "albedo": "../assets/TEST.JPG"
+	     },
+            "size": "0 MB",
+            "camera": {
+                "eye": [-5.5,0,0]
+            },
+	    "uniforms": {
+		"u_roughnessInBlue": "true"
+	    }
+        },
+	"Pbr": {
             "name": "Pbr",
             "mesh": "Pbr/pbr.wbin",
             "textures": {

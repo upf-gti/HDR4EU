@@ -6,7 +6,9 @@
 var CORE        = null,
     LOAD_STEPS  = 6,
     STEPS       = 0,
-    _dt         = 0.0;
+    _dt         = 0.0,
+	postFrame	= 0.0
+	tFrame		= 0.0;
 
 var ResourceManager = RM = {
         version: 1.0,
@@ -45,6 +47,7 @@ var ResourceManager = RM = {
         '<div id="canvas-tools">' +
         '    <div class="tool-section tool-section-manipulate">' +
         '        <div class="tool-button tool-colorpicker" title="Pick color" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-colorpicker.png)"></div>' +
+		'        <div class="tool-button tool-showgrid enabled" title="Show grid" style="background-position: 0.16em 0.16em; background-image: url(https://webglstudio.org/latest/imgs/mini-icon-grid.png)"></div>' +
         '        <div class="tool-button tool-sphereprem" title="Show sphere PREM" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-circle.png)"></div>' +
         '        <div class="tool-button tool-deferredtex" title="Show deferred textures" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-depth.png)"></div>' +
         '    </div>' +
@@ -109,8 +112,7 @@ var ResourceManager = RM = {
 
         function onLoad(loaded_scripts)
         {
-            var factor = "100%";
-            $("#import-text").html(factor);
+			var factor = "100%";
             $("#import-bar").css('width', factor);
             console.log("%cLoaded","color: #5AF; font-size: 20px");
 
@@ -121,18 +123,21 @@ var ResourceManager = RM = {
             $("#import-names").append(name+"</p></div>");
             $("#import-names").append("</br>Loaded</br>");    
             $("#import-names").append("Setting up environment</br>");
-            CORE = new Core();
-            $("#import-bar").css('width', "0%");
-            $("#import-bar").css('background', "#AAF");
+			CORE = new Core();
         }
 
         function onProgress(name, num)
         {
 
-            var factor = (num) / parseFloat(that.totalImports) * 100;
+            var factor = (num) / parseFloat(that.totalImports);
 
             $("#import-text").html(parseInt(factor)+"%");
-            $("#import-bar").css('width', parseInt(factor)+"%");
+
+			var old = parseFloat( $("#import-bar").css('width') );
+			var parent = parseFloat( $("#import-container").css('width') );
+			var value = factor * parent;
+
+            $("#import-bar").css('width', LiteGUI.sizeToCSS(value));
 
             name = '<div class="script-loaded"><img class="jsicon" src="assets/js_icon.png"><p>' + name.split('?')[0];
             $("#import-names").append(name+"</p></div>");
@@ -145,7 +150,7 @@ var ResourceManager = RM = {
 
                 if($("#import-names")[0].scrollTop < max) {
                     $("#import-names")[0].scrollBy(0,1);
-                    scrolldelay = setTimeout(pageScroll,10);
+                    scrolldelay = setTimeout(pageScroll,2);
                 }
                 else
                 {

@@ -30,9 +30,9 @@ Object.assign( PBR_Shader.prototype, {
         console.log("Uniforms", this.uniforms);
     },
 
-	setup(console) {
+	setup(debug) {
 
-		if(console)
+		if(debug)
 			this.info();
 		this.vs_code = '\tprecision highp float;\n';
 		this.fs_code = [
@@ -40,20 +40,23 @@ Object.assign( PBR_Shader.prototype, {
 			'\tprecision highp float;\n'
 		].join('\n');
 		
-		var defines_list = Object.assign(this.defines, RM.shader_macros);
-
-		for(var i in defines_list) {
-			this.vs_code += '\t#define ' + i + " " + defines_list[i] + "\n";
-			this.fs_code += '\t#define ' + i + " " + defines_list[i] + "\n";
+		for(var i in this.defines) {
+			this.vs_code += '\t#define ' + i + " " + this.defines[i] + "\n";
+			this.fs_code += '\t#define ' + i + " " + this.defines[i] + "\n";
 		}
-		
+
+		for(var i in RM.shader_macros) {
+			this.vs_code += '\t#define ' + i + " " + RM.shader_macros[i] + "\n";
+			this.fs_code += '\t#define ' + i + " " + RM.shader_macros[i] + "\n";
+		}
+
 		this.vs_code += PBR_Shader.VS_CODE;
 		this.fs_code += PBR_Shader.FS_CODE;
-		this.fs_code += PBR_Shader.FS_MAIN_CODE_FORWARD;
+		this.fs_code += PBR_Shader.FS_MAIN_CODE;
 	}
 } );
 
-PBR_Shader.FS_MAIN_CODE_FORWARD = `
+PBR_Shader.FS_MAIN_CODE = `
 
 	void main() {
         
@@ -96,6 +99,8 @@ PBR_Shader.FS_MAIN_CODE_FORWARD = `
 		};		*/
 
 		  
+	
+
 		if(u_show_layers)
 		{
 
@@ -122,31 +127,6 @@ PBR_Shader.FS_MAIN_CODE_FORWARD = `
         gl_FragColor = vec4(color, alpha);
     }
 `;
-
-PBR_Shader.FS_MAIN_CODE_DEFERRED = `
-
-	void main() {
-        
-        PBRMat material;
-		vec3 color;
-		float alpha = 1.0;
-
-        updateMaterial( material );
-        updateVectors( material );
-		do_lighting( material, color);
-
-		if(u_hasAlpha)
-			alpha = texture2D(u_opacity_texture, v_coord).r;
-
-		if(u_isEmissive)
-			 color += texture2D(u_emissive_texture, v_coord).rgb * u_emissiveScale;
-	
-		gl_FragData[0] = vec4(color, alpha);
-		gl_FragData[1] = vec4((material.N * 0.5 + vec3(0.5) ), 1.0); 
-		gl_FragData[2] = vec4(vec3(material.roughness), 1.0);
-    }
-`;
-
 
 PBR_Shader.VS_CODE = `
     attribute vec3 a_vertex;
@@ -182,73 +162,93 @@ PBR_Shader.VS_CODE = `
 `;
 
 PBR_Shader.FS_CODE = `
-    varying vec3 v_wPosition;
-    varying vec3 v_wNormal;
-    varying vec2 v_coord;
- 
-    uniform float u_rotation;
-    uniform float u_light_intensity;
-    uniform vec3 u_light_color;
-    uniform vec3 u_light_position;
-    uniform vec3 u_camera_position;
-    uniform vec4 background_color;
+    
+	varying vec3 v_wPosition;
+	varying vec3 v_wNormal;
+	varying vec2 v_coord;
+
+	uniform float u_rotation;
+	uniform float u_light_intensity;
+	uniform vec3 u_light_color;
+	uniform vec3 u_light_position;
+	uniform vec3 u_camera_position;
+	uniform vec3 u_background_color;
 	uniform vec4 u_viewport;
 	uniform bool u_show_layers;
+	uniform bool u_applyGamma;
 
-    uniform sampler2D u_brdf_texture;
+	uniform sampler2D u_brdf_texture;
 	uniform sampler2D u_brdf_texture_multi;
-    uniform samplerCube u_env_texture;
-    uniform samplerCube u_env_1_texture;
-    uniform samplerCube u_env_2_texture;
-    uniform samplerCube u_env_3_texture;
-    uniform samplerCube u_env_4_texture;
-    uniform samplerCube u_env_5_texture;
+	uniform samplerCube u_env_texture;
+	uniform samplerCube u_env_1_texture;
+	uniform samplerCube u_env_2_texture;
+	uniform samplerCube u_env_3_texture;
+	uniform samplerCube u_env_4_texture;
+	uniform samplerCube u_env_5_texture;
+	//uniform samplerCube u_env_6_texture;
+	//uniform samplerCube u_env_7_texture;
 
-    uniform sampler2D u_albedo_texture;
-    uniform sampler2D u_normal_texture;
-    uniform sampler2D u_roughness_texture;
-    uniform sampler2D u_metalness_texture;
-    uniform sampler2D u_opacity_texture;
-    uniform sampler2D u_emissive_texture;
-    uniform sampler2D u_ao_texture;
+	uniform sampler2D u_albedo_texture;
+	uniform sampler2D u_normal_texture;
+	uniform sampler2D u_roughness_texture;
+	uniform sampler2D u_metalness_texture;
+	uniform sampler2D u_opacity_texture;
+	uniform sampler2D u_height_texture;
+	uniform sampler2D u_emissive_texture;
+	uniform sampler2D u_ao_texture;
 
-    uniform vec3 u_albedo;
-    uniform float u_roughness;
-    uniform float u_metalness;
+	uniform vec3 u_albedo;
+	uniform float u_roughness;
+	uniform float u_metalness;
+	uniform float u_alpha;
+	uniform vec3 u_tintColor;
 
-    uniform float u_ibl_intensity;
-    uniform float u_emissiveScale;
-    uniform bool u_isEmissive;
-    uniform bool u_hasAlpha;	
-    uniform bool u_hasNormal;
-    uniform bool u_hasAO;
-    uniform bool u_enable_ao;
-    uniform bool u_correctAlbedo;
+	uniform float u_ibl_intensity;
+	uniform float u_emissiveScale;
+	uniform bool u_isEmissive;
+	uniform bool u_hasAlpha;	
+	uniform bool u_hasNormal;
+	uniform bool u_hasAO;
+	uniform bool u_hasBump;
+	uniform bool u_enable_ao;
+	uniform bool u_correctAlbedo;
 
-	uniform float u_reflectance;
+	uniform bool u_roughnessInBlue;
+
+	uniform vec3 u_reflectance;
 	uniform float u_clearCoat;
 	uniform float u_clearCoatRoughness;
-	uniform float u_energy;
-	uniform bool u_flipX;
 
-    struct PBRMat
-    {
-        float linearRoughness;
+	// GUI
+	uniform bool u_flipX;
+	uniform bool u_renderDiffuse;
+	uniform bool u_renderSpecular;
+
+	struct PBRMat
+	{
+		float linearRoughness;
 		float roughness;
-        float metallic;
-        float f90;
-        vec3 f0;
-        vec3 diffuseColor;
-        vec3 reflection;
+		float metallic;
+		float alpha;
+		float f90;
+		vec3 f0;
+		vec3 reflectance;
+		vec3 baseColor;
+		vec3 diffuseColor;
+		vec3 specularColor;
+		vec3 reflection;
 		vec3 N;
-        float NoV;
-        float NoL;
-        float NoH;
-        float LoH;
+		vec3 V;
+		vec3 H;
+		float NoV;
+		float NoL;
+		float NoH;
+		float LoH;
+		float VoH;
 		float clearCoat;
 		float clearCoatRoughness;
 		float clearCoatLinearRoughness;
-    };
+	};
 
 	//Javi Agenjo Snipet for Bump Mapping
 	mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv){
@@ -282,172 +282,257 @@ PBR_Shader.FS_CODE = `
 		return normalize(TBN * normal_pixel);
 	}
 
-    // Normal Distribution Function (NDC) using GGX Distribution
-    float D_GGX (const in float NoH, const in float linearRoughness ) {
-        float a2 = linearRoughness * linearRoughness;
-        float f = (NoH * a2 - NoH) * NoH + 1.0;
-        return a2 / (PI * f * f);
-    }
+	#define MEDIUMP_FLT_MAX    65504.0
+	#define saturateMediump(x) min(x, MEDIUMP_FLT_MAX)
 
-    // Geometric shadowing using Smith Geometric Shadowing function
-    // Extracting visibility function V(v, l, a)
-    float V_SmithGGXCorrelated (const in float NoV, const in float NoL, const in float linearRoughness ) {
-        float a2 = linearRoughness * linearRoughness;
-        float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
-        float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoL + a2);
-        return 0.5 / (GGXV + GGXL);
-    }
-
-    // Approximation (Not correct 100% but has better performance)
-    float V_SmithGGXCorrelatedFast (const in float NoV, const in float NoL, const in float linearRoughness ) {
-        float a = linearRoughness;
-        float GGXV = NoL * (NoV * (1.0 - a) + a);
-        float GGXL = NoV * (NoL * (1.0 - a) + a);
-        return 0.5 / (GGXV + GGXL);
-    }
-
-    // Visibility term (Kelemen) for Clear coat
-    float V_Kelemen (const in float LoH ) {
-        return 0.25 / (LoH * LoH);
-    }
-
-    // Fresnel effect: Specular F using Schlick approximation
-    // f0 is the specular reflectance at normal incident angle
-    float F_Schlick (const in float VoH, const in float f0, const in float f90) {
-        return f0 + (f90 - f0) * pow(1.0 - VoH, 5.0);
-    }
-
-    // Fresnel term with scalar optimization(f90=1)
-    vec3 F_Schlick (const in float VoH, const in vec3 f0) {
-        float f = pow(1.0 - VoH, 5.0);
-        return f0 + (vec3(1.0) - f0) * f;
-    }
-
-	float F_Schlick (const in float VoH, const in float f0) {
-        return f0 + (1.0 - f0) * pow(1.0 - VoH, 5.0);
-    }
-
-    // Diffuse Reflections: Lambertian BRDF
-    float Fd_Lambert() {
-        return RECIPROCAL_PI;
-    }
-
-    // Diffuse Reflections: Disney BRDF using retro-reflections using F term
-    float Fd_Burley (const in float NoV, const in float NoL, const in float LoH, const in float linearRoughness) {
-        float f90 = 0.5 + 2.0 * linearRoughness * LoH * LoH;
-        float lightScatter = F_Schlick(NoL, 1.0, f90);
-        float viewScatter  = F_Schlick(NoV, 1.0, f90);
-        return lightScatter * viewScatter * RECIPROCAL_PI;
-    }
-
-	vec3 f0ClearCoatToSurface(const vec3 f0) {
-		// Approximation of iorTof0(f0ToIor(f0), 1.5)
-		// This assumes that the clear coat layer has an IOR of 1.5
-		return clamp(f0 * (f0 * (0.941892 - 0.263008 * f0) + 0.346479) - 0.0285998, 0.0, 1.0);
+	float D_GGX_2(float linearRoughness, float NoH, const vec3 n, const vec3 h) {
+	    vec3 NxH = cross(n, h);
+	    float a = NoH * linearRoughness;
+	    float k = linearRoughness / (dot(NxH, NxH) + a * a);
+	    float d = k * k * (1.0 / PI);
+	    return saturateMediump(d);
 	}
 
-    void updateMaterial (inout PBRMat material) {
-        float metallic = u_metalness;
-        #ifdef HAS_METALNESS_MAP
-            metallic = texture2D(u_metalness_texture, v_coord).r;
-        #endif
-        
-        vec3 baseColor = u_albedo;
-        #ifdef HAS_ALBEDO_MAP
-            baseColor = texture2D(u_albedo_texture, v_coord).rgb;
-        #endif
+	// Normal Distribution Function (NDC) using GGX Distribution
+	float D_GGX (const in float NoH, const in float linearRoughness ) {
+		float a2 = linearRoughness * linearRoughness;
+		float f = (NoH * a2 - NoH) * NoH + 1.0;
+		return a2 / (PI * f * f);
+	}
 
-        // Transform Base Color to linear space
-        if( u_correctAlbedo )
-            baseColor = pow(baseColor, vec3(GAMMA));
+	// Geometry Term : Geometry masking / shadowing due to microfacets
+	float GGX(float NdotV, float k){
+		return NdotV / (NdotV * (1.0 - k) + k);
+	}
+	
+	float G_Smith(float NdotV, float NdotL, float linearRoughness){
+		float k = linearRoughness / 2.0;
+		return GGX(NdotL, k) * GGX(NdotV, k);
+	}
 
-        // Parameter Remapping (Base color)
-        vec3 diffuseColor = (1.0 - metallic) * baseColor;
+	// Geometric shadowing using Smith Geometric Shadowing function
+	// Extracting visibility function V(v, l, a)
+	float V_SmithGGXCorrelated(float NoV, float NoL, float linearRoughness) {
+	    float a2 = linearRoughness * linearRoughness;
+	    float GGXV = NoL * sqrt(NoV * NoV * (1.0 - a2) + a2);
+	    float GGXL = NoV * sqrt(NoL * NoL * (1.0 - a2) + a2);
+	    return 0.5 / (GGXV + GGXL);
+	}
 
-        // Parameter Remapping (f0)
-        /* 
-            Min reflectance - Water (2%) - Linear value is 0.35
-            Default reflectance (4%) - Linear value is 0.5
-            Max reflectance - Gemstones (16%) - Linear value is 1.0
-        */
-        
-        float reflectance = u_reflectance; // 0.5 is the reflectance for default material
-        
-        // Compute f0 for dielectrics and metallic materials
-        vec3 f0 = MAX_REFLECTANCE * reflectance * reflectance * (1.0 - metallic) + baseColor * metallic;
+	// Approximation (Not correct 100% but has better performance)
+	float V_SmithGGXCorrelatedFast(float NoV, float NoL, float linearRoughness) {
+	    float a = linearRoughness;
+	    float GGXV = NoL * (NoV * (1.0 - a) + a);
+	    float GGXL = NoV * (NoL * (1.0 - a) + a);
+	    return 0.5 / (GGXV + GGXL);
+	}
 
-        // Parameter Remapping (roughness)
-        float roughness = u_roughness;
-        #ifdef HAS_ROUGHNESS_MAP
-            roughness = texture2D(u_roughness_texture, v_coord).r;
-        #endif
-		roughness = max(roughness, MIN_ROUGHNESS);	
+	float Geometric_Smith_Schlick_GGX_(float a, float NdV, float NdL) {
+	    // Smith schlick-GGX.
+	    float k = a * 0.5;
+	    float GV = NdV / (NdV * (1.0 - k) + k);
+	    float GL = NdL / (NdL * (1.0 - k) + k);
+	    return GV * GL;
+	}
 
-		// Clear coat lobe
+	// Visibility term (Kelemen) for Clear coat
+	float V_Kelemen (const in float LoH ) {
+		return 0.25 / (LoH * LoH);
+	}
+
+	// Fresnel effect: Specular F using Schlick approximation
+	// f0 is the specular reflectance at normal incident angle
+	float F_Schlick (const in float VoH, const in float f0, const in float f90) {
+		return f0 + (f90 - f0) * pow(1.0 - VoH, 5.0);
+	}
+
+	// Fresnel term with scalar optimization(f90=1)
+	vec3 F_Schlick (const in float VoH, const in vec3 f0) {
+		float f = pow(1.0 - VoH, 5.0);
+		return f0 + (vec3(1.0) - f0) * f;
+	}
+
+	float F_Schlick (const in float VoH, const in float f0) {
+		return f0 + (1.0 - f0) * pow(1.0 - VoH, 5.0);
+	}
+
+	// Diffuse Reflections: Lambertian BRDF
+	float Fd_Lambert() {
+		return RECIPROCAL_PI;
+	}
+
+	// Diffuse Reflections: Disney BRDF using retro-reflections using F term
+	float Fd_Burley (const in float NoV, const in float NoL, const in float LoH, const in float linearRoughness) {
+		float f90 = 0.5 + 2.0 * linearRoughness * LoH * LoH;
+		float lightScatter = F_Schlick(NoL, 1.0, f90);
+		float viewScatter  = F_Schlick(NoV, 1.0, f90);
+		return lightScatter * viewScatter * RECIPROCAL_PI;
+	}
+
+	float sq(float x) {
+	    return x * x;
+	}
+
+	float max3(const vec3 v) {
+	    return max(v.x, max(v.y, v.z));
+	}
+
+	float iorToF0 (float transmittedIor, float incidentIor) {
+	    return sq((transmittedIor - incidentIor) / (transmittedIor + incidentIor));
+	}
+
+	float f0ToIor(float f0) {
+	    float r = sqrt(f0);
+	    return (1.0 + r) / (1.0 - r);
+	}
+
+	vec3 computeDielectricF0(vec3 reflectance) {
+	    return MAX_REFLECTANCE * reflectance * reflectance;
+	}
+
+	vec3 f0ClearCoatToSurface(const vec3 f0, float ior) {
+
+
+		return vec3( clamp(iorToF0(  f0ToIor(f0.x), ior ), 0.0, 1.0) );
+	
+
+		// Approximation of iorTof0(f0ToIor(f0), 1.5)
+		// This assumes that the clear coat layer has an IOR of 1.5
+		//return clamp(f0 * (f0 * (0.941892 - 0.263008 * f0) + 0.346479) - 0.0285998, 0.0, 1.0);
+	}
+
+	void updateVectors (inout PBRMat material) {
+
+		vec3 v = normalize(u_camera_position - v_wPosition);
+		vec3 n = normalize( v_wNormal );
+
+		#ifdef HAS_NORMAL_MAP
+			vec3 normal_map = texture2D(u_normal_texture, v_coord).xyz;
+			n = normalize( perturbNormal( v_wNormal, v, v_coord, normal_map ) );
+		#endif
+
+		vec3 l = normalize(u_light_position - v_wPosition);
+		vec3 h = normalize(v + l);
+
+		material.reflection = normalize(reflect(v, n));
+
+		if(u_flipX)
+			material.reflection.x = -material.reflection.x;
+		material.N = n;
+		material.V = v;
+		material.H = h;
+		material.NoV = clamp(dot(n, v), 0.0, 1.0) + 1e-6;
+		material.NoL = clamp(dot(n, l), 0.0, 1.0) + 1e-6;
+		material.NoH = clamp(dot(n, h), 0.0, 1.0) + 1e-6;
+		material.LoH = clamp(dot(l, h), 0.0, 1.0) + 1e-6;
+		material.VoH = clamp(dot(v, h), 0.0, 1.0) + 1e-6;
+	}
+
+	vec3 computeDiffuseColor(vec3 baseColor, float metallic) {
+	
+		return (1.0 - metallic) * baseColor;
+	}
+
+	vec3 computeF0(const vec3 baseColor, float metallic, vec3 reflectance) {
+	    return baseColor * metallic + (reflectance * (1.0 - metallic));
+	}
+
+	float rand(vec2 co)  {
+		    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+		}
+
+
+	void createMaterial (inout PBRMat material) {
+		
+		float metallic = max(0.02, u_metalness);
+		#ifdef HAS_METALNESS_MAP
+			metallic = texture2D(u_metalness_texture, v_coord).r;
+		#endif
+
+		vec3 baseColor = u_albedo;
+		#ifdef HAS_ALBEDO_MAP
+			baseColor = texture2D(u_albedo_texture, v_coord).rgb;
+		#endif
+
+		if( u_correctAlbedo )
+			baseColor = pow(baseColor, vec3(GAMMA)); // Transform Base Color to linear space
+
+
+		// GET COMMON MATERIAL PARAMS
+		vec3 reflectance = computeDielectricF0(u_reflectance);
+		vec3 diffuseColor = computeDiffuseColor(baseColor, metallic);
+		vec3 f0 = computeF0(baseColor, metallic, reflectance);
+
+		// GET COAT PARAMS
 		float clearCoat = u_clearCoat; // clear coat strengh
 		float clearCoatRoughness = u_clearCoatRoughness;
-		
-		// Parameter remapping (clearCoatRoughness)
-		clearCoatRoughness = mix(0.089, 0.6, clearCoatRoughness);
-		float clearCoatLinearRoughness = clearCoatRoughness * clearCoatRoughness;
 
-		// recompute f0 by first computing its IOR, then reconverting to f0
-		// by using the correct interface
-		//f0 = mix(f0, f0ClearCoatToSurface(f0), clearCoat);
-		
-		// remap roughness the base layer must be at least as rough
-		// as the clear coat layer to take into account possible diffusion by the
-		// top layer
-		//roughness = max(roughness, clearCoatRoughness);
-        float linearRoughness = roughness * roughness;
+		clearCoatRoughness = mix(MIN_PERCEPTUAL_ROUGHNESS, MAX_CLEAR_COAT_PERCEPTUAL_ROUGHNESS, clearCoatRoughness);
+		float clearCoatLinearRoughness = sq(clearCoatRoughness);
 
-        material.roughness = roughness;
+		// recompute f0 by computing its IOR
+		f0 = mix(f0, f0ClearCoatToSurface(f0, 1.5), clearCoat);
+
+		// GET ROUGHNESS PARAMS
+		float roughness = u_roughness;
+		#ifdef HAS_ROUGHNESS_MAP
+
+			if(u_roughnessInBlue)
+				roughness = texture2D(u_roughness_texture, v_coord).b;
+			else
+				roughness = texture2D(u_roughness_texture, v_coord).r;
+		#endif
+
+		if(false)
+			roughness = rand(v_wPosition.xz);
+
+		roughness = max(roughness, MIN_ROUGHNESS);	
+		float linearRoughness = roughness * roughness;
+
+		// remap roughness: the base layer must be at least as rough as the clear coat layer
+		roughness = clearCoat > 0.0 ? max(roughness, clearCoatRoughness) : roughness;
+
+		material.roughness = roughness;
 		material.linearRoughness = linearRoughness;
 		material.clearCoat = clearCoat;
-		material.clearCoatRoughness = clearCoatRoughness ;
+		material.clearCoatRoughness = clearCoatRoughness;
 		material.clearCoatLinearRoughness = clearCoatLinearRoughness;
 		material.metallic = metallic;
-        material.f0 = f0;
+		material.f0 = f0;
 		material.diffuseColor = diffuseColor;
-    }
+		material.baseColor = baseColor;
+		material.reflectance = reflectance;
+		
+		updateVectors( material );
+	}
 
-    void updateVectors (inout PBRMat material) {
-        vec3 v = normalize(v_wPosition - u_camera_position);
-        vec3 n = normalize( v_wNormal );
+	vec3 specularBRDF( const in PBRMat material ) {
 
-        #ifdef HAS_NORMAL_MAP
-            vec3 normal_map = texture2D(u_normal_texture, v_coord).xyz;
-            n = normalize( perturbNormal( v_wNormal, v, v_coord, normal_map ) );
-        #endif
+		// Normal Distribution Function
+		float D = D_GGX( material.NoH, material.linearRoughness );
+		// float D = D_GGX_2(material.linearRoughness, material.NoH, material.N, material.H);
+		// float D = Geometric_Smith_Schlick_GGX_(material.linearRoughness, material.NoV, material.NoL);
 
-        vec3 l = -normalize(u_light_position - v_wPosition);
-        vec3 h = normalize(v + l);
+		// Visibility Function (shadowing/masking)
+		float V = G_Smith( material.NoV, material.NoL, material.linearRoughness );
+		// float V = V_SmithGGXCorrelated( material.NoV, material.NoL, material.linearRoughness );
+		
+		// Fresnel
+		vec3 F = F_Schlick( material.LoH, material.f0 );
 
-        material.reflection = normalize(reflect(-v, n));
-		// material.reflection.x = -material.reflection.x;
-		material.N = n;
-        material.NoV = abs(dot(-n, v)) + 1e-5;
-        material.NoL = clamp(dot(-n, l), 0.0, 1.0);
-        material.NoH = clamp(dot(-n, h), 0.0, 1.0);
-        material.LoH = clamp(dot(l, h), 0.0, 1.0);
-    }
+		vec3 spec = (D * V) * F;
+		//spec /= (4.0 * material.NoL * material.NoV + 1e-6);
 
-    vec3 specularBRDF( const in PBRMat material ) {
-        float D = D_GGX( material.NoH, material.linearRoughness );
-        float V = V_SmithGGXCorrelated( material.NoV, material.NoL, material.linearRoughness );
-        vec3 F = F_Schlick( material.LoH, material.f0 );
-        return (D * V) * F;
-    }
+		return spec;
+	}
 
 	float specularClearCoat( const PBRMat material, inout float Fc) {
-		
+
 		float D = D_GGX( material.clearCoatLinearRoughness, material.NoH );
 		float V = V_Kelemen( material.LoH );
-		float F = F_Schlick( material.LoH, 0.04, 1.0 ) * material.clearCoat;
-		
-		Fc = F;
+		Fc = F_Schlick( material.LoH, 0.04, 1.0 ) * material.clearCoat; // 0.04 is the f0 for IOR = 1.5
 
-		return (D * V) * F;
+		return (D * V) * Fc;
 	}
 
 	mat4 rotationMatrix(vec3 a, float angle) {
@@ -456,90 +541,170 @@ PBR_Shader.FS_CODE = `
 		float s = sin(angle);                                                                                                                          
 		float c = cos(angle);
 		float oc = 1.0 - c;
-		
+
 		return mat4(oc*axis.x*axis.x+c,oc*axis.x*axis.y-axis.z*s,oc*axis.z*axis.x+axis.y*s,0.0,
-					oc*axis.x*axis.y+axis.z*s,oc*axis.y*axis.y+c,oc*axis.y*axis.z-axis.x*s,0.0,
-					oc*axis.z*axis.x-axis.y*s,oc*axis.y*axis.z+axis.x*s,oc*axis.z*axis.z+c,0.0,
-					0.0,0.0,0.0,1.0);
+		oc*axis.x*axis.y+axis.z*s,oc*axis.y*axis.y+c,oc*axis.y*axis.z-axis.x*s,0.0,
+		oc*axis.z*axis.x-axis.y*s,oc*axis.y*axis.z+axis.x*s,oc*axis.z*axis.z+c,0.0,
+		0.0,0.0,0.0,1.0);
 	}
 
 	vec3 prem(vec3 R, float roughness, float rotation) {
-    
-        float a = roughness * 5.0;
+
+		float a = roughness * 7.0;
 
 		R = (rotationMatrix(vec3(0.0,1.0,0.0),rotation) * vec4(R,1.0)).xyz;
 
-    	if(a < 1.0) return mix(textureCube(u_env_texture, R).rgb, textureCube(u_env_1_texture, R).rgb, a);
-        if(a < 2.0) return mix(textureCube(u_env_1_texture, R).rgb, textureCube(u_env_2_texture, R).rgb, a - 1.0);
-        if(a < 3.0) return mix(textureCube(u_env_2_texture, R).rgb, textureCube(u_env_3_texture, R).rgb, a - 2.0);
-        if(a < 4.0) return mix(textureCube(u_env_3_texture, R).rgb, textureCube(u_env_4_texture, R).rgb, a - 3.0);
-        if(a < 5.0) return mix(textureCube(u_env_4_texture, R).rgb, textureCube(u_env_5_texture, R).rgb, a - 4.0);
+		vec3 color;
 
-        return textureCube(u_env_5_texture, R).xyz;
-    }
+		if(a < 1.0) color = mix(textureCube(u_env_texture, R).rgb, textureCube(u_env_1_texture, R).rgb, a);
+		else if(a < 2.0) color = mix(textureCube(u_env_1_texture, R).rgb, textureCube(u_env_2_texture, R).rgb, a - 1.0);
+		else if(a < 3.0) color = mix(textureCube(u_env_2_texture, R).rgb, textureCube(u_env_3_texture, R).rgb, a - 2.0);
+		else if(a < 4.0) color = mix(textureCube(u_env_3_texture, R).rgb, textureCube(u_env_4_texture, R).rgb, a - 3.0);
+		else if(a < 5.0) color = mix(textureCube(u_env_4_texture, R).rgb, textureCube(u_env_5_texture, R).rgb, a - 4.0);
+		//else if(a < 6.0) color = mix(textureCube(u_env_5_texture, R).rgb, textureCube(u_env_6_texture, R).rgb, a - 5.0);
+		//else if(a < 7.0) color = mix(textureCube(u_env_6_texture, R).rgb, textureCube(u_env_7_texture, R).rgb, a - 6.0);
+		//else color = textureCube(u_env_7_texture, R).xyz;
 
-	// Fdez-Agüera's "Multiple-Scattering Microfacet Model for Real-Time Image Based Lighting"
-	// Approximates multiscattering in order to preserve energy.
-	// http://www.jcgt.org/published/0008/01/03/
-	void BRDF_Specular_Multiscattering ( const in PBRMat material, inout vec3 singleScatter, inout vec3 multiScatter ) {
+		else color = textureCube(u_env_5_texture, R).xyz;
+
+		if(u_applyGamma)
+		color = pow(color, vec3(1.0/2.2));
+
+		return color;
+	}
+	
+	vec3 BRDF_Specular_Multiscattering ( const in PBRMat material) {
 		
 		vec3 F = F_Schlick( material.NoV, material.f0 );
 		vec2 brdf = texture2D( u_brdf_texture, vec2(material.NoV, material.roughness) ).rg;
 		vec3 FssEss = F * brdf.x + brdf.y;
 		float Ess = brdf.x + brdf.y;
 		float Ems = 1.0 - Ess;
-
 		vec3 Favg = F + ( 1.0 - F ) * 0.047619; // 1/21
 		vec3 Fms = FssEss * Favg / ( 1.0 - Ems * Favg );
-		singleScatter += FssEss;
-		multiScatter += Fms * Ems;
+		vec3 multiScatter = Fms * Ems * 1.0;
+
+		// Prefiltered radiance
+		vec3 radiance = prem(material.reflection, material.linearRoughness, u_rotation);
+		// Cosine-weighted irradiance
+		vec3 irradiance = prem(material.reflection, 1.0, u_rotation);
+		vec3 cosineWeightedIrradiance = irradiance * RECIPROCAL_PI;
+
+		return radiance * FssEss + material.diffuseColor * cosineWeightedIrradiance + cosineWeightedIrradiance * multiScatter;
+	}
+
+	vec2 prefilteredDFG(float NoV, float roughness) {
+	    // Karis' approximation based on Lazarov's
+	    const vec4 c0 = vec4(-1.0, -0.0275, -0.572,  0.022);
+	    const vec4 c1 = vec4( 1.0,  0.0425,  1.040, -0.040);
+	    vec4 r = roughness * c0 + c1;
+	    float a004 = min(r.x * r.x, exp2(-9.28 * NoV)) * r.x + r.y;
+	    return vec2(-1.04, 1.04) * a004 + r.zw;
+	    // Zioma's approximation based on Karis
+	    // return vec2(1.0, pow(1.0 - max(roughness, NoV), 3.0));
+	}
+
+	void ibl (PBRMat material, inout vec3 Fd, inout vec3 Fr) {
+	
+		/*vec3 radiance = prem(material.reflection, material.roughness, u_rotation);
+		vec3 irradiance = prem(material.reflection, 1.0, u_rotation);
+		vec3 cosineWeightedIrradiance = irradiance * RECIPROCAL_PI;
+		vec3 multiScatter = BRDF_Specular_Multiscattering( material );*/
+
+		if(u_renderDiffuse) {
+			Fd = prem(material.reflection, 1.0, u_rotation) * material.diffuseColor;
+		//	Fd += cosineWeightedIrradiance * multiScatter;
+		}
+		vec3 Lld = prem(material.reflection, material.roughness, u_rotation);
+		vec2 popo = texture2D( u_brdf_texture, vec2(material.NoV, material.roughness) ).rg;
+		vec2 Ldfg = prefilteredDFG(material.NoV, material.roughness);
+		float f90 = 1.0; // optimization purposes
+		vec3 F = F_Schlick( material.NoV, material.f0 );
+		if(u_renderSpecular)
+			Fr = (material.f0 * Ldfg.x + 1.5 * Ldfg.y) * Lld;
+	}
+
+	// Fdez-Agüera's "Multiple-Scattering Microfacet Model for Real-Time Image Based Lighting"
+	// Approximates multiscattering in order to preserve energy.
+	// http://www.jcgt.org/published/0008/01/03/
+	void ibl_multiscattering (PBRMat material, inout vec3 Fd, inout vec3 Fr) {
+		
+		// Roughness dependent fresnel
+		vec3 Fresnel = max(vec3(1.0 - material.roughness), material.f0) - material.f0;
+		vec3 kS = material.f0 + Fresnel * pow(1.0 - material.NoV, 5.0);
+		vec3 F = F_Schlick( material.NoV, material.f0 );
+		vec2 f_ab = texture2D( u_brdf_texture, vec2(material.NoV, material.roughness) ).rg;
+		vec3 FssEss = kS * f_ab.x + f_ab.y;
+
+		// Prefiltered radiance
+		vec3 radiance = prem(material.reflection, material.linearRoughness * 0.5, u_rotation);
+		// Cosine-weighted irradiance
+		vec3 irradiance = prem(material.reflection, 1.0, u_rotation);
+
+		// Multiple scattering
+		float Ess = f_ab.x + f_ab.y;
+		float Ems = 1.0 - Ess;
+		vec3 Favg = material.f0 + (1.0 - material.f0) * RECIPROCAL_PI;
+		vec3 Fms = FssEss * Favg / (1.0 - Ems * Favg);
+		// Dielectrics
+		vec3 Edss = 1.0 - (FssEss + Fms * Ems);
+		vec3 kD =  pow(material.baseColor, vec3(1.0/GAMMA)) * Edss;
+		// Composition
+		if(u_renderDiffuse)
+			Fd += (Fms*Ems+kD) * irradiance;
+		if(u_renderSpecular)
+			Fr += FssEss * radiance;
 	}
 
 	// still no energy compensation
 	void do_lighting(inout PBRMat material, inout vec3 color)
 	{
-		// Specular BRDF
-        vec3 Fr = specularBRDF( material );
-        // Diffuse BRDF
-        vec3 Fd = material.diffuseColor * Fd_Lambert();
-		// Combine
-		vec3 direct = Fd + Fr;
+		// INDIRECT LIGHT: IBL ********************
 
-		// Image based lighting 
-		vec3 radiance = prem(material.reflection, material.roughness, u_rotation);
-		vec3 irradiance = prem(material.reflection, 1.0, u_rotation);
-		vec3 cosineWeightedIrradiance = irradiance * RECIPROCAL_PI;
-
-		vec3 singleScatter;
-		vec3 multiScatter;
-
-		BRDF_Specular_Multiscattering( material, singleScatter, multiScatter );
-		Fr = radiance * singleScatter;
-		Fd = material.diffuseColor * cosineWeightedIrradiance;
-		Fd += cosineWeightedIrradiance * multiScatter * u_energy;
+		vec3 Fd_i = vec3(0.0);
+		vec3 Fr_i = vec3(0.0);
+		ibl_multiscattering(material, Fd_i, Fr_i);
 		
-		// Apply ambient oclusion 
-		if(u_hasAO && u_enable_ao) {
-			
-			Fr *= texture2D(u_ao_texture, v_coord).r;
+		// CLEAT COAT LOBE ************************
+
+		float Fcc = F_Schlick(material.NoV, 0.04) * material.clearCoat;
+		vec3 att = vec3(1.0) - Fcc;
+
+		// coatBump can change this
+		vec3 R = material.reflection;
+
+		if(u_hasBump) {
+			vec3 coat_bump = texture2D( u_height_texture, v_coord ).xyz;
+			coat_bump = normalize( perturbNormal( material.reflection, -material.V, v_coord, coat_bump ) );
+			R = coat_bump;
 		}
 
-		/*
-			Clear coat lobe
-		*/
-		float Fc = F_Schlick( material.NoV, 0.04, 1.0) * material.clearCoat;
-		float att = (1.0 - Fc);
+		// apply tint
+		Fd_i *= mix(vec3(1.0), u_tintColor, material.clearCoat);
+		Fr_i *= att;
+		Fd_i *= (att * att);
 
-		Fd *= att;
-		Fr *= (att * att);
-		Fr += prem(material.reflection, material.clearCoatRoughness, u_rotation) * Fc;
+		// apply clear coat
+		vec3 indirect = Fr_i + Fd_i;
+		indirect += prem(R, material.clearCoatRoughness, u_rotation) * Fcc;
+
+		// Apply ambient oclusion 
+		if(u_hasAO && u_enable_ao)
+			indirect *= texture2D(u_ao_texture, v_coord).r;
 		
-		vec3 indirect = Fd+Fr;
+		// DIRECT LIGHT ***************************
 
-		vec3 lightScale = vec3(u_light_intensity);
-		vec3 finalColor = indirect * u_ibl_intensity + direct * (material.NoL * u_light_color * lightScale);
-    	color = finalColor;
+		vec3 Fr_d = specularBRDF( material );
+		// vec3 Fd = material.diffuseColor * Fd_Lambert();
+		vec3 Fd_d = material.diffuseColor * Fd_Burley (material.NoV, material.NoL, material.LoH, material.linearRoughness);
+		vec3 direct = Fr_d + Fd_d;
+
+		// COMPOSE
+
+		vec3 lightParams = material.NoL * u_light_color * u_light_intensity;
+		color  =   indirect * u_ibl_intensity;// * u_background_color;
+		color +=  direct   * lightParams;
 	}
 `;
 
-RM.registerShader( PBR_Shader, "pbr" );
+// RM.registerShader( PBR_Shader, "pbr" );

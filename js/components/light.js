@@ -13,6 +13,7 @@ function Light()
     this.position = vec3.fromValues(1, 5, 1);
     this.color = [1, 1, 1];
     this.intensity = 0;
+	this.collapsed = false;
 }
 
 Object.defineProperty(Light.prototype, 'color', {
@@ -55,23 +56,43 @@ Object.defineProperty(Light.prototype, 'intensity', {
 
 Object.assign( Light.prototype, {
     
-    create(widgets) {
+    toJSON() {
+			
+			var component = {};
+			Object.assign(component, this);
+
+			// delete node (cyclic)
+			delete component.node;
+
+			return component;
+	},
+
+	create(widgets) {
 
         var that = this;
 
-        widgets.addSection("Light");
+		var element = widgets.addSection("Light", {collapsed: that.collapsed, callback: function(no_collapsed){
+				that.collapsed = !no_collapsed;
+			}});
+			
+		element.addEventListener("dragstart", function(e){
+				e.dataTransfer.setData("type", "gui");
+				e.dataTransfer.setData("component", "Light");
+		});
+
+		element.setAttribute("draggable", true);
+
         widgets.addVector3("Position", this.position, { callback: function(v){ that.position = v }});
+		 widgets.widgets_per_row = 2;
         widgets.addNumber("Size", this.node.scaling[0], {step: 0.01, callback: function(v){ that.node.scaling = v }});
+		widgets.addCheckbox("Show node", this.node.visible, {callback: function(v){ that.node.visible = v }});
+		widgets.widgets_per_row = 1;
         widgets.addColor("Color", this.color, {callback: function(color){ 
             that.color = color;
         }});
-        widgets.widgets_per_row = 2;
-        widgets.addSlider("Intensity", this.intensity, {min:0,max:10,step:0.1,callback: function(v) {  
+        widgets.addSlider("Intensity", this.intensity, {min:0,max:50,step:0.1,callback: function(v) {  
             that.intensity = v; 
         }});
-        widgets.addCheckbox("Show node", this.node.visible, {callback: function(v){ that.node.visible = v }});
-        widgets.widgets_per_row = 1;
-        widgets.addButton(null, "Get position", {callback: function(){ that.updateSidePanel(that._sidepanel, 'light')}});
     }
 } );
 

@@ -40,14 +40,26 @@ Core.prototype._ctor = function()
     this._scene = new RD.Scene();
     this._root = this._scene.root;
 
+	this.isFullscreen = false;
+
     // important nodes
     var cubemap = new RD.SceneNode();
     cubemap.name = "cubemap";
     cubemap.mesh = "cube";
     cubemap.shader = "skybox";
+	cubemap.position = [-1.5, 2, 6];
     cubemap.flags.depth_test = false;
     cubemap.flags.flip_normals = true;
     cubemap.render_priority = RD.PRIORITY_BACKGROUND;
+
+	grid = new RD.SceneNode();
+    grid.name = "grid";
+    grid.mesh = "grid";
+	grid.primitive = GL.LINES;
+	grid.blend_mode = RD.BLEND_ALPHA;
+	grid.opacity = 0.75;
+	grid.scaling = 1;
+    grid.shader = "grid";
     
     cubemap.ready = function() { 
         var ready = (this.textures['env'] && this.textures['env_1']
@@ -59,7 +71,8 @@ Core.prototype._ctor = function()
 
     this._cubemap = cubemap;
     
-    this._root.addChild(cubemap);
+    this._root.addChild(grid);
+	this._root.addChild(cubemap);
 
     this._context = GL.create({width: window.innerWidth, height: window.innerHeight, 
 		// version: 2,
@@ -76,6 +89,7 @@ Core.prototype._ctor = function()
     var type = gl.FLOAT;
     
     this._viewport_tex = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+	this._fxaa_tex = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
     this._fx_tex = new GL.Texture(w,h, {type: type});
     this._background_color = vec4.fromValues(0.2, 0.2, 0.2,1);
 
@@ -84,9 +98,10 @@ Core.prototype._ctor = function()
 
     // deferred rendering (G buffers)
     this.texture_albedo = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
-    this.texture_roughness = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
     this.texture_normal = new GL.Texture(w,h, { type: type, filter: gl.LINEAR });
+    this.texture_roughness = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
     this.texture_depth = new GL.Texture(w,h, { format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT}); 
+	this.texture_linear_depth = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
     this.texture_final = new GL.Texture(w,h, { texture_type: gl.TEXTURE_2D, type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
 
     this.fbo_textures = [ this.texture_albedo, this.texture_normal, this.texture_roughness ];
@@ -101,6 +116,40 @@ Core.prototype._ctor = function()
     
     this._controller = new Controller( this._context );
     this._gui = new GUI();
+	this.stats = new Stats();
+
+	this.stats.dom.id = "statsDiv";
+	$(this.stats.dom).css({
+		"top": LiteGUI.sizeToCSS(window.innerHeight - 48),
+	})
+	document.body.append( this.stats.dom );
+	//this.maxLumPanelStat = this.stats.addPanel( new Stats.Panel( 'MaxLum', '#ff0', '#220' ) );
+
+	// i only want FPS
+	if(this.stats.dom.children.length > 2) {
+		this.stats.dom.children[2].remove();
+		this.stats.dom.children[1].remove();
+	}
+
+	LiteGUI.draggable( this.stats.dom );
+
+	this.table_components = {
+		"Atmos" : AtmosphericScattering
+	}
+}
+
+Core.prototype.toFullScreen = function()
+{
+	this.isFullscreen = true;
+	$("#webgl_canvas").css({
+		"position": "absolute",
+		"width": "100%",
+		"top": "0px",
+		"z-index": "1000"
+	});
+	document.body.dataset["canvas_parent"] = $("#webgl_canvas").parent()[0];
+	document.body.appendChild($("#webgl_canvas")[0]);
+	resize(true);
 }
 
 Core.prototype.setup = function()
@@ -129,7 +178,6 @@ Core.prototype.setup = function()
     
     // declare renderer uniforms
 	this.setUniform({
-	
 		"u_ambient": vec3.fromValues(0.2, 0.4, 0.8),
 		"u_near": camera.near,
 		"u_far": camera.far,
@@ -141,16 +189,13 @@ Core.prototype.setup = function()
 		"u_enable_ao": true,
 		"u_correctAlbedo": true,
 		"u_EC": false,
+		"u_applyGamma": true,
+		"u_middleGray": 0.18,
 		"u_ibl_intensity": 1.0,
 		"u_albedo": vec3.fromValues( 1, 1, 1),
 		"u_viewport": gl.viewport_data,
 		"u_show_layers": false,
 		"u_flipX": false,
-		
-		// SSAO
-		"u_radius": 16.0,
-		"u_enableSSAO": true,
-		"u_outputChannel": 0.0,
 
 		// Atmospheric Scattering
 		'u_SunPos': 0.4,
@@ -167,18 +212,18 @@ Core.prototype.setup = function()
 
 	// Compile shaders from scripts
 	for(var shader in RM.shaders) {
-        if(this.mobile() && shader === "pbr_deferred")
+        if(this.mobile() && (shader === "pbr_deferred" || shader === "flat_deferred"))
             continue;
+		// console.log(shader);
         gl.shaders[shader] = new GL.Shader(RM.shaders[shader].vs_code, RM.shaders[shader].fs_code);
     }
 	
     renderer.context.ondraw = function(){ that.render() };
     renderer.context.onupdate = function(dt){ that.update(dt) };
-
     renderer.context.animate();
-    // window.onresize = resize;
 
 	this.FS = new FileSystem();
+	this.ssao = ssao;
 
     // get response from files.php and init app
     LiteGUI.request({
@@ -189,16 +234,23 @@ Core.prototype.setup = function()
             
             await that.reloadShaders();
         
-            // Environment BRDFs (LUT)
-			HDRTool.brdf("brdfIntegrator");
-			HDRTool.brdf("multibrdfIntegrator", RM.MULTI_BRDF);
+            // Environment BRDFs (LUT) - true for getting also the multi-brdf
+			HDRTool.brdf(true);	
+
+			var tex_name = '_brdf_integrator';
+			gl.textures[tex_name] = renderer.loadTexture("assets/brdfLUT.png", { type: gl.FLOAT, texture_type: gl.TEXTURE_2D, filter: gl.LINEAR});
             
-            // Set environment 
-            that.set( RM.textures['Pisa'] );
-            
+				// Set environment 
+				that.set( RM.textures['Studio'], {onImport: function(){
+			
+			}} );
+
             // Init things
             ssao.init();
+			HDRI.init(that, gl);
             gui.init(); 
+			// HDRI
+			
 
 			var url = "exports/";
 			// query string params
@@ -233,6 +285,30 @@ Core.prototype.setup = function()
         else 
             $(this).removeClass("enabled");
     });
+
+	$(document.querySelector(".tool-showgrid")).on('click', function(){
+
+		if(!grid)
+			return;
+
+        grid.visible = !grid.visible;
+        
+        if(grid.visible)
+            $(this).addClass("enabled");
+        else 
+            $(this).removeClass("enabled");
+    });
+}
+
+//to be sure we dont have anything binded
+Core.prototype.clearSamplers = function()
+{
+	for(var i = 0; i < gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS); ++i)
+	{
+		gl.activeTexture(gl.TEXTURE0 + i);
+		gl.bindTexture( gl.TEXTURE_2D, null );
+		gl.bindTexture( gl.TEXTURE_CUBE_MAP, null );
+	}
 }
 
 Core.prototype.getCanvas = function ()
@@ -361,31 +437,49 @@ Object.defineProperty(Core.prototype, 'blur_samples', {
 */
 Core.prototype.render = function()
 {
+	
+	if(window.show_texture) {
+		gl.textures[window.show_texture].toViewport();
+		return;
+	}
+
+
+	this.stats.begin();
+
+	tFrame = Math.clamp(getTime() - postFrame, 0, 6);
+	this.setUniform("tFrame", tFrame);
+		
 	if(this._gui.editor == 1){ // i'm in hdri tab
-		this.renderHDRITab();
+
+		HDRI.render();
+		postFrame = getTime();
+		this.stats.end();
 		return;
 	}
 
     if(!this.cubemap.ready()) 
     return;
 
-    var RenderComponent = RM.get('Render');
-
     // Update cubemap position
     this.cubemap.position = this.controller.getCameraPosition();
 
+    var RenderComponent = RM.get('Render');
     if( (RenderComponent && RenderComponent.render_mode == RM.FORWARD) || !this.fbo)
         this.forwardRender();
     else
         this.deferredRender();
 
-    // Render GUI
-    this._gui.render();
-    
     // Render node selected
     var NodePickerComponent = RM.get('NodePicker');
-    if(NodePickerComponent && NodePickerComponent.render)
+    if(NodePickerComponent)
         NodePickerComponent.render();
+
+    // Render GUI
+	this._gui.render();
+
+	//this.maxLumPanelStat.update(renderer._uniforms.u_maxLum * 100 || 0, 10000);
+	postFrame = getTime();
+	this.stats.end();
 }
 
 /**
@@ -396,36 +490,64 @@ Core.prototype.forwardRender = function()
 {
     var renderer = this._renderer;
     var that = this;
+	var SFXComponent = RM.get("ScreenFX");
+
+    // gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+
+	renderer.clear(that._background_color);
+	renderer.render( that.scene, that.controller._camera );
+
+	if(!SFXComponent.enable) {
+		renderer.clear(that._background_color);
+		renderer.render( that.scene, that.controller._camera );
+		return;
+	}
 
     // Render scene to texture
     this._viewport_tex.drawTo( function() {
-        renderer.clear( that._background_color );
+		renderer.clear(that._background_color);
         renderer.render( that.scene, that.controller._camera );
     });
     
-    gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+    //  automatic exposure
+	if(SFXComponent)
+		SFXComponent.setProgramAuto( this.getAverageLuminance() );
 
-    // Fill renderer uniforms with average, max lum, etc.
     try
     {
-        if (info_check())
-        {
-            this.getMaxLuminance();
-            this.getAverageLuminance();
-        }
+		var check = info_check();
+
+        if (check[0])
+			this.getMaxLuminance();
+		// if (check[1])
+		// 	this.getAverageLuminance();
     }
     catch (e)
     {
         if(!this._errors[e])
-        this._errors[e] = 1;
+            this._errors[e] = 1;
     }
 
-    // Apply (or not) bloom effect
-    var render_texture = this._viewport_tex; 
-    var SFXComponent = RM.get("ScreenFX");
+	var render_texture;
 
+	if( SFXComponent && SFXComponent.fxaa )
+	{
+		this._fxaa_tex.drawTo(function(){
+		
+			that._viewport_tex.toViewport( that.fxaa_shader );
+		});
+
+		render_texture = this._fxaa_tex;
+	}
+		
+	else {
+	
+		render_texture = this._viewport_tex;
+	}
+
+	// Apply (or not) bloom effect
     if( SFXComponent && SFXComponent.glow_enable )
-        render_texture = createGlow( this._viewport_tex );
+        render_texture = createGlow( render_texture );
 
     // Get tonemapper and apply (exposure, offset, tonemapping, degamma)
     if(SFXComponent) {
@@ -435,13 +557,7 @@ Core.prototype.forwardRender = function()
         this._fx_tex = render_texture;
     }
 
-    // Apply antialiasing (FXAA)
-    if( SFXComponent && SFXComponent.fxaa )
-        this._fx_tex.toViewport( this.fxaa_shader );
-    else {
-	
-		this._fx_tex.toViewport();
-	}
+	this._viewport_tex.toViewport();
 }
 
 /**
@@ -452,6 +568,8 @@ Core.prototype.deferredRender = function()
 {
     var renderer = this._renderer;
     var that = this;
+	var w = gl.canvas.width;
+    var h = gl.canvas.height;
 
     if(!gl.shaders['finalDeferred'] || !gl.shaders['ssao'])
         return;
@@ -464,26 +582,29 @@ Core.prototype.deferredRender = function()
 
     // render geometry and capture info
     renderer.clear( this._background_color );
-    renderer.render( this.scene, this.controller._camera );
+    renderer.render( this.scene, this.controller._camera, null, 3 );
 
     this.fbo.unbind();
     gl.disable( gl.DEPTH_TEST );
     gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
 
-    // FINAL PASS
+	// Linearize depth before doing anything
+	this.texture_depth.bind(0);
+	this.texture_linear_depth.drawTo( () => {
+        gl.shaders['linearDepth'].uniforms(renderer._uniforms).draw(Mesh.getScreenQuad());
+    });
+	this.texture_depth.unbind(0);
 
-    this.texture_albedo.bind(0);
-    this.texture_normal.bind(1);
-    this.texture_roughness.bind(2);
-    this.texture_depth.bind(3);
-    ssao.noiseTexture.bind(4);
-    
-    this.setUniform('fbo_color_texture', 0);
-    this.setUniform('fbo_normal_texture', 1);
-    this.setUniform('fbo_roughness_texture', 2);
-    this.setUniform('fbo_depth_texture', 3);
-	this.setUniform('noise_texture', 4);
-    
+    // FINAL PASS
+	
+    this.texture_normal.bind(5);
+    this.texture_depth.bind(6);
+    this.ssao.noiseTexture.bind(7);
+	
+	this.setUniform('fbo_normal_texture', 5);
+    this.setUniform('fbo_depth_texture', 6);
+	this.setUniform('noise_texture', 7);
+
     var inv_p = mat4.create(),
         inv_v = mat4.create(),
         camera = this.controller._camera;
@@ -495,6 +616,21 @@ Core.prototype.deferredRender = function()
     this.setUniform('invp', inv_p);
     this.setUniform('projection', camera._projection_matrix);
     this.setUniform('view', camera._view_matrix);
+
+
+	// Draw SSAO to texture
+	this.ssao.texture.drawTo( () => {
+        gl.shaders['ssao'].uniforms(renderer._uniforms).draw(Mesh.getScreenQuad());
+    });
+
+	// blur SSAO texture
+	for(var i = 0; i < 2; i++){
+		this.ssao.texture.applyBlur( i,i, 1, this.ssao.blurTexture );
+	}
+	
+	this.texture_normal.unbind();
+    this.texture_depth.unbind();
+    this.ssao.noiseTexture.unbind();
 
     // Fill renderer uniforms with average, max lum, etc.
     /*try
@@ -511,34 +647,39 @@ Core.prototype.deferredRender = function()
         this._errors[e] = 1;
     }*/
 
-	// TODO
-
-	// draw SSAO to texture
-	ssao.texture.drawTo( () => {
-        
-        gl.shaders['ssao'].uniforms(renderer._uniforms).draw(Mesh.getScreenQuad());
-    });
-
-	// blur SSAO texture
-	for(var i = 0; i < 3; i++)
-	{
-		ssao.texture.applyBlur( i,i, 1, ssao.blurTexture );
-	}
-
 	// combine SSAO with rendered frame
 	// rebind this bc something happens if not
-	this.texture_albedo.bind(0); 
-    this.texture_normal.bind(1);
-    this.texture_roughness.bind(2);
-    this.texture_depth.bind(3);
-    ssao.noiseTexture.bind(4);
-	ssao.blurTexture.bind(5);
-	this.setUniform('noise_texture_blur', 5);
+	this.texture_albedo.bind(5); 
+    this.texture_normal.bind(6);
+    this.texture_depth.bind(7);
+	this.texture_roughness.bind(8);
+    this.ssao.texture.bind(9);
+	this.ssao.blurTexture.bind(10);
+
+	this.setUniform('fbo_color_texture', 5);
+	this.setUniform('fbo_normal_texture', 6);
+	this.setUniform('u_fbo_depth_texture', 7);
+    this.setUniform('fbo_roughness_texture', 8);
+	this.setUniform('ssao_texture', 9);
+	this.setUniform('ssao_texture_blur', 10);
 
 	this.texture_final.drawTo( () => {
-        
         gl.shaders['finalDeferred'].uniforms(renderer._uniforms).draw(Mesh.getScreenQuad());
     });
+
+	if(this.show_deferred_textures) {
+        var w = gl.canvas.width;
+        var h = gl.canvas.height;
+        gl.drawTexture( this.texture_albedo, 0, 0, w/2,  h/2 );  
+		gl.drawTexture( this.ssao.blurTexture, w/2, 0, w/2,  h/2 );
+        gl.drawTexture( this.texture_normal, 0, h/2, w/2,  h/2 );
+		gl.drawTexture( this.texture_linear_depth, w/2, h/2, w/2,  h/2 );
+    }else
+	{
+		gl.drawTexture( this.texture_final, 0, 0, w,  h );
+	}
+	
+	return;
 
     // Apply (or not) bloom effect
     var render_texture = this.texture_final; 
@@ -555,71 +696,21 @@ Core.prototype.deferredRender = function()
         this._fx_tex = render_texture;
     }
 
-    // Apply antialiasing (FXAA)
-    if( SFXComponent && SFXComponent.fxaa )
-        this._fx_tex.toViewport( this.fxaa_shader );
-    else
-        this._fx_tex.toViewport();
-
     if(this.show_deferred_textures) {
-        var w = gl.canvas.width / 4;
-        var h = gl.canvas.height / 4;
-        gl.drawTexture( this.texture_albedo, 0, gl.canvas.height - h, w,  h );
-        gl.drawTexture( this.texture_roughness, w, gl.canvas.height - h, w,  h );
-        gl.drawTexture( this.texture_normal, w*2, gl.canvas.height - h, w,  h );
-        gl.drawTexture( this.texture_depth, w*3, gl.canvas.height - h, w,  h );
-    }
-    
-}
-
-Core.prototype.renderHDRITab = function()
-{
-
-	gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
-
-	 // Render scene to texture
-    this._viewport_tex.drawTo( function() {
-        renderer.clear( this._background_color );
-		Object.assign( renderer._uniforms, HDRTool.getUniforms() );
-
-		if(gl.textures["combined_scaled"])
-			gl.textures["combined_scaled"].toViewport( null, renderer._uniforms);
-
-		else if(gl.textures["combined"])
-			gl.textures["combined"].toViewport( gl.shaders["combineHDR"], renderer._uniforms );
-
-		else if(gl.textures["ASSEMBLED"])
-			gl.textures["ASSEMBLED"].toViewport( gl.shaders["assemblyViewer"], renderer._uniforms  );
-    });
-    
-    // Fill renderer uniforms with average, max lum, etc.
-    try
-    {
-        if (info_check())
-        {
-            perblock_getmax();
-            downsampled_getaverage();
-        }
-    }
-    catch (e)
-    {
-        if(!this._errors[e])
-        this._errors[e] = 1;
-    }
-
-    /*var render_texture = this._viewport_tex;*/
-    var SFXComponent = RM.get("ScreenFX");
-
-    if(SFXComponent) {
-        var myToneMapper = RM.tonemappers[ SFXComponent.tonemapping ];
-        myToneMapper.apply( this._viewport_tex, this._fx_tex ); 
-		this._fx_tex.toViewport();
-    }else{
-        this._viewport_tex.toViewport();
-    }
-	
-	 // Render GUI
-    this._gui.render();
+        var w = gl.canvas.width;
+        var h = gl.canvas.height;
+        gl.drawTexture( this.texture_albedo, 0, 0, w/2,  h/2 );  
+		gl.drawTexture( this.texture_roughness, w/2, 0, w/2,  h/2 );
+        gl.drawTexture( this.texture_normal, 0, h/2, w/2,  h/2 );
+		gl.drawTexture( this.texture_linear_depth, w/2, h/2, w/2,  h/2 );
+    }else
+	{
+		 // Apply antialiasing (FXAA)
+		if( SFXComponent && SFXComponent.fxaa )
+			this._fx_tex.toViewport( this.fxaa_shader );
+		else
+			this._fx_tex.toViewport();
+	}
 }
 
 /**
@@ -632,7 +723,10 @@ Core.prototype.update = function(dt)
     _dt = dt;
 
     // Update all nodes in the scene
-    this.scene.update(dt);
+	this.scene.update(dt);
+
+	// Update gui
+	this._gui.update(dt);
 
     // Update controller bindings
     this.controller.update(dt, this._renderer.context);
@@ -709,7 +803,7 @@ Core.prototype.display = function( no_free_memory )
         this.updateNodes();
     
     // config scene
-    this._cubemap.texture = this._environment;
+    this._cubemap.texture = (this._gui._usePrem0 ? "_prem_0_" : "") + this._environment;
     
     var that = this;
     // gui
@@ -728,15 +822,10 @@ Core.prototype.display = function( no_free_memory )
 */
 Core.prototype.parse = function(name)
 {
-    var toParse = RM.scenes[name];
-
-	var meshes = [].concat(toParse.mesh);
-	for(var t in meshes)
-    meshes[t] = RM.MODELS_FOLDER + meshes[t];
-	toParse.mesh = meshes;
-
     // clean scene
     this.destroyByName('node');
+
+    var toParse = RM.scenes[name];
 
     if(toParse.camera)
     {
@@ -748,14 +837,26 @@ Core.prototype.parse = function(name)
     switch( name )
     {
         case "Matrix":
-            this.createMatrix( true ); break;
+            this.createMatrix( true ); 
+            return;
         case "Roughness scale":
-            this.renderSphereScale( true, { property: 'roughness', aux_prop: 1.0 } ); break;
+            this.renderSphereScale( true, { property: 'roughness', aux_prop: 1.0 } );
+            return;
         case "Metalness scale":
-            this.renderSphereScale( true, { property: 'metalness', aux_prop: 0.5 } ); break;
-        default:
-            this.loadResources( toParse, name ); break;
+            this.renderSphereScale( true, { property: 'metalness', aux_prop: 0.0 } );
+            return;
     }
+
+	var mesh = [].concat(toParse.mesh);
+	
+	for(var t in mesh)
+		if(mesh[t][0] != '@')
+		    mesh[t] = RM.MODELS_FOLDER + mesh[t];
+		else
+			mesh[t] = mesh[t].slice(1);
+	toParse.mesh = mesh;
+
+    this.loadResources( toParse, name );
 }
 
 /**
@@ -790,13 +891,23 @@ Core.prototype.loadResources = async function( toParse, name )
         that._root.addChild( node );
 
         if( toParse.uniforms )
-            node._uniforms = toParse.uniforms;
+            node._uniforms = Object.assign(node._uniforms, toParse.uniforms);
+
+		node._uniforms["u_roughness"] = 0.0;
+		node._uniforms["u_metalness"] = 0.0;
+		node._uniforms["u_alpha"] = 1.0;
+		node._uniforms["u_reflectance"] = vec3.fromValues(0.5,0.5,0.5);
+		node._uniforms["u_tintColor"] = vec3.fromValues(1,1,1);
+		node._uniforms["u_clearCoat"] = 0.0;
+		node._uniforms["u_clearCoatRoughness"] = 0.0;
+		node._uniforms["u_renderDiffuse"] = true;
+		node._uniforms["u_renderSpecular"] = true;
         
         // for multimesh nodes
         toParse.textures = [].concat(toParse.textures);
 
         // load zero-metalness texture to avoid strange artifacts (can be sub later)
-        node.textures["metalness"] = "assets/zero-metal.png";
+        // node.textures["metalness"] = "assets/zero-metal.png";
         
         // load textures
         for(var t in toParse.textures[i])
@@ -810,7 +921,6 @@ Core.prototype.loadResources = async function( toParse, name )
             if(!res) 
             throw( "No mesh loaded" );
 
-            // update target from bb
             var bb = gl.meshes[resource].getBoundingBox();
             var center = BBox.getCenter(bb);
             that.selected_radius = BBox.getRadius(bb);
@@ -819,10 +929,10 @@ Core.prototype.loadResources = async function( toParse, name )
             var result = vec3.create();
             vec3.transformMat4( result, center, globalMat );
 
-            if(toParse.camera && toParse.camera.target)
-                result = toParse.camera.target;
+            /*if(toParse.camera && toParse.camera.target)
+                result = toParse.camera.target;*/
             
-            var eye = [0, that.selected_radius * 0.5, that.selected_radius * 2.5];
+            var eye = [0, that.selected_radius, that.selected_radius * 3];
 
             if(toParse.camera && toParse.camera.eye)
                 eye = toParse.camera.eye;
@@ -858,6 +968,8 @@ Core.prototype.updateNodes = function()
         node.textures['env_3'] = "_prem_2_" + this._environment;
         node.textures['env_4'] = "_prem_3_" + this._environment;
         node.textures['env_5'] = "_prem_4_" + this._environment;
+		/*node.textures['env_6'] = "_prem_5_" + this._environment;
+		node.textures['env_7'] = "_prem_6_" + this._environment;*/
 
         if(!node.children.length)
             continue;
@@ -867,12 +979,15 @@ Core.prototype.updateNodes = function()
             var child = node.children[j];
 
             child.textures['brdf'] = "_brdf_integrator";
+			child.textures['brdf_multi'] = "_brdf_integrator_multi";
             child.textures['env'] = this._environment;
             child.textures['env_1'] = "_prem_0_" + this._environment;
             child.textures['env_2'] = "_prem_1_" + this._environment;
             child.textures['env_3'] = "_prem_2_" + this._environment;
             child.textures['env_4'] = "_prem_3_" + this._environment;
             child.textures['env_5'] = "_prem_4_" + this._environment;
+			/*child.textures['env_6'] = "_prem_5_" + this._environment;
+			child.textures['env_7'] = "_prem_6_" + this._environment;*/
         }
     }
 }
@@ -883,8 +998,55 @@ Core.prototype.updateNodes = function()
 */
 Core.prototype.reset = function()
 {
-    this.destroyByName('node');
-    this.controller.reset();
+	RM.get('NodePicker').selected = null;
+	delete gl.meshes['lines'];
+	this.destroyByName('node');
+    // this.controller.reset();
+}
+
+/**
+* Render current scene to cubemap texture
+* @method renderToCubemap
+*/
+Core.prototype.renderToCubemap = function( position, size, texture, near, far, background_color )
+{
+	size = size || 256;
+	near = near || 1;
+	far = far || 1000;
+
+	var eye = position;
+	if( !texture || texture.constructor != GL.Texture)
+		texture = null;
+
+	var scene = this.scene;
+	if(!scene)
+		throw("No scene to render");
+
+	var Cam = new RD.Camera();
+	Cam.perspective(90, 1.0, near, far);
+
+	texture = texture || new GL.Texture(size,size,{texture_type: gl.TEXTURE_CUBE_MAP, minFilter: gl.NEAREST});
+	// this._current_target = texture;
+	// texture._in_current_fbo = true; //block binding this texture during rendering of the reflection
+
+	texture.drawTo( function(texture, side) {
+
+		var info = GL.Texture.cubemap_camera_parameters[side];
+		if(!background_color )
+			gl.clearColor(0,0,0,0);
+		else
+			gl.clearColor( background_color[0], background_color[1], background_color[2], background_color[3] );
+		
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		
+		Cam.lookAt(eye, [ eye[0] + info.dir[0], eye[1] + info.dir[1], eye[2] + info.dir[2] ], info.up );
+
+		renderer.render(scene, Cam);
+	});
+
+	// this._current_target = null;
+	// texture._in_current_fbo = false;
+	return texture;
 }
 
 /**
@@ -977,36 +1139,25 @@ Core.prototype.getAverageLuminance = function( input )
 
     if(!input)
         input = this._viewport_tex;
-	
-	if(!input)
-		throw('no valid input');
+    
+	if(!input || !LOG_MEAN_VALUES || !SMOOTH_SHIFT)
+		throw('something went wrong');
 
-    var temp = null;
     var type = gl.FLOAT;
 
-	var input_width = input.width;
-	var input_height = input.height;
-		
-	var mipmap_level = 2;
-
-	var size = Math.pow(2, Math.floor(Math.log(input_width)/Math.log(2))) / Math.pow(2, mipmap_level);
-	size = 128;
+	// var mipmap_level = 2;
+	// var size = Math.pow(2, Math.floor(Math.log(input_width)/Math.log(2))) / Math.pow(2, mipmap_level);
 
 	var shader = gl.shaders['luminance'];
 
 	if(!shader)
 		throw("no luminance shader");
 
-	if(!temp || temp.type != type )
-		temp = new GL.Texture( size*2, size, { type: type, format: gl.RGBA, minFilter: gl.LINEAR_MIPMAP_LINEAR });
+    var temp = new GL.Texture( 16, 16, { type: type, format: gl.RGBA, minFilter: gl.LINEAR_MIPMAP_LINEAR });
 
 	temp.drawTo(function(){
 		input.toViewport();
 	});
-
-	temp.bind(0);
-	gl.generateMipmap(gl.TEXTURE_2D);
-	temp.unbind(0);
 
 	var pixelColor = new GL.Texture( 1, 1, { type: type, format: gl.RGBA, filter: gl.NEAREST });
 
@@ -1018,33 +1169,104 @@ Core.prototype.getAverageLuminance = function( input )
 	});
 
 	var pixel = pixelColor.getPixels();
-	if(pixel)
+	// do eye adaptation
+	if(pixel) 
 	{
-		var v = new Float32Array(4);
-		var type = temp.type;
-		v.set( pixel );
-		if(type == gl.UNSIGNED_BYTE)
-			vec4.scale( v,v, 1/255 );
-		else if(type == GL.HALF_FLOAT || type == GL.HALF_FLOAT_OES)
-			vec4.scale( v,v, 1/(255*255) ); //is this correct?
+		// get time from last frame
+		DTIMES.push( tFrame );
+		var dt = DTIMES.reduce( function(e, r){ return e + r } ) / DTIMES.length;
 
-		if(!LOG_MEAN_VALUES || !SMOOTH_SHIFT)
-		return;
+		if(DTIMES.length > SMOOTH_SHIFT)
+			DTIMES.shift();
 
-		var logMean = Math.exp( v[0] );
-		LOG_MEAN_VALUES.push( logMean );
+		// log lum average
+		var Lnew = Math.exp( pixel[1] );
 
-		var k = LOG_MEAN_VALUES.length;
+        var size = LOG_MEAN_VALUES.length;
+        if(size < 5) {
+            // push new value 
+            LOG_MEAN_VALUES.push( Lnew );
+            // this.setUniform('logMean', Lnew);
+            var t2 = getTime();
+		    this.setUniform('getaverage_t', (t2 - t1).toFixed(3));
+            return;
+        }
 
-		if(k > SMOOTH_SHIFT)
-		LOG_MEAN_VALUES.shift();
+		var La = adaptiveTonemapping( Lnew );
+		this.setUniform('logMean', La);
+		 LOG_MEAN_VALUES.push( Lnew );
 
-		var smooth_logmean = LOG_MEAN_VALUES.reduce( function(e, r){ return e + r } ) / k;
-		this.setUniform('logMean', smooth_logmean);
+		// shift in case of passing max
+		if(size > MAX_LFI)
+			LOG_MEAN_VALUES.shift();
+		
+
+/*		var Lavg = LOG_MEAN_VALUES.reduce( function(e, r){ return e + r } ) / size;
+        var LavgNew_Log = Lavg + ( Lnew - Lavg ) * ( 1.0 - Math.exp(-dt * SMOOTH_SCALE) );  
+
+        LOG_MEAN_VALUES.push( Lnew );
+
+		// shift in case of passing max
+		if(size > SMOOTH_SHIFT)
+			LOG_MEAN_VALUES.shift();
+
+		this.setUniform('logMean', Lnew);*/
+		
+		// now for lum average
+
+		Lnew = pixel[0];
+		size = MEAN_LUM_VALUES.length;
+
+        if(!size) {
+            MEAN_LUM_VALUES.push( Lnew );
+            var t2 = getTime();
+		    this.setUniform('getaverage_t', (t2 - t1).toFixed(3));
+            return;
+        }
+
+        Lavg = MEAN_LUM_VALUES.reduce( function(e, r){ return e + r } ) / size;
+        var LavgNew = Lavg + ( Lnew - Lavg ) * ( 1.0 - Math.exp(-dt * SMOOTH_SCALE) );  
+
+        MEAN_LUM_VALUES.push( Lnew );
+
+		if(size > SMOOTH_SHIFT)
+			MEAN_LUM_VALUES.shift();
 
 		var t2 = getTime();
 		this.setUniform('getaverage_t', (t2 - t1).toFixed(3));
+
+		return LavgNew;
 	}
+}
+
+function adaptiveTonemapping(Lfi)
+{
+	var range = 0.1 * Lfi;
+	var minL = Lfi - range;
+	var maxL = Lfi + range;
+
+	var size = LOG_MEAN_VALUES.length;
+	var j = size - 5;
+
+	while(j > 0)
+	{
+		var Lfj = LOG_MEAN_VALUES[j];
+
+		if(Lfj > minL && Lfj < maxL)
+			j--;
+		else 
+			break;
+	}
+
+	var numFrames = size - j;
+	var totalLog = 0;
+
+	// console.log(numFrames)
+
+	for(var k = size - 1; k >= size - numFrames; k--)
+		totalLog += LOG_MEAN_VALUES[k];
+
+	return Math.exp(totalLog / numFrames);
 }
 
 /*
@@ -1084,22 +1306,36 @@ Core.prototype.getMaxLuminance = function( input )
 	var pixel = temp.getPixels();
 	if(pixel)
 	{	
-		var v = new Float32Array(4);
-		v.set( pixel );
+		// get time from last frame
+		// this is done after average so do not push new value
+		var dt = DTIMES.reduce( function(e, r){ return e + r } ) / DTIMES.length;
+
+		if(DTIMES.length > SMOOTH_SHIFT)
+			DTIMES.shift();
 
 		if(!MAX_LUM_VALUES || !SMOOTH_SHIFT)
 		return;
 
-		var maxLum = v[0];			
+		var size = MAX_LUM_VALUES.length;
+		var maxLum = pixel[0];		
+		
+		if(!size) {
+            // push new value 
+            MAX_LUM_VALUES.push( maxLum );
+            var t2 = getTime();
+		    this.setUniform('getmax_t', (t2 - t1).toFixed(3));
+            return;
+        }
+
+		var Lavg = MAX_LUM_VALUES.reduce( function(e, r){ return e + r } ) / size;
+        var LavgNew = Lavg + ( maxLum - Lavg ) * ( 1.0 - Math.exp(-dt * SMOOTH_SCALE) );  
+
 		MAX_LUM_VALUES.push( maxLum );
 
-		var k = MAX_LUM_VALUES.length;
-
-		if(k > SMOOTH_SHIFT)
+		if(size > SMOOTH_SHIFT)
 		MAX_LUM_VALUES.shift();
 	
-		var smooth_maxlum = MAX_LUM_VALUES.reduce( function(e, r){ return e + r } ) / k;
-        this.setUniform('maxLum', smooth_maxlum);
+        this.setUniform('maxLum', LavgNew);
 
 		var t2 = getTime();
 		this.setUniform('getmax_t', (t2 - t1).toFixed(3));
@@ -1155,7 +1391,7 @@ Core.prototype.getByProperty = function(property, value)
 * @method destroyByName
 * @param {string} name
 */
-Core.prototype.destroyByName = function( o )
+Core.prototype.destroyByName = function( name )
 {
     var l, that = this;
     if(name.constructor == Array)
@@ -1164,19 +1400,17 @@ Core.prototype.destroyByName = function( o )
 
         for(var i = 0; i < this._root.children.length; i++)
             if(l.indexOf( this._root.children[i].name) >= 0)
-                this._root.children[i].destroy(true);
+                this._root.children[i].destroy();
     }
     // destroy all nodes which includes the argument as string
     else
     {
         for(var i = 0; i < this._root.children.length; i++)
-            if(this._root.children[i].name.includes( o ))
-                this._root.children[i].destroy(true);
-
-        /*setTimeout( function(){
-            that._gui.updateSidePanel(null, 'root');
-        }, 10 );*/
+            if(this._root.children[i].name.includes( name ))
+                this._root.children[i].destroy();
     }
+
+	this._gui._must_update_panel = true;
 }
 
 /**
@@ -1203,6 +1437,15 @@ Core.prototype.createMatrix = function(visible)
         mn.position = [j * 2.0, 0, i * 2.0];
         mn._uniforms["u_roughness"] = values[i];
         mn._uniforms["u_metalness"] = 1.0 - values[j];
+		mn._uniforms["u_alpha"] = 1.0;
+		mn._uniforms["u_clearCoat"] = 0.0;
+		mn._uniforms["u_clearCoatRoughness"] = 0.0;
+		mn._uniforms["u_reflectance"] = vec3.fromValues(0.5,0.5,0.5);
+		mn._uniforms["u_renderDiffuse"] = true;
+		mn._uniforms["u_renderSpecular"] = true;
+		mn._uniforms["u_albedo"] = vec3.fromValues(1, 1, 1);
+		mn._uniforms["u_tintColor"] = vec3.fromValues(1,1,1);
+        // mn.setTextureProperties();
         node.addChild(mn);
     }
 
@@ -1220,7 +1463,44 @@ Core.prototype.createMatrix = function(visible)
     this.selected_radius = 1;
 
     if(this._gui._sidepanel)
-        this._gui.updateSidePanel(null, name);
+        this._gui.updateSidePanel(null, "root");
+}
+
+/**
+* Render sphere matrix
+* @method createSSAOScene
+*/
+Core.prototype.createSSAOScene = function()
+{
+    var em = this._environment;
+    var node = new RD.SceneNode();
+    node.name = "ssao_scene_node";
+    this._root.addChild(node);
+
+    for(var i = 0; i < 30; i++)
+    {
+        var mn = new RD.SceneNode();
+        mn.mesh = "cube";
+        mn.shader = "pbr_deferred";
+        mn.position = [Math.random() * 3, Math.random() * 3, Math.random() * 3];
+        mn._uniforms["u_roughness"] = 1.0;
+        mn._uniforms["u_metalness"] = 1.0;
+		mn._uniforms["u_alpha"] = 1.0;
+		mn._uniforms["u_clearCoat"] = 0.0;
+		mn._uniforms["u_clearCoatRoughness"] = 0.0;
+		mn._uniforms["u_reflectance"] = vec3.fromValues(0.5,0.5,0.5);
+		mn._uniforms["u_renderDiffuse"] = true;
+		mn._uniforms["u_renderSpecular"] = true;
+		mn._uniforms["u_albedo"] = vec3.fromValues(1, 1, 1);
+		mn._uniforms["u_tintColor"] = vec3.fromValues(1,1,1);
+        mn.rotate(Math.random(), RD.UP);
+		mn.rotate(Math.random(), RD.RIGHT);
+		node.addChild(mn);
+    }
+
+    this.updateNodes();
+    this.selected_radius = 1;
+	camera.target = node.children[0].position;
 }
 
 /**
@@ -1255,6 +1535,15 @@ Core.prototype.renderSphereScale = function(visible, options)
         mn.position = [0,0,i*2];
         node.addChild( mn );
 
+		mn._uniforms["u_alpha"] = 1.0;
+		mn._uniforms["u_clearCoat"] = 0.0;
+		mn._uniforms["u_clearCoatRoughness"] = 0.0;
+		mn._uniforms["u_reflectance"] = vec3.fromValues(0.5,0.5,0.5);
+		mn._uniforms["u_renderDiffuse"] = true;
+		mn._uniforms["u_renderSpecular"] = true;
+		mn._uniforms["u_albedo"] = vec3.fromValues(1, 1, 1);
+		mn._uniforms["u_tintColor"] = vec3.fromValues(1,1,1);
+
         if(prop == 'roughness')
         {
             mn._uniforms["u_roughness"] = values[i];
@@ -1271,7 +1560,7 @@ Core.prototype.renderSphereScale = function(visible, options)
     this.selected_radius = 1;
 
     if(this._gui._sidepanel)
-        this._gui.updateSidePanel(null, name);
+        this._gui.updateSidePanel(null, "root");
 }
 
 /**
@@ -1345,9 +1634,15 @@ Core.prototype.addMesh = function(mesh, resource)
         });
 
     node.name = "node-" + simple_guidGenerator();
-    node._uniforms["u_roughness"] = 0.5;
-    node._uniforms["u_metalness"] = 0.75;
-	node._uniforms["u_reflectance"] = 0.5;
+    node._uniforms["u_roughness"] = 0.0;
+    node._uniforms["u_metalness"] = 0.0;
+	node._uniforms["u_alpha"] = 1.0;
+	node._uniforms["u_reflectance"] = vec3.fromValues(0.5,0.5,0.5);
+	node._uniforms["u_tintColor"] = vec3.fromValues(1,1,1);
+	node._uniforms["u_clearCoat"] = 0.0;
+	node._uniforms["u_clearCoatRoughness"] = 0.0;
+	node._uniforms["u_renderDiffuse"] = true;
+	node._uniforms["u_renderSpecular"] = true;
 
     var bb = mesh.getBoundingBox();
     var center = BBox.getCenter(bb);
@@ -1381,6 +1676,8 @@ Core.prototype.addPrimitive = function(mesh, shader, show_prem)
 			color: [1, 1, 1, 1]
         });
 
+	node.blend_mode = RD.BLEND_ALPHA;
+
     var bb = gl.meshes[node.mesh].getBoundingBox();
     var center = BBox.getCenter(bb);
     var radius = BBox.getRadius(bb);
@@ -1396,10 +1693,14 @@ Core.prototype.addPrimitive = function(mesh, shader, show_prem)
     if(!show_prem) {
         node._uniforms["u_roughness"] = 0.0;
         node._uniforms["u_metalness"] = 0.0;
-		node._uniforms["u_reflectance"] = 0.5;
+		node._uniforms["u_alpha"] = 1.0;
 		node._uniforms["u_clearCoat"] = 0.0;
 		node._uniforms["u_clearCoatRoughness"] = 0.0;
+		node._uniforms["u_reflectance"] = vec3.fromValues(0.5,0.5,0.5);
+		node._uniforms["u_renderDiffuse"] = true;
+		node._uniforms["u_renderSpecular"] = true;
 		node._uniforms["u_albedo"] = vec3.fromValues(1, 1, 1);
+		node._uniforms["u_tintColor"] = vec3.fromValues(1,1,1);
         node.setTextureProperties();
     }
     
@@ -1448,30 +1749,11 @@ Core.prototype.toJSON = function()
 {
     var camera = this.controller._camera;
 
-	var components = {};
-	for(var k in RM.components) {
+	var componentInfo = {};
 
-		switch(k) {
-			case 'NodePicker':
-			case 'Light':
-			case 'ColorPicker':
-				continue;
-		}
-
-		components[k] = RM.components[k];
-	}
-
-	// get light info
-	components['Light'] = {};
-	for(var k in RM.components['Light']) {
-
-		switch(k) {
-			case 'node':
-				continue;
-		}
-
-		components['Light'][k] = RM.components['Light'][k];
-	}
+	for(var k in RM.components)
+		if(RM.components[k].toJSON)
+			componentInfo[k] = RM.components[k].toJSON();
 
     var boo = {
         _uid: this._uid,
@@ -1487,7 +1769,7 @@ Core.prototype.toJSON = function()
             w_speed: this.controller._wheel_speed,
         },
         uniforms: this._renderer._uniforms,
-        components: components,
+        components: componentInfo,
         nodes: []
     }
 
@@ -1562,6 +1844,11 @@ Core.prototype.fromJSON = function( o, only_settings )
 
 			var copy = components[key];
 			var component = RM.get( key );
+
+			if(!component) {
+				RM.registerComponent(this.table_components[key], key);
+				component = RM.get( key );
+			}
 
 			//copy to attributes
 			for(var i in copy)

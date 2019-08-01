@@ -194,22 +194,24 @@ display: none;
 }
 
 .inspector .switch-section-button {
-	float: left;
-	display: inline-block;
-
-	margin: 6px 2px -4px 0;
-	border-top: 6px solid #333;
-	border-left: 6px solid transparent;
-	border-right: 6px solid transparent;
-	border-bottom: 6px solid transparent;
+  float: left;
+  display: inline-block;
+  margin: 1px -25px 1px -4px;
+  width: 12px;
+  height: 12px;
+  background: #FEE;
+  /* border-right: 6px solid transparent; */
+  /* border-bottom: 6px solid transparent; */
+  border: 1px solid rgba(0,0,0,0.75);
 }
 
 .inspector .collapsed .switch-section-button {
-	margin: 2px 0 0 2px;
+	/* margin: 2px 0 0 2px;
 	border-left: 6px solid #333;
 	border-bottom: 6px solid transparent;
 	border-top: 6px solid transparent;
-	border-right: 6px solid transparent;
+	border-right: 6px solid transparent; */
+	background: #333;
 }
 
 
@@ -332,10 +334,10 @@ display: none;
 .inspector .inputfield {
 	display: inline-block;
 	background-color: #222;
-	border: 0;
+/*	border: 0;
 	border-top: 1px solid #000; 
 	border-bottom: 1px solid #3f3f3f; 
-	border-radius: 3px;	
+	border-radius: 3px;	*/
 }
 
 .inspector .wcontent .inputfield input:focus, .inspector .wcontent .inputfield textarea:focus
@@ -402,7 +404,7 @@ display: none;
 
 
 .inspector .wcontent input, .inspector .wcontent textarea  {
-	color: #5AF;
+	color: #FEE;
 	/*font-size: 0.8em;*/
 	border: 0;
 	background-color: transparent;
@@ -432,9 +434,9 @@ display: none;
 }
 
 .inspector .wcontent input.nano {
-	/*width: 22px;*/
-	width: 2em;
-	/* margin-left: 3px; */
+	width: 100%;
+	/*position: absolute;*/
+	    display: none;
 }
 
 .inspector .wcontent input.mini {
@@ -474,13 +476,12 @@ display: none;
 }
 
 .inspector .wcontent .checkbox {
-	width: 1.8em;
-	height: 1.8em;
+	width: 1.6em;
+	height: 1.6em;
 	display: inline-block;
-	background-color: #222;
-	color: #222;
-	border: 3px solid #222; /* 0 */
-	border-radius: 0px;
+/*	background-color: #222;*/
+	/*color: #222;*/
+	border: 2px solid #333; /* 0 */
 	margin: 0 !important;
 	text-align: center;
 
@@ -492,22 +493,23 @@ display: none;
 }
 
 .inspector .wcontent .checkbox.on {
-	background-color: #AAF;
-	color: #AAF;/* black */
+	background-color: #FEE;
+	color: #FEE;/* black */
 /*	border-radius: 50%;*/
 }
 
 .inspector .wcontent .flag {
 	font-size: 0.8em;
-	margin-left: 5px;
+/*	margin-left: 5px;*/
 	user-select: none;
 	-moz-user-select: none;
 	-webkit-user-select: none;
 	cursor: pointer;
+	color: #222;
 }
 
 .inspector .wcontent select {
-	color: #5AF;
+	color: #FEE;
 	/*font-size: 0.8em;*/
 	border: 0;
 	background: #222;
@@ -570,7 +572,7 @@ display: none;
 }
 
 .inspector .dragger input {
-	color: #5AF;
+	color: #FEE;
 	/*font-size: 0.8em;*/
 	border: 0;
 	background-color: transparent;
@@ -619,7 +621,7 @@ display: none;
 .inspector .whidden {
 	position: relative;
 	overflow: hidden;
-	color: #5AF;
+	color: #FEE;
 }
 
 .inspector .whidden .filename {
@@ -815,8 +817,8 @@ div {
 }
 
 .litedialog .content {
-	padding: 10px;
-	font-size: 1.2em;
+	padding: 0px;
+	/*font-size: 12px;*/
 }
 
 .litepanel, .litedialog {
@@ -832,10 +834,10 @@ div {
 .litepanel .panel-header, .litedialog .panel-header {
 	font-size: 1.35em;
 	padding: 0.2em 0 0 0.2em;
-	background-color: #778;
+	background-color: #3d3d3d;/*#778;
     background-image: linear-gradient(right , #555, #333);
     background-image: -moz-linear-gradient(right , #555, #333);
-    background-image: -webkit-linear-gradient(right , #555, #333);
+    background-image: -webkit-linear-gradient(right , #555, #333);*/
 
 	-moz-box-sizing: border-box;	
 	-webkit-box-sizing: border-box;	
@@ -872,8 +874,10 @@ div {
 }
 
 .litepanel .content {
-	overflow: hidden !important;
-	height: calc( 100% - 35px );
+/*	overflow: hidden !important;*/
+	overflow-y: scroll !important;
+	/*height: calc( 100% - 35px );*/
+	height: calc( 100% - 30px );
 }
 
 
@@ -2200,13 +2204,13 @@ input[type="range"]::-moz-slider-thumb {
 
 .slider {
     /*calc( width: 100% - 30px );*/
-	width: calc(100% - 2.5em) !important;
-	margin-top: 2px;
+	width: 100%;
+	border-radius: 3px;
 }
 
 .slider-container {
     margin-left: 0px;
-    /*margin-right: 5px;*/
+    
 }
 
 .colorpicker-window {

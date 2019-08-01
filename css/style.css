@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css?family=Kreon|Share+Tech+Mono|VT323');
+@import url('https://fonts.googleapis.com/css?family=Inconsolata');
 
 html, body{
 	overflow: hidden;
@@ -127,10 +128,10 @@ html, body{
 
 .low_panel_image{
 
-	width: 13%;
+	width: 20%;
 	/* background: #3D3D3D; */
-	margin-right: 10px;
-	margin-left: 10px;
+	margin-right: 5px;
+	margin-left: 5px;
 }
 
 .low_panel_image img{
@@ -185,7 +186,14 @@ html, body{
   margin: 0 auto;
   /* font-family: 'VT323', monospace; */
   /* font-family: 'Kreon', serif; */
+  font-family: 'Inconsolata', monospace;
   font-size: 14px;
+  border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+}
+
+#import-names::-webkit-scrollbar {
+    border-radius: 10px;
 }
 
 .script-loaded{
@@ -221,9 +229,18 @@ html, body{
 
 #import-bar{
   width: 0%;
-  height: 0.55vh;
-  background-color:rgba(30, 211, 111, 1);
-  border-radius: 50%;
+  height: 0.75vh;
+  /* background-color:rgba(30, 211, 111, 1); */
+  border-radius: 3px;
+  margin-top: 1px;
+  background: rgba(255,248,171,1);
+background: -moz-linear-gradient(left, rgba(255,248,171,1) 0%, rgba(227,132,0,1) 100%);
+background: -webkit-gradient(left top, right top, color-stop(0%, rgba(255,248,171,1)), color-stop(100%, rgba(227,132,0,1)));
+background: -webkit-linear-gradient(left, rgba(255,248,171,1) 0%, rgba(227,132,0,1) 100%);
+background: -o-linear-gradient(left, rgba(255,248,171,1) 0%, rgba(227,132,0,1) 100%);
+background: -ms-linear-gradient(left, rgba(255,248,171,1) 0%, rgba(227,132,0,1) 100%);
+background: linear-gradient(to right, rgba(255,248,171,1) 0%, rgba(227,132,0,1) 100%);
+filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#fff8ab', endColorstr='#e38400', GradientType=1 );
 }
 
 #modal{
@@ -232,8 +249,8 @@ html, body{
   width: 100%;
   position: absolute;
   text-align: center;
-  background-color: rgba(0, 0, 0, 0.5);
-  z-index: 10;
+  background-color: rgba(0, 0, 0, 0.65);
+  z-index: 1000;
 }
 
 #short-load{
@@ -253,10 +270,10 @@ html, body{
 
 .pixelPicker {
   position: absolute;
-  left: 60px;
+  left: -2px;
   height: 30px;
   font-size: 14px;
-  bottom: 4px;
+  bottom: 45px;
   color: white;
   z-index: 5;
   font-family: monospace;
@@ -366,4 +383,50 @@ html, body{
 
 	display: none;
 
+}
+
+/* LITEGUI */
+
+.inspector .wsectiontitle {
+  position: relative;
+  /* border-top: 1px solid #777; */
+  margin-top: 4px;
+  box-shadow: 0 0px 3px 2px rgba(0,0,0,0.5);
+  overflow: hidden;
+  /* max-height: 1.5em; */
+  white-space: nowrap;
+  margin-bottom: 2px;
+  text-align: center;
+  margin-left: 5px;
+  width: calc(100% - 10px) !important;
+  background: #733  !important;
+  user-select: none;
+	-moz-user-select: none;
+	-webkit-user-select: none;
+}
+
+.inspector .wtitle, .inspector .wsectiontitle {
+	display: inline-block;
+	position: relative;
+	z-index: auto;
+	background-color: #555;
+	/*
+    background-image: linear-gradient(right , #555, #444);
+    background-image: -moz-linear-gradient(right , #555, #444);
+    background-image: -webkit-linear-gradient(right , #555, #444);
+	*/
+	-moz-box-sizing: border-box;
+	-webkit-box-sizing: border-box;
+	box-sizing: border-box;
+	width: 100%;
+	padding: 2px;
+	padding-left: 8px;
+	/*margin-bottom: 4px;*/
+  color: #FEE;
+  font-weight: bold;
+  font-size: 1.0em;
+  user-select: none;
+	-moz-user-select: none;
+	-webkit-user-select: none;
+	cursor: grabbing;
 }

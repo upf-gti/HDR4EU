@@ -7,7 +7,7 @@
 
 var ssao = {
 
-	kernelSize: 64,
+	kernelSize: 12,//64,
 	kernel: [],
 	noiseSize: 4,
 	noiseTexture: null,
@@ -21,6 +21,11 @@ var ssao = {
 		this.generateSampleKernel(true);
 		CORE.setUniform('kernel', GL.linearizeArray( this.kernel ));
 		CORE.setUniform('noise_tiling', 4);
+		CORE.setUniform('radius', 0.03);
+		CORE.setUniform("z_discard", 0.02);
+		CORE.setUniform("normal_z", 0.64);
+		CORE.setUniform("enableSSAO", true);
+		CORE.setUniform("outputChannel", 0);
 		console.timeEnd('SSAO init');
 	},
 
@@ -40,7 +45,22 @@ var ssao = {
 	generateSampleKernel: function( use_hemisphere )
 	{
 		
-		for (var i = 0; i < this.kernelSize; i++)
+		this.kernel = [
+			vec2.fromValues(0,0),
+			vec2.fromValues(-0.3700152, 0.575369),
+			vec2.fromValues(0.5462944, 0.5835142),
+			vec2.fromValues(-0.4171277, -0.2965972),
+			vec2.fromValues(-0.8671125, 0.4483297),
+			vec2.fromValues(0.183309, 0.1595028),
+			vec2.fromValues(0.6757001, -0.4031624),
+			vec2.fromValues(0.8230421, 0.1482845),
+			vec2.fromValues(0.1492012, 0.9389217),
+			vec2.fromValues(-0.2219742, -0.7762423),
+			vec2.fromValues(-0.9708459, -0.1171268),
+			vec2.fromValues(0.2790326, -0.8920202)
+		  ];
+		
+		/*for (var i = 0; i < this.kernelSize; i++)
 		{
 			var sample = vec3.create();
 			sample[0] = (Math.random() * 2) - 1;
@@ -59,7 +79,7 @@ var ssao = {
 			vec3.scale(sample, sample, scale);
 
 			this.kernel.push( sample );
-		}
+		}*/
 	},
 
 	generateNoiseTexture: function()

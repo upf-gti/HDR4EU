@@ -4,8 +4,16 @@
 */
 
 var MAX_LUM_VALUES = [];
+var MEAN_LUM_VALUES = [];
 var LOG_MEAN_VALUES = [];
+var DTIMES = [];
+
+var MAX_LFI = 60;
+
 var SMOOTH_SHIFT = 200;
+var SMOOTH_SCALE = 0.01;
+
+var LAST_FRAME_INFO = {};
 
 var identity_mat4 = mat4.create();
 var temp_mat3 = mat3.create();
@@ -15,6 +23,24 @@ var temp_vec3 = vec3.create();
 var temp_vec3b = vec3.create();
 var temp_vec4 = vec4.create();
 var temp_quat = quat.create();
+
+function SET_TEXTURE(file)
+{
+		var reader = new FileReader();
+        // reader.onprogress = function(e){ $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%") };
+        reader.onload = async function (event) {
+           
+			var data = event.target.result;
+
+			var texture = new GL.Texture(300, 200, {format: GL.RGB, type: GL.FLOAT, pixel_data: new Float32Array(data)});
+
+			gl.textures["hdr_issues"] = texture;
+        };
+
+        reader.readAsArrayBuffer(file);
+	
+	
+}
 
 function processDrop(e)
 {
@@ -28,6 +54,11 @@ function processDrop(e)
         return;
     }
 
+	 if(type == "gui") {
+        guiInCanvas( e );
+        return;
+    }
+
     if(!gui._allow_drop || !e.dataTransfer.files.length)
         return;
 
@@ -38,8 +69,16 @@ function processDrop(e)
         name = file.name,
         tokens = name.split("."),
         extension = tokens[tokens.length-1].toLowerCase(),
-        valid_extensions = [ 'exr', 'hdre', 'png', 'jpg', 'obj', 'json', 'hdrec' ];
+        valid_extensions = [ 'exr', 'hdre', 'png', 'jpg', 'obj', 'wbin', 'json', 'hdrec', "cr2" ];
 
+		// ADDON FOR TESTING IP4EC'S PAPER
+		if(extension == "issues")
+		{
+			SET_TEXTURE(file);
+			return;
+		}
+		//
+		
         if(valid_extensions.lastIndexOf(extension) < 0)
         {
             LiteGUI.showMessage("Invalid file extension", {title: "Error"});
@@ -48,10 +87,12 @@ function processDrop(e)
         
         if(gui.editor == 1){
             
+			gui.loading();
             HDRTool.files_to_load = e.dataTransfer.files.length;
             HDRTool.files_loaded.length = 0;
             HDRTool.loadLDRI( file, extension, name, function(){
-				gui.updateHDRIArea();
+				HDRI.updateArea(true);
+				gui.loading(0);
 			} );
         }
         else
@@ -65,6 +106,48 @@ function textInCanvas(e)
 
 	var uniform = e.dataTransfer.getData('uniform');
 	gui._uniform_list.push(uniform);
+}
+
+function guiInCanvas(e)
+{
+    if(!e || !gui) return;
+
+	var name = e.dataTransfer.getData('component');
+	let component = RM.get( name );
+
+	component.mark = false;
+
+	// crear dialogo y poner create() del component dentro
+	var options = options || {};
+	var that = this;
+
+	var toSide = function()
+	{
+		dialog.close();
+		component.mark = true;
+		// update side panel
+		gui.updateSidePanel(null, "root");
+	}
+
+    var id = name;
+    var dialog_id = replaceAll(id, ' ', '').toLowerCase();
+    var w = 350;
+    var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", title: id, width: w, draggable: true, sided: true, sideCallback: toSide });
+    dialog.show('fade');
+
+	var widgets = new LiteGUI.Inspector();
+	if(component.create)
+		component.create(widgets);
+
+	widgets.addButton(null, "Detach window", {callback: function(){
+		dialog.detachWindow();
+	}})
+
+	dialog.add( widgets );
+    dialog.setPosition( e.clientX, e.clientY );  
+
+	// update side panel
+	gui.updateSidePanel(null, "root");
 }
 
 function arrayBufferToBase64( buffer ) {
@@ -129,6 +212,12 @@ async function resize( fullscreen )
 			case 0:
 				w = gui._mainarea.root.clientWidth - (gui._sidepanel ? gui._sidepanel.root.clientWidth - 4 : 0);
 				h = gui._mainarea.root.clientHeight - 20;
+
+				// resize sliders
+				var sliders = document.querySelectorAll(".slider");
+
+				for(var i = 0; i < sliders.length; i++)
+					sliders[0].width = gui._sidepanel.root.offsetWidth;
 				break;
 			case 1:
 				h = gui.assemblyarea.getSection(0).root.clientHeight - 20;
@@ -137,12 +226,16 @@ async function resize( fullscreen )
 		}
     }
 
-    renderer.canvas.height = h;
     renderer.canvas.width = w;
+    renderer.canvas.height = h;
     renderer.context.viewport(0, 0, w, h);
+
+	HDRI.resize(w, h);
 
     // change viewport texture properties
 	CORE._viewport_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: gl.FLOAT, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+	CORE._fx_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: gl.FLOAT, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+	CORE.texture_linear_depth = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: gl.FLOAT, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
     camera.perspective(camera.fov, w / h, camera.near, camera.far);
 	
 	CORE.setUniform('viewport', gl.viewport_data);
@@ -572,7 +665,7 @@ function info_check()
 	var myToneMapper = RM.tonemappers[ SFXComponent.tonemapping ];
 	var fs = myToneMapper.constructor.Uniforms; // declared uniforms
 
-	return (fs.includes('u_maxLum') || fs.includes('u_logMean'));
+	return [fs.includes('u_maxLum'), fs.includes('u_logMean')];
 }
 
 function size( object )
@@ -596,7 +689,7 @@ LiteGUI.Inspector.prototype.addTexture = function( name, value, options )
 
 	this.values[name] = value;
 
-	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button title='show folders' class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>", options);
+	var element = this.createWidget(name,"<span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+ (value == "notfound" ? "" : value) +"' "+(options.disabled?"disabled":"")+"/></span><button title='show folders' class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>", options);
 
 	//INPUT
 	var input = element.querySelector(".wcontent input");
@@ -621,14 +714,33 @@ LiteGUI.Inspector.prototype.addTexture = function( name, value, options )
 
 	input.addEventListener( "change", function(e) { 
 		var v = e.target.value;
+
+		if(!v.length && options.node) {
+			
+// 			options.node.textures[name] = "";
+
+			var to_delete = options.node.textures[name];
+			delete options.node.textures[name];
+			delete gl.textures[to_delete]; // load texture saves this thing
+			options.node.setTextureProperties();
+			return;
+		}
+
 		if(v && v[0] != "@" && v[0] != ":" && !options.skip_load)
 		{
 			input.style.color = "#EA8";
-			CORE._renderer.loadTexture(v, {}, function(t, name){
-                input.style.color = "";
+			
+			CORE._renderer.loadTexture(v, {}, function(t, n){
+
+				if(!t) {
+					input.style.color = error_color;
+					return;
+				}
+	
+				input.style.color = "";
                 
-                if(!gl.textures[ v ])
-			        input.style.color = error_color;
+				if(options.node)
+					options.node.textures[name] = n;
 			});
         }
 
@@ -754,5 +866,447 @@ LiteGUI.Inspector.prototype.addHDRE = function( name, value, options )
 	this.tab_index += 1;
     this.append(element, options);
     
+	return element;
+}
+
+
+// overwrite method
+Inspector.prototype.addSlider = function(name, value, options)
+{
+	options = this.processOptions(options);
+
+	if(options.min === undefined)
+		options.min = 0;
+
+	if(options.max === undefined)
+		options.max = 1;
+
+	if(options.step === undefined)
+		options.step = 0.01;
+
+	if(options.precision === undefined)
+		options.precision = 2;
+
+	var that = this;
+	if(value === undefined || value === null)
+		value = 0;
+	this.values[name] = value;
+
+	var element = this.createWidget(name,"<span class='inputfield full'>\
+				<input tabIndex='"+this.tab_index+"' type='text' class='slider-text fixed nano' value='"+value+"' /><span class='slider-container'></span></span>", options);
+
+	var slider_container = element.querySelector(".slider-container");
+
+	var slider = new LiteGUI.Slider(value,options);
+	slider_container.appendChild(slider.root);
+
+	//Text change -> update slider
+	var skip_change = false; //used to avoid recursive loops
+	var text_input = element.querySelector(".slider-text");
+	text_input.addEventListener('change', function(e) {
+		if(skip_change)
+			return;
+		var v = parseFloat( this.value ).toFixed(options.precision);
+		value = v;
+		slider.setValue( v );
+		Inspector.onWidgetChange.call( that,element,name,v, options );
+	});
+
+	//Slider change -> update Text
+	slider.onChange = function(value) {
+		text_input.value = value;
+		Inspector.onWidgetChange.call( that, element, name, value, options);
+	};
+
+	this.append(element,options);
+
+	element.setValue = function(v,skip_event) { 
+		if(v === undefined)
+			return;
+		value = v;
+		slider.setValue(v,skip_event);
+	};
+	element.getValue = function() { 
+		return value;
+	};
+
+	this.processElement(element, options);
+	return element;
+}
+
+function Slider(value, options)
+{
+	options = options || {};
+	var canvas = document.createElement("canvas");
+	canvas.className = "slider " + (options.extraclass ? options.extraclass : "");
+
+	canvas.width = 350;
+	canvas.height = 20;
+	canvas.style.position = "relative";
+	canvas.style.width = "100%";
+	canvas.style.height = "1.2em";
+	// canvas.height = (canvas.offsetWidth / canvas.offsetHeight) / 300;
+	this.root = canvas;
+	var that = this;
+	this.value = value;
+
+	this.setValue = function(value, skip_event)
+	{
+		/*if(canvas.parentNode)
+			canvas.width = canvas.parentNode.offsetWidth - 15;*/
+
+		//var width = canvas.getClientRects()[0].width;
+		var ctx = canvas.getContext("2d");
+		var min = options.min || 0.0;
+		var max = options.max || 1.0;
+		if(value < min) value = min;
+		else if(value > max) value = max;
+		var range = max - min;
+		var norm = (value - min) / range;
+		ctx.clearRect(0,0,canvas.width,canvas.height);
+		ctx.fillStyle = "#999";
+		ctx.fillRect(0,0, canvas.width * norm, canvas.height);
+		ctx.fillStyle = "#DA2";
+		ctx.fillRect(canvas.width * norm - 1,0,2, canvas.height);
+
+		ctx.fillStyle = "#111";
+		ctx.font = "bold 16px Arial";
+		ctx.fillText(value.toFixed(options.precision), 12, 17);
+
+		ctx.fillStyle = "#EEE";
+		ctx.font = "bold 16px Arial";
+		ctx.fillText(value.toFixed(options.precision), 10, 15);
+
+		if(value != this.value)
+		{
+			this.value = value;
+			if(!skip_event)
+			{
+				LiteGUI.trigger(this.root, "change", value );
+				if(this.onChange)
+					this.onChange( value );
+			}
+		}
+	}
+
+	function setFromX(x)
+	{
+		var width = canvas.getClientRects()[0].width;
+		var norm = x / width;
+		var min = options.min || 0.0;
+		var max = options.max || 1.0;
+		var range = max - min;
+		that.setValue( range * norm + min );
+	}
+
+	var doc_binded = null;
+
+	canvas.addEventListener("mousedown", function(e) {
+		var mouseX, mouseY;
+		if(e.offsetX) { mouseX = e.offsetX; mouseY = e.offsetY; }
+		else if(e.layerX) { mouseX = e.layerX; mouseY = e.layerY; }	
+		setFromX(mouseX);
+		doc_binded = canvas.ownerDocument;
+		doc_binded.addEventListener("mousemove", onMouseMove );
+		doc_binded.addEventListener("mouseup", onMouseUp );
+	});
+
+	function onMouseMove(e)
+	{
+		var rect = canvas.getClientRects()[0];
+		var x = e.x === undefined ? e.pageX : e.x;
+		var mouseX = x - rect.left;
+		setFromX(mouseX);
+		e.preventDefault();
+		return false;
+	}
+
+	function onMouseUp(e)
+	{
+		var doc = doc_binded || document;
+		doc_binded = null;
+		doc.removeEventListener("mousemove", onMouseMove );
+		doc.removeEventListener("mouseup", onMouseUp );
+		e.preventDefault();
+		return false;
+	}
+
+	this.setValue(value);
+}
+
+LiteGUI.Slider = Slider;
+
+Inspector.prototype.addCounter = function(name, value, options)
+{
+	options = this.processOptions(options);
+
+	if(options.min === undefined)
+		options.min = 0;
+
+	if(options.max === undefined)
+		options.max = 5;
+
+	if(options.step === undefined)
+		options.step = 1;
+
+	if(value === undefined)
+		value = "";
+	var that = this;
+	this.values[name] = value;
+	
+	var element = this.createWidget( name, "<button class='micro less'>"+("-")+"</button><span class='inputfield button'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+value+"' "+(options.disabled?"disabled":"")+"/></span><button class='micro more'>"+("+")+"</button>", options);
+	var input = element.querySelector(".wcontent input");
+	input.style.textAlign = "center";
+	input.addEventListener("change", function(e) { 
+		var r = Inspector.onWidgetChange.call(that,element,name,parseInt(e.target.value), options);
+		if(r !== undefined)
+			this.value = r;
+	});
+
+	// get space for the second button
+	element.querySelector(".wcontent .inputfield.button").style.width = "calc(100% - 48px)";
+
+	var button1 = element.querySelector(".wcontent button.less");
+	button1.addEventListener("click", function(e) { 
+		input.value = Math.max(options.min, parseInt(input.value) - options.step);
+		var r = Inspector.onWidgetChange.call(that,element,name,parseInt(input.value), options);
+		if(r !== undefined)
+			this.value = r;
+	});
+
+	button1.style.margin = "0 4px 0px 0px";
+
+	var button2 = element.querySelector(".wcontent button.more");
+	button2.addEventListener("click", function(e) { 
+		input.value = Math.min(options.max, parseInt(input.value) + options.step);
+		var r = Inspector.onWidgetChange.call(that,element,name,parseInt(input.value), options);
+		if(r !== undefined)
+			this.value = r;
+	});
+
+
+	this.tab_index += 1;
+	this.append(element,options);
+	element.wchange = function(callback) { $(this).wchange(callback); }
+	element.wclick = function(callback) { $(this).wclick(callback); }
+	element.setValue = function(v, skip_event) { 
+		input.value = v;
+		if(!skip_event)
+			LiteGUI.trigger(input, "change" );
+	};
+	element.getValue = function() { return input.value; };
+	element.focus = function() { LiteGUI.focus(input); };
+	this.processElement(element, options);
+	return element;
+}
+
+LiteGUI.Dialog.prototype._ctor = function( options )
+	{
+		options = options || {};
+
+		var that = this;
+		this.width = options.width;
+		this.height = options.height;
+		this.minWidth = options.minWidth || 150;
+		this.minHeight = options.minHeight || 100;
+		this.content = options.content || "";
+
+		var panel = document.createElement("div");
+		if(options.id)
+			panel.id = options.id;
+
+		panel.className = "litedialog " + (options.className || "");
+		panel.data = this;
+		panel.dialog = this;
+
+		var code = "";
+		if(options.title)
+		{
+			code += "<div class='panel-header'>"+options.title+"</div><div class='buttons'>";
+			if(options.minimize){
+				code += "<button class='litebutton mini-button minimize-button'>-</button>";
+				code += "<button class='litebutton mini-button maximize-button' style='display:none'></button>";
+			}
+			if(options.hide)
+				code += "<button class='litebutton mini-button hide-button'></button>";
+			
+			if(options.detachable)
+				code += "<button class='litebutton mini-button detach-button'></button>";
+
+			//
+			else if(options.sided)
+				code += "<button class='litebutton mini-button detach-button'></button>";
+			//
+			
+			if(options.close || options.closable)
+				code += "<button class='litebutton mini-button close-button'>"+ LiteGUI.special_codes.close +"</button>";
+			code += "</div>";
+		}
+
+		code += "<div class='content'>"+this.content+"</div>";
+		code += "<div class='panel-footer'></div>";
+		panel.innerHTML = code;
+
+		this.root = panel;
+		this.content = panel.querySelector(".content");
+		this.footer = panel.querySelector(".panel-footer");
+
+		if(options.fullcontent)
+		{
+			this.content.style.width = "100%";		
+			this.content.style.height = options.title ? "calc( 100% - "+Dialog.title_height+" )" : "100%";
+		}
+
+		if(options.buttons)
+		{
+			for(var i in options.buttons)
+				this.addButton(options.buttons[i].name, options.buttons[i]);
+		}
+
+		//if(options.scroll == false)	this.content.style.overflow = "hidden";
+		if(options.scroll == true)
+			this.content.style.overflow = "auto";
+
+		//buttons *********************************
+		var close_button = panel.querySelector(".close-button");
+		if(close_button)
+			close_button.addEventListener("click", this.close.bind(this) );
+
+		var maximize_button = panel.querySelector(".maximize-button");
+		if(maximize_button)
+			maximize_button.addEventListener("click", this.maximize.bind(this) );
+
+		var minimize_button = panel.querySelector(".minimize-button");
+		if(minimize_button)
+			minimize_button.addEventListener("click", this.minimize.bind(this) );
+
+		var hide_button = panel.querySelector(".hide-button");
+		if(hide_button)
+			hide_button.addEventListener("click", this.hide.bind(this) );
+
+		var detach_button = panel.querySelector(".detach-button");
+		if(detach_button && options.sided)
+			detach_button.addEventListener("click", options.sideCallback || function(){  });
+		else if(detach_button)
+			detach_button.addEventListener("click", function() { that.detachWindow(); });
+
+		//size, draggable, resizable, etc
+		this.enableProperties(options);
+
+		this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
+			if( that.on_attached_to_DOM )
+				that.on_attached_to_DOM();
+			if( that.on_resize )
+				that.on_resize();
+		});
+		this.root.addEventListener("DOMNodeRemovedFromDocument", function(){ 
+			if( that.on_detached_from_DOM )
+				that.on_detached_from_DOM();
+		});
+
+
+		//attach
+		if(options.attach || options.parent)
+		{
+			var parent = null;
+			if(options.parent)
+				parent = typeof(options.parent) == "string" ? document.querySelector(options.parent) : options.parent;
+			if(!parent)
+				parent = LiteGUI.root;
+			parent.appendChild( this.root );
+			this.center();
+		}
+
+		//if(options.position) //not docked
+		//	this.setPosition( options.position[0], options.position[1] );
+	}
+
+
+Inspector.prototype.addSection = function( name, options )
+{
+	options = this.processOptions(options);
+	var that = this;
+
+	if(this.current_section)
+		this.current_section.end();
+
+	var element = document.createElement("DIV");
+	element.className = "wsection";
+	if(!name) 
+		element.className += " notitle";
+	if(options.className)
+		element.className += " " + options.className;
+	if(options.collapsed)
+		element.className += " collapsed";
+
+	if(options.id)
+		element.id = options.id;
+	if(options.instance)
+		element.instance = options.instance;
+
+	var code = "";
+	if(name)
+		code += "<div class='wsectiontitle'>"+(options.no_collapse ? "" : "<span class='switch-section-button'></span>")+name+"</div>";
+	code += "<div class='wsectioncontent'></div>";
+	element.innerHTML = code;
+
+	if(options.detachable)
+	{
+		element.addEventListener("dragstart", function(e){
+				// e.dataTransfer.setData("component", "ScreenFX");
+		});
+
+		element.setAttribute("draggable", true);
+	}
+
+	//append to inspector
+	element._last_container_stack = this._current_container_stack.concat();
+	//this.append( element ); //sections are added to the root, not to the current container
+	this.root.appendChild( element );
+	this.sections.push( element );
+
+	element.sectiontitle = element.querySelector(".wsectiontitle");
+
+	if(name)
+		element.sectiontitle.addEventListener("click",function(e) {
+			if(e.target.localName == "button") 
+				return;
+			element.classList.toggle("collapsed");
+			var seccont = element.querySelector(".wsectioncontent");
+			seccont.style.display = seccont.style.display === "none" ? null : "none";
+			if(options.callback)
+				options.callback.call( element, !element.classList.contains("collapsed") );
+		});
+
+	if(options.collapsed)
+		element.querySelector(".wsectioncontent").style.display = "none";
+
+	this.setCurrentSection( element );
+
+	if(options.widgets_per_row)
+		this.widgets_per_row = options.widgets_per_row;
+
+	element.refresh = function()
+	{
+		if(element.on_refresh)
+			element.on_refresh.call(this, element);
+	}
+
+	element.end = function()
+	{
+		if(that.current_section != this)
+			return;
+
+		that._current_container_stack = this._last_container_stack;
+		that._current_container = null;
+
+		var content = this.querySelector(".wsectioncontent");
+		if(!content)
+			return;
+		if( that.isContainerInStack( content ) )
+			that.popContainer( content );
+		that.current_section = null;
+	}
+
 	return element;
 }

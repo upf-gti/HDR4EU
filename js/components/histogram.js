@@ -12,6 +12,7 @@ function Histogram()
 	this.scale = 0.1;
 	this.size = [0.25,0.25];
 	this.position = [0.005, 0.05];
+	this.collapsed = false;
 }
 
 Histogram.masks = [vec3.fromValues(1,0,0),vec3.fromValues(0,1,0),vec3.fromValues(0,0,1)];
@@ -27,7 +28,17 @@ Object.assign( Histogram.prototype, {
 		
 		var that = this;
 
-		widgets.addSection("Histogram");
+		var element = widgets.addSection("Histogram", {collapsed: that.collapsed, callback: function(no_collapsed){
+				that.collapsed = !no_collapsed;
+			}});
+	
+		element.addEventListener("dragstart", function(e){
+				e.dataTransfer.setData("type", "gui");
+				e.dataTransfer.setData("component", "Histogram");
+		});
+
+		element.setAttribute("draggable", true);
+
 		widgets.addCheckbox("Enabled", this.enabled, { callback: function(v){ that.enabled = v; } });
 		widgets.addVector2("Size", this.size, {min: 0,step:0.001, callback: function(v){ that.size = v; }});
 		widgets.addVector2("Position", this.position, {min:0, max:1,step:0.001,callback: function(v){ that.position = v; }});
@@ -41,11 +52,8 @@ Object.assign( Histogram.prototype, {
 		if( !tex )
 			return; //saves work
 
-		var enabled = this.enabled;
-
-		if(!enabled)
+		if(!this.enabled)
 			return tex;
-
 
 		if(!this._points_mesh)
 		{

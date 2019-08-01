@@ -21,3 +21,22 @@
   -webkit-font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
 }
+
+.keyframe_icon {
+	border: 2px solid rgba(0,0,0,0.4);
+	/*box-shadow: 0 0 2px black;*/
+	border-radius: 10px;
+	width: 12px;
+	height: 12px;
+	background-color: #666;
+	display: inline-block;
+	margin-top: 2px;
+	margin-right: 5px;
+    transition: background-color 0.1s ease 0s;
+    -moz-transition: background-color 0.1s ease 0s;
+}
+
+.keyframe_icon:hover {
+	background-color: #8EA;
+	cursor: pointer;
+}

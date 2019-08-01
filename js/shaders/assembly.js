@@ -61,26 +61,33 @@ HDRAssembly_Shader.FS_CODE = `
 	uniform sampler2D u_stack3;
 	uniform sampler2D u_stack4;
 	uniform sampler2D u_stack5;
-	uniform sampler2D u_stack6;
-	uniform sampler2D u_stack7;
-	uniform sampler2D u_stack8;
-	uniform sampler2D u_stack9;
+//	uniform sampler2D u_stack6;
+//	uniform sampler2D u_stack7;
 
 	float luminance( const vec3 color ){
 		return color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722;
 	}
 
+
 	float weight( float value ){
 		
-		if(value <= 128.0)
-			return value * 2.0;
+		if(value <= 0.5)
+			return value;
 		else
-			return (1.0 - value) * 2.0;
+			return (1.0 - value);
+	}
+
+	float Tweight( float value ){
+		
+		if(value < 0.02 || value > 0.98)
+			return value;
+		else
+			return 1.0;
 	}
 
 	void main() {
 
-		int refId = u_numImages - 1;
+		int refId = int(float(u_numImages) / 2.0);
 
 		float weightSum = 0.0;
 		vec4 hdr = vec4(0.0);
@@ -92,29 +99,36 @@ HDRAssembly_Shader.FS_CODE = `
 		samplers[3] = texture2D( u_stack3, v_coord ).rgb;
 		samplers[4] = texture2D( u_stack4, v_coord ).rgb;
 		samplers[5] = texture2D( u_stack5, v_coord ).rgb;
-		samplers[6] = texture2D( u_stack6, v_coord ).rgb;
-		samplers[7] = texture2D( u_stack7, v_coord ).rgb;
-		samplers[8] = texture2D( u_stack8, v_coord ).rgb;
-		samplers[9] = texture2D( u_stack9, v_coord ).rgb;
+		//samplers[6] = texture2D( u_stack6, v_coord ).rgb;
+		//samplers[7] = texture2D( u_stack7, v_coord ).rgb;
 
 		for( int i = 0; i < 16; i++ )
 		{
 			if( i < u_numImages )
 			{
-				vec3 ldr = samplers[i];
+				/*vec3 ldr = samplers[i];
 				float lum = luminance( ldr );
-				float w = weight( lum );
+				float w = weight( lum ) + 1e-6;
 				float exposure = pow(2.0, float(i - refId));
 				
-				hdr.rgb += (ldr/exposure) * w;
+				hdr.rgb += (ldr*exposure) * w;
+				weightSum += w;*/
+
+				vec3 ldr = samplers[i];
+				ldr = pow(ldr, vec3(1.0/2.2));
+				float lum = luminance( ldr );
+				float w = Tweight( lum ) + 1e-6;
+				
+				hdr.rgb += (ldr) * w;
 				weightSum += w;
 			}
 		}
 
 		hdr.rgb /= (weightSum + 1e-6);
 		hdr.a = log(luminance(hdr.rgb) + 1e-6);
+
 		gl_FragColor = hdr;
 	}
 `;
 
-RM.registerShader( HDRAssembly_Shader, "HDRassembly" );
+RM.registerShader( HDRAssembly_Shader, "HDRassemblys" );
