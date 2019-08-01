@@ -437,12 +437,10 @@ Object.defineProperty(Core.prototype, 'blur_samples', {
 */
 Core.prototype.render = function()
 {
-	
 	if(window.show_texture) {
 		gl.textures[window.show_texture].toViewport();
 		return;
 	}
-
 
 	this.stats.begin();
 
@@ -557,7 +555,7 @@ Core.prototype.forwardRender = function()
         this._fx_tex = render_texture;
     }
 
-	this._viewport_tex.toViewport();
+	this._fx_tex.toViewport();
 }
 
 /**
