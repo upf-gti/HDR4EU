@@ -41,35 +41,37 @@ Object.assign( Tonemapper.prototype, {
             precision highp float;
             varying vec2 v_coord;
             uniform float u_exposure;
-			uniform bool u_applyGamma;
+            uniform bool u_GammaCorrection;
+            uniform bool u_ConvertToLinear;
             uniform float u_offset;
             uniform sampler2D u_color_texture;
 
             ` + base_class.Uniforms + `
 
             float C_GAMMA = 2.2;
+
+            #ifdef GAMMA
+                C_GAMMA = GAMMA;
+            #endif
+
             void main() {
 
                 vec4 color = texture2D(u_color_texture, v_coord);
-                
-				/*if(u_applyGamma == true)
+
+                if(u_ConvertToLinear)
 				{
 					color = pow(color, vec4(C_GAMMA));
-				}*/
+				}
 				
 				color *= u_exposure; //pb camera version for exposure
                 color += vec4(u_offset);
 
                 ` + base_class.Code + `
-                
-				#ifdef GAMMA
-                    C_GAMMA = GAMMA;
-                #endif
 
-				/*if(u_applyGamma == true)
+				if(u_GammaCorrection)
 				{
 					color = pow(color, vec4(1.0/C_GAMMA));
-				}*/
+				}
                 
                 gl_FragColor = color;
             }
@@ -127,7 +129,41 @@ ReinhardTonemapper.Code = `
 
 `;
 
-RM.registerTonemapper( ReinhardTonemapper, 'Reinhard' );
+RM.registerTonemapper( ReinhardTonemapper, 'SimpleReinhard' );
+
+/**
+ * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ */
+
+// ACES tone map
+// see: https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/
+function ACESTonemapper()
+{
+    if(this.constructor !== ACESTonemapper)
+        throw("Use new");
+
+    this.defines = {};
+	this.uniforms = {};
+}
+
+ACESTonemapper.Uniforms = `
+
+`;    
+
+ACESTonemapper.Code = `
+
+    const float A = 2.51;
+    const float B = 0.03;
+    const float C = 2.43;
+    const float D = 0.59;
+    const float E = 0.14;
+    color.rgb = color.rgb * (A * color.rgb + vec3(B));
+	color.rgb /= (color.rgb * (C * color.rgb + vec3(D)) + vec3(E));
+	color.rgb = pow(color.rgb, vec3(1.0/2.2));
+
+`;
+
+//RM.registerTonemapper( ACESTonemapper, 'ACES' );
 
 /**
  * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -312,6 +348,45 @@ PTRTonemapper.Code = `
 RM.registerTonemapper( PTRTonemapper, 'PTR' );
 
 /**
+ * xxxxxx ExponentialHDRITonemapper xxxxxxxx
+ */
+
+function ExponentialHDRITonemapper()
+{
+    if(this.constructor != ExponentialHDRITonemapper)
+        throw("Use new");
+
+    this.defines = {};
+    this.uniforms = {};
+	this.assembling = true;
+    this.params = {
+        'Brightness': {
+            value: 0.45,
+            options: {
+                min: 0.01,
+                max: 1.0,
+                step: 0.01
+            }
+        }
+    };
+}
+
+ExponentialHDRITonemapper.Uniforms = `
+
+	
+
+`;
+
+ExponentialHDRITonemapper.Code = `
+
+	
+
+`;
+
+RM.registerTonemapper( ExponentialHDRITonemapper, 'ExponentialHDRI' );
+
+
+/**
  * xxxxxx Global tonemapper xxxxxxxx
  */
 
@@ -353,98 +428,14 @@ function GlobalTonemapper()
 
 GlobalTonemapper.Uniforms = `
 
-    uniform float u_Key;
-	uniform float u_Ywhite;
-	uniform float u_Exposure;
-	uniform float u_Saturation;
-
-	const mat3 RGB_2_XYZ = (mat3(
-		0.4124564, 0.3575761, 0.1804375,
-		0.2126729, 0.7151522, 0.0721750,
-		0.0193339, 0.1191920, 0.9503041
-	));
-
-	/*const mat3 XYZ_2_RGB = (mat3(
-		 3.2404542,-1.5371385,-0.4985314,
-		-0.9692660, 1.8760108, 0.0415560,
-		 0.0556434,-0.2040259, 1.0572252
-	));*/
-
-	vec3 rgb_to_xyz(vec3 rgb) {
-		return RGB_2_XYZ * rgb;
-	}
-
-	float luminance( const vec3 color ){
-		return color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722;
-	}
-
-	vec3 global(vec3 RGB, float logAvgLum)
-	{
-		float sat = clamp(u_Saturation, 0.001, 2.0);
-		float key = clamp(u_Key, 0.001, 1.0);
-
-		vec3 XYZ = rgb_to_xyz( RGB );
-
-		float Yw = XYZ.y;
-		float Y = (key / logAvgLum) * Yw;
-		float Yd = (Y * (1.0 + (Y/(u_Ywhite * u_Ywhite)))) / (1.0 + Y);
-
-		return pow( RGB / Yw, vec3(sat)) * Yd;
-	}
+    
 
 `;
 
 GlobalTonemapper.Code = `
 
-	float logAvgLum = color.a;
-	color = vec4(global( color.rgb, logAvgLum ), 1.0);
-	color *= u_Exposure;
+	
 `;
 
 RM.registerTonemapper( GlobalTonemapper, 'PTR_HDRI' );
 
-/**
- * xxxxxx ExponentialHDRITonemapper xxxxxxxx
- */
-
-function ExponentialHDRITonemapper()
-{
-    if(this.constructor != ExponentialHDRITonemapper)
-        throw("Use new");
-
-    this.defines = {};
-    this.uniforms = {};
-	this.assembling = true;
-    this.params = {
-        'Brightness': {
-            value: 0.45,
-            options: {
-                min: 0.01,
-                max: 1.0,
-                step: 0.01
-            }
-        }
-    };
-}
-
-ExponentialHDRITonemapper.Uniforms = `
-
-    uniform float u_Brightness;
-
-	float luminance( const vec3 color ){
-		return color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722;
-	}
-
-`;
-
-ExponentialHDRITonemapper.Code = `
-
-	float logAvgLum = color.a;
-	
-	 float lum = luminance(color.rgb);
-    float lum_TM = 1.0 - exp( -u_Brightness * lum/logAvgLum );
-
-    color.rgb *= lum_TM/lum;
-`;
-
-RM.registerTonemapper( ExponentialHDRITonemapper, 'ExponentialHDRI' );

@@ -17,7 +17,7 @@
     $response = [];
 
     // Use HDR4EU textures
-    $directory = "../textures/hdre/"; 
+    $directory = "../data/textures/hdre/"; 
     $filecount = 0;
     $files = glob($directory . "*.{hdre}", GLOB_BRACE);
 
@@ -32,7 +32,7 @@
         // Process files
         $file_name = $files[$i];
         $aux = $file_name;
-        $file_name = substr($file_name, 17);
+        $file_name = substr($file_name, 22);
         $file_name = substr($file_name, 0, -5);
         $file_name = str_replace("_", " ", $file_name);
         $file_name = ucwords($file_name);

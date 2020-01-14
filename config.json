@@ -2,75 +2,91 @@
     "nocache": false,
     
     "imports" : [
-        "js/lib/tinyexr.js",
-        "js/lib/pako.js",
-        "js/lib/UTIF.js",
-        "js/lib/UPNG.js",
-        "js/lib/jpg.js",
-	"js/lib/math/linearAlgebra.js",
+        "js/lib/math/linearAlgebra.js",
         "js/lib/math/numbers.js",
         "js/lib/math/numeric.js",
-	"js/lib/stats.min.js",
-	"js/lib/bootstrap.min.js",
-        "js/lib/jscolor/jscolor.js",
+        "js/lib/tinyexr.js",
         "js/lib/gl-matrix-min.js",
         "js/lib/litegl.js",
-	"js/lib/Canvas2DtoWebGL.js",
-	"js/lib/dragAndScale.js",
-        "js/lib/wbin.js",
-        "js/lib/litescene.js",
-        "js/lib/litegraph.js",
-	"js/lib/litefileserver.js",
-        "js/lib/importer.js",
         "js/lib/rendeer.js",
-        "js/lib/HDRTool.js",
-        "js/lib/hdre.js",
-        "js/lib/SimplexNoise.js",
-	"js/filesystem.js",
+        "js/lib/litegraph.js",
+        "js/lib/stats.js",
+        "js/lib/importer.js",
+        "js/lib/litefileserver.js",
+        "js/lib/Canvas2DtoWebGL.js",
+        "js/lib/wbin.js",
+        "js/lib/jscolor/jscolor.js",
+        "js/lib/graph_nodes/math.js",
+        "js/lib/graph_nodes/math3d.js",
+        "js/lib/graph_nodes/gltextures.js",
+        "js/lib/graph_nodes/glfx.js",
+
+        "js/tools/importer.js",
+        "js/tools/utils.js",
+        "js/tools/hdre.js",
+        "js/tools/hdr_engine.js",
+        "js/tools/filesystem.js",
+        "js/tools/event_manager.js",
+        "js/tools/graph_manager.js",
+        "js/tools/controller.js",
+        "js/tools/hdri.js",
+        "js/tools/nodepicker.js",
+        "js/tools/irradiance.js",
+        "js/tools/screenfx.js",
+
+        "js/graph_nodes/textures.js",
+        "js/graph_nodes/scene.js",
+        "js/graph_nodes/atmos.js",
+        "js/graph_nodes/prems.js",
+
+        "js/shaders/chroma.js",
+
+        "js/node_components/chroma.js",
+        "js/node_components/light.js",
+        "js/node_components/target.js",
+        "js/node_components/webcam.js",
+
         "js/gui.js",
-	"js/actions.js",
-        "js/utils.js",
-        "js/hdri.js",
-	"js/core.js",
-        "js/components/irradiance.js",
-	"js/components/atmospheric.js",
-	"js/components/histogram.js",
-	"js/components/textureTools.js",
-        "js/components/colorpicker.js",
-        "js/components/nodepicker.js",
-        "js/components/controller.js",
-        "js/components/light.js",
-        "js/components/render.js",
-        "js/components/screenfx.js",
-        "js/shaders/histogram.js",
-	"js/shaders/tonemapping.js",
-        "js/shaders/pbr.js",
-        "js/shaders/defpbr.js",
-	"js/shaders/defflat.js",
-        "js/shaders/assembly.js",
-	"js/screenspace/ssao.js"
+        "js/core.js"
     ],
 
     "scenes" : {
 
-        "Test": {
-            "name": "Test",
-            "mesh": "@sphere",
-            "textures": {
-                "roughness": "../assets/gradient.jpg",
-                "metalness": "../assets/noise.jpg",
-                "albedo": "../assets/TEST.JPG"
-	     },
-            "size": "0 MB",
-            "camera": {
-                "eye": [-5.5,0,0]
+        "Damaged Helmet": {
+                "name": "Damaged Helmet",
+                "mesh": "DamagedHelmet/DamagedHelmet.obj",
+                "textures": {
+                    "roughness": "DamagedHelmet/metalRoughness.jpg",
+                    "albedo": "DamagedHelmet/albedo.jpg",
+                    "ao": "DamagedHelmet/ao.jpg",
+                    "normal": "DamagedHelmet/normal.jpg",
+            "emissive": "DamagedHelmet/emissive.jpg"
             },
-	    "uniforms": {
-		"u_roughnessInBlue": "true"
-	    }
-        },
-	"Pbr": {
-            "name": "Pbr",
+                "size": "1,65 MB",
+                "camera": {
+                    "eye": [-1.5,0.5,2.5]
+                },
+            "uniforms": {
+                "u_metallicRough": "true"
+            }
+            },
+        "Radio": {
+                "name": "Radio",
+                "mesh": "Radio/radio.obj",
+                "textures": {
+                    "roughness": "Radio/roughness.png",
+                    "albedo": "Radio/albedo.png",
+                    "ao": "Radio/ao.png",
+                    "normal": "Radio/normal.png",
+            "metalness": "Radio/metalness.png"
+            },
+                "size": "168 KB",
+                "camera": {
+                    "eye": [-0.5,0.25,1]
+                }
+            },
+        "Substance Mesh": {
+            "name": "Substance Mesh",
             "mesh": "Pbr/pbr.wbin",
             "textures": {
                 "roughness": "Pbr/roughness.png",
