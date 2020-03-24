@@ -1,6 +1,11 @@
 # H2020 HDR4EU Project
 
-Proof-of-concept web based tools integrated within WebGLStudio which essentially consists of a renderer on the web which can achieve photorealistic results and match real lighting conditions. Presenting a set of web tools to extract the environmental light from HDR images as light probes, to store this information and use it to match the rendered scene with the setting and light complexity of a realistic environment using PBR rendering techniques.
+The HDR4EU is a EU project related to HDR data. 
+This repository contains a set of web-tools, libraries and fileformat descriptions developed by the GTI group from Universitat Pompeu Fabra to tackle de problem of using HDR images on the web.
+
+In this repository you will find a web-tool renderer which can achieve photorealistic results and match real lighting conditions thanks to the use of image-based HDR lighting.
+
+It also includes a set of tools on the web to extract the environmental light from LDR images of different expossures, and to generate an HDR light probe information object, so it can be used to render a scene with the setting and light complexity of a realistic environment using PBR rendering techniques.
 
 Physically based rendering is a rendering method that provides a more accurate representation of materials and how they interact with light when compared to traditional real-time models. The separation of materials and lighting at the core of the PBR method makes it easier to create realistic assets that look accurate in all lighting conditions. From [Filament](https://google.github.io/filament/Filament.md.html)
 
