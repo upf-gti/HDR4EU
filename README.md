@@ -52,6 +52,8 @@ This component could be used also with a webcam as the texture color for the chr
 
 Drag each of the LDR images (up to 9 images) at the canvas in the `Assembly` navigation tab. When ready, click `Assemble` button and you will be able to crop the image and tune some tone-mapping parameters. Last step is to `Export` and test in the application.
 
+![alt text](https://webglstudio.org/users/arodriguez/screenshots/matrix-despacho.png)
+
 ## Examples of rendered scenes
 
 ![alt text](https://webglstudio.org/users/arodriguez/screenshots/woman_pbr.png)
