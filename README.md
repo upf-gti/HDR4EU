@@ -12,7 +12,7 @@ It also includes a set of tools on the web to extract the environmental light fr
 
 We have also created a HDRE repository that will store all the created and assembled (from LDRs) 3D envorironments. It will be available for everyone for browsing, downloading and testing any file on the application. In case of uploading files, a completely free registration will be necessary.
 
-The application makes use of different 3D render web-libraries as [*rendeer.js*](https://github.com/jagenjo/rendeer.js), [*litescene.js*] or [*litegl.js*](https://github.com/jagenjo/litescene.js)(https://github.com/jagenjo/litegl.js). All of them created in the UPF-GTI by Javi Agenjo (@jagenjo) for the project *WebGlStudio*. In that context, this application has been complemented with many 3D tools to create and manipulate 3D scenes. Additionally, UPF-GTI has developed for this project a section for generating simple virtual studios using **Chroma Keying** algorithms, completely on the web.
+The application makes use of different 3D render web-libraries as [*rendeer.js*](https://github.com/jagenjo/rendeer.js), [*litescene.js*](https://github.com/jagenjo/litescene.js) or [*litegl.js*](https://github.com/jagenjo/litegl.js). All of them created in the UPF-GTI by Javi Agenjo (@jagenjo) for the project *WebGlStudio*. In that context, this application has been complemented with many 3D tools to create and manipulate 3D scenes. Additionally, UPF-GTI has developed for this project a section for generating simple virtual studios using **Chroma Keying** algorithms, completely on the web.
 
 The application can be tested [here](https://webglstudio.org/projects/hdr4eu/), where you will find an index with:
 
