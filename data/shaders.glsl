@@ -1,7 +1,8 @@
 \shaders
 
+fbo_flat default.vs default.fs
+
 // Basic shaders
-flat default.vs default.fs
 textured default.vs textured.fs
 webcam default.vs webcam.fs
 textured_phong default.vs textured_phong.fs
@@ -10,12 +11,15 @@ basicFx screen_shader.vs basicFx.fs
 grid default.vs grid.fs
 lines default.vs lines.fs
 
+skinning skinning.vs skinning.fs
+
 // HDRI
 HDRassembly screen_shader.vs HDRassembly.fs
 combineHDR screen_shader.vs combineHDR.fs
 assemblyViewer screen_shader.vs assemblyViewer.fs
 
 NoneHDRI QUAD_VERTEX_SHADER.vs NoneHDRI.fs
+TestHDRI QUAD_VERTEX_SHADER.vs TestHDRI.fs
 ExponentialHDRI QUAD_VERTEX_SHADER.vs ExponentialHDRI.fs
 PTR_HDRI QUAD_VERTEX_SHADER.vs PTR_HDRI.fs
 
@@ -40,88 +44,140 @@ luminance screen_shader.vs luminance.fs
 
 // Deferred rendering Shaders
 ssao screen_shader.vs ssao.fs
-finalDeferred screen_shader.vs finalDeferred.fs
+multiplyPass screen_shader.vs multiplyPass.fs
 DeferredCubemap default.vs DeferredCubemap.fs
 linearDepth screen_shader.vs linearDepth.fs
 
-// PBR
+// PBR and SH
 pbr testpbr.vs testpbr.fs
+pbr_sh SH.vs SH.fs
 
 \HDRassembly.fs
 
 	precision highp float;
 	varying vec2 v_coord;
-	uniform int u_numImages;
+
+	uniform float 	u_ExposureTimes[16];
+	uniform vec4 	u_WhiteBalance[16];
+	uniform float 	u_hdr_scale;
+	uniform int 	u_numImages;
+
 	uniform sampler2D u_stack0;
 	uniform sampler2D u_stack1;
 	uniform sampler2D u_stack2;
 	uniform sampler2D u_stack3;
 	uniform sampler2D u_stack4;
 	uniform sampler2D u_stack5;
-	//	uniform sampler2D u_stack6;
-	//	uniform sampler2D u_stack7;
+	uniform sampler2D u_stack6;
+	uniform sampler2D u_stack7;
+	uniform sampler2D u_stack8;
+
+	void fillSamplers( inout vec4 samplers[16] )
+	{
+		samplers[0] = texture2D( u_stack0, v_coord );
+		samplers[1] = texture2D( u_stack1, v_coord );
+		samplers[2] = texture2D( u_stack2, v_coord );
+		samplers[3] = texture2D( u_stack3, v_coord );
+		samplers[4] = texture2D( u_stack4, v_coord );
+		samplers[5] = texture2D( u_stack5, v_coord );
+		samplers[6] = texture2D( u_stack6, v_coord );
+		samplers[7] = texture2D( u_stack7, v_coord );
+		samplers[8] = texture2D( u_stack8, v_coord );
+	}
 
 	float luminance( const vec3 color ){
 		return color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722;
 	}
 
-
-	float weight( float value ){
+	float Compute_Weight( float value ){
 		
+		float f;
 		if(value <= 0.5)
-			return value;
+		f = value;
 		else
-			return (1.0 - value);
+		f = 1.0 - value;
+		return 2.0 * f;
 	}
 
-	float Tweight( float value ){
+	float Cweight(float  value) {
 		
-		if(value < 0.02 || value > 0.98)
-			return value;
-		else
-			return 1.0;
+		const float blacklevel = 0.;
+		const float saturation = 16383.;
+
+		const float alpha = -1.0 / 1e10;
+		const float beta = 1.0 / exp(4.0 * alpha);
+
+		float scaled = (value - blacklevel) / (saturation - blacklevel);
+
+		if (scaled <= 0. || scaled >= 1.)
+			return 0.;
+
+		return beta * exp(alpha * (1./scaled + 1./(1.-scaled)));
 	}
 
 	void main() {
 
-		int refId = int(float(u_numImages) / 2.0);
+		float PixelWeightSum 		= 0.0;
+		vec4 ChannelWeightSum 		= vec4(0.0);
 
-		float weightSum = 0.0;
-		vec4 hdr = vec4(0.0);
+		vec4 hdr 		= vec4(0.0);
+		int refId 		= int(float(u_numImages) / 2.0);
+		
+		bool preGamma 	= false;
+		bool postGamma 	= true;
 
-		vec3 samplers[16]; 
-		samplers[0] = texture2D( u_stack0, v_coord ).rgb;
-		samplers[1] = texture2D( u_stack1, v_coord ).rgb;
-		samplers[2] = texture2D( u_stack2, v_coord ).rgb;
-		samplers[3] = texture2D( u_stack3, v_coord ).rgb;
-		samplers[4] = texture2D( u_stack4, v_coord ).rgb;
-		samplers[5] = texture2D( u_stack5, v_coord ).rgb;
+		bool UsePerChannelWeights = false;
+
+		vec4 samplers[16]; 
+		fillSamplers(samplers);
 
 		for( int i = 0; i < 16; i++ )
 		{
 			if( i < u_numImages )
 			{
-				vec3 ldr = samplers[i];
-				ldr = pow(ldr, vec3(1.0/2.2));
-				float lum = luminance( ldr );
-				float w = weight( lum ) + 1e-6;
-				float exposure = pow(2.0, float(i - refId));
+				float refIdExp = pow(2.0, float(i - refId));
+				float ExpTime = u_ExposureTimes[i];
 				
-				hdr.rgb += (ldr*exposure) * w;
-				weightSum += w;
+				vec4 pixelLdr = pow(samplers[i], preGamma ? vec4(1.0/2.2) : vec4(1.0));
 
-				/*vec3 ldr = samplers[i];
-				ldr = pow(ldr, vec3(1.0/2.2));
-				float lum = luminance( ldr );
-				float w = weight( lum ) + 1e-6;
+				// white balance
+				//pixelLdr *= u_WhiteBalance[i];
+				//pixelLdr = clamp(pixelLdr, vec4(0.0), vec4(1.0) );
+
+				float lum = luminance( pixelLdr.rgb );
 				
-				hdr.rgb += (ldr) * w;
-				weightSum += w;*/
+				// Per pixel
+				float PixelWeight = ExpTime * Compute_Weight( lum ) + 1e-6;
+				
+				// Per channel
+				float RedWeight = ExpTime * Compute_Weight( pixelLdr.r ) + 1e-6;
+				float GreenWeight = ExpTime * Compute_Weight( pixelLdr.g ) + 1e-6;
+				float BlueWeight = ExpTime * Compute_Weight( pixelLdr.b ) + 1e-6;
+
+				if(!UsePerChannelWeights)
+				{
+					float W = PixelWeight;
+					hdr += pixelLdr * W;
+					PixelWeightSum += W;
+				}
+				else
+				{
+					vec4 W = vec4(RedWeight, GreenWeight, BlueWeight, 1.0);
+					hdr += pixelLdr * W;
+					ChannelWeightSum += W;
+				}
 			}
 		}
 
-		hdr.rgb /= (weightSum + 1e-6);
-		// hdr.rgb = pow(hdr.rgb, vec3(2.2));
+		if(!UsePerChannelWeights)
+			hdr /= (PixelWeightSum + 1e-6);
+		else
+			hdr /= (ChannelWeightSum + vec4(1e-6));
+
+		// convert to hdr
+		hdr.rgb *= pow(vec3(2.), vec3(u_hdr_scale));
+
+		// get pixel luminance
 		hdr.a = log(luminance(hdr.rgb) + 1e-6);
 
 		gl_FragColor = hdr;
@@ -477,13 +533,62 @@ pbr testpbr.vs testpbr.fs
 
 	precision highp float;
 	uniform sampler2D u_texture;
-	uniform sampler2D u_texture_mip;
+	uniform float u_hdr_scale;
+	uniform vec4 u_WhiteBalance[16];
+	uniform int u_numImages;
 	varying vec2 v_coord;
 
 	void main() {
 
-		gl_FragColor = texture2D(u_texture, v_coord);
+		int refId = int(float(u_numImages) / 2.0);
+		vec4 color = texture2D(u_texture, v_coord);
+
+		color /= pow(vec4(2.0), vec4(u_hdr_scale));
+
+		// white balance with best exposed one		
+		/*if(refId == 0)
+		color /= u_WhiteBalance[0];
+		else if(refId == 1)
+		color /= u_WhiteBalance[1];
+		else if(refId == 2)
+		color /= u_WhiteBalance[2];
+		else if(refId == 3)
+		color /= u_WhiteBalance[3];
+		else if(refId == 4)
+		color /= u_WhiteBalance[4];
+		else
+		color /= u_WhiteBalance[5];*/
+
+		color = pow(color, vec4(1.0/2.2));
+
+		gl_FragColor = color;
 	}
+
+\TestHDRI.fs
+
+	precision highp float;
+	uniform sampler2D u_texture;
+	uniform sampler2D u_texture_mip;
+	varying vec2 v_coord;
+
+	float luminance( const vec3 color ){
+		return color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722;
+	}
+	
+	void main() {
+
+		vec3 color = texture2D(u_texture, v_coord).rgb;
+
+		float logAvgLum = exp( texture2D(u_texture_mip, v_coord, 20.0).a );
+
+		vec3 n = vec3(0.75);
+		color.rgb = ((pow(color.rgb, n)) / ( pow(color.rgb, n) + pow(vec3(logAvgLum), n)));
+
+		// color.rgb = pow(color.rgb, vec3(1.0/2.2));
+
+		gl_FragColor = vec4(color, 1.);
+	}
+
 
 \ExponentialHDRI.fs
 
@@ -501,17 +606,18 @@ pbr testpbr.vs testpbr.fs
 	void main() {
 
 		vec3 hdr = texture2D(u_texture, v_coord).rgb;
-		float logAvgLum = exp( texture2D(u_texture_mip, v_coord, 20.0).a );
+		/*float logAvgLum = exp( texture2D(u_texture_mip, v_coord, 20.0).a );
+
+		float B = 0.16;
 
 		float lum = luminance(hdr);
-		float lum_TM = 1.0 - exp( -Brightness * lum/logAvgLum );
+		float lum_TM = 1.0 - exp( -B * lum/logAvgLum );
 
 		hdr.rgb *= lum_TM/lum;
 
-		vec4 color = vec4(hdr, 1.0);
-		color = max(color, vec4(0.0));
+		hdr.rgb = pow(hdr.rgb, vec3(1.0/1.8));*/
 
-		gl_FragColor = color;
+		gl_FragColor = vec4(hdr, 1.);
 	}
 
 \PTR_HDRI.fs
@@ -521,10 +627,11 @@ pbr testpbr.vs testpbr.fs
 	uniform sampler2D u_texture_mip;
 	varying vec2 v_coord;
 
-	uniform float Key;
+	uniform float u_Key;
 	uniform float u_Ywhite;
-	uniform float Exposure;
-	uniform float Saturation;
+	uniform float u_PreExposure;
+	uniform float u_PostExposure;
+	uniform float u_Saturation;
 
 	const mat3 RGB_2_XYZ = (mat3(
 		0.4124564, 0.3575761, 0.1804375,
@@ -548,9 +655,9 @@ pbr testpbr.vs testpbr.fs
 
 	vec3 global(vec3 RGB, float logAvgLum)
 	{
-		float Ywhite = 10e6;
-		float sat = clamp(Saturation, 0.001, 2.0);
-		float key = clamp(Key, 0.001, 1.0);
+		float Ywhite = u_Ywhite;
+		float sat = clamp(u_Saturation, 0.001, 2.0);
+		float key = clamp(u_Key, 0.001, 1.0);
 
 		vec3 XYZ = rgb_to_xyz( RGB );
 
@@ -563,12 +670,13 @@ pbr testpbr.vs testpbr.fs
 	
 	void main() {
 
+		vec3 hdr = texture2D(u_texture, v_coord).rgb * u_PreExposure;
 		float logAvgLum = exp( texture2D(u_texture_mip, v_coord, 20.0).a );
-		vec3 hdr = texture2D(u_texture, v_coord).rgb;
 
 		vec4 color = vec4(global( hdr.rgb, logAvgLum ), 1.0);
+		color.rgb = pow(color.rgb, vec3(1.0/1.8));
 
-		gl_FragColor = color * Exposure;
+		gl_FragColor = color * u_PostExposure;
 	}
 
 //
@@ -615,24 +723,23 @@ pbr testpbr.vs testpbr.fs
 	
 	uniform sampler2D u_texture;
 	
+	const float size = 32.0;
+
 	void main() {
 		
 		int k = 0;
-		const float delta = 0.0001;
+		const float delta = 1e-4;
 		float sumLog = 0.0;
 		float sum = 0.0;
 		
-		const float width = float(16);
-		const float height = float(16);
-
-		for(float i = 0.5; i < width; i++)
-		for(float j = 0.5; j < height; j++)
+		for(float i = 0.5; i < size; i++)
+		for(float j = 0.5; j < size; j++)
 		{
-			vec2 coord = vec2(i, j) / vec2(width, height);
+			vec2 coord = vec2(i, j) / vec2(size, size);
 			vec4 pixelColor = texture2D(u_texture, coord);
 
 			float lum = max( 0.2126 * pixelColor.r + 0.7152 * pixelColor.g + 0.0722 * pixelColor.b, 0.0);
-			float logLum = log( lum + delta ) + delta;
+			float logLum = log( lum + delta );
 			
 			sum += lum;
 			sumLog += logLum;
@@ -650,6 +757,7 @@ pbr testpbr.vs testpbr.fs
 
 \mirroredSphere.fs
 
+	#extension GL_EXT_draw_buffers : require
 	precision highp float;
 	varying vec3 v_wPosition;
 	varying vec3 v_wNormal;
@@ -675,7 +783,7 @@ pbr testpbr.vs testpbr.fs
 		
 		color = pow(color, vec4(1.0/2.2));
 
-		gl_FragColor = u_color * color;
+		gl_FragData[0] = u_color * color;
 	}
 
 \diffCubemap.fs
@@ -710,6 +818,7 @@ pbr testpbr.vs testpbr.fs
 
 \skybox.fs
 
+	#extension GL_EXT_shader_texture_lod : enable
 	#extension GL_EXT_draw_buffers : require
 	precision highp float;
 	varying vec3 v_wPosition;
@@ -720,6 +829,7 @@ pbr testpbr.vs testpbr.fs
 	uniform vec4 background_color;
 	uniform vec3 u_camera_position;
 	uniform bool u_applyGamma;
+	uniform bool u_blur;
 
 	uniform samplerCube u_color_texture;
 	uniform bool u_flipX;
@@ -747,7 +857,7 @@ pbr testpbr.vs testpbr.fs
 		
 		E = (rotationMatrix(vec3(0.0,1.0,0.0),u_rotation) * vec4(E,1.0)).xyz;
 
-		vec4 color = textureCube(u_color_texture, E);
+		vec4 color = textureCubeLodEXT(u_color_texture, E, u_blur ? 1.0 : 0.0);
 
 		if(u_is_rgbe)
 			color = vec4(color.rgb * pow(2.0, color.a * 255.0 - 128.0), 1.0);
@@ -755,7 +865,6 @@ pbr testpbr.vs testpbr.fs
 	//	color = color / (color + vec4(1.0));
 	//	color = pow(color, vec4(1.0/2.2));
 
-		// gl_FragColor = color;
 		gl_FragData[0] = color;
 		gl_FragData[1] = vec4((v_wNormal * 0.5 + vec3(0.5) ), 1.0); 
 	}
@@ -933,14 +1042,13 @@ pbr testpbr.vs testpbr.fs
 
 		vec4 color = vec4(0.0);
 		float TotalWeight = 0.0;
-		float samples = 0.0;
 		float roughness = clamp(u_roughness, 0.0045, 0.98);
 		float alphaRoughness = roughness * roughness;
 
 		float lod = clamp(alphaRoughness * u_mipCount, 0.0, u_mipCount);
 
 		// (gl_FragCoord.xy) / vec2(size, size) = v_coord
-		const float step = 2.0;
+		const float step = 8.0;
 	
 		for(float i = 0.5; i < size; i+=step)
 		for(float j = 0.5; j < size; j+=step) {
@@ -950,6 +1058,9 @@ pbr testpbr.vs testpbr.fs
 			// Get 3d vector
 			vec3 dir = vec3( r_coord - vec2(0.5), 0.5 );
 			dir.y *= -1.0;
+
+			/*vec3 impSample = -importanceSampleGGX( r_coord, roughness, N  );
+			impSample.y *= -1.0;*/
 
 			// Use all faces
 			for(int f = 0; f < 6; f++) {
@@ -963,7 +1074,6 @@ pbr testpbr.vs testpbr.fs
 				if(weight > 0.0 ) {
 					color += textureCubeLodEXT(u_color_texture, NF, lod) * pow_weight;
 					TotalWeight += pow_weight;
-					samples ++;
 				}
 				
 			}
@@ -1385,245 +1495,154 @@ pbr testpbr.vs testpbr.fs
 	#extension GL_OES_standard_derivatives : enable
 
 	precision highp float;
-	uniform vec3 u_camera_position;
-	uniform vec3 u_light_position;
-	uniform float u_light_intensity;
 	uniform vec4 u_viewport;
+
 	uniform mat4 u_invp;
-	uniform mat4 u_projection;
 	uniform mat4 u_invv;
+	uniform mat4 u_invvp;
+	uniform mat4 u_projection;
 	uniform mat4 u_view;
 
 	uniform float u_near;
 	uniform float u_far;
 
-	uniform vec2 u_noiseScale;
-	uniform vec2 u_kernel[12];
-	uniform float u_radius;
-	uniform float u_z_discard;
-	uniform float u_normal_z;
-
-
-	uniform float u_noise_tiling;
-
-	uniform sampler2D u_fbo_normal_texture;
-	uniform sampler2D u_fbo_depth_texture;
+	uniform sampler2D u_color_texture;
+	uniform sampler2D u_position_texture;
+	uniform sampler2D u_normal_texture;
+	uniform sampler2D u_depth_texture;
 	uniform sampler2D u_noise_texture;
+
+	uniform bool u_downsampled;
+
+	#ifdef INPUT_TEX_WIDTH
+		float width = float(INPUT_TEX_WIDTH);
+	#endif
+	#ifdef INPUT_TEX_HEIGHT
+		float height = float(INPUT_TEX_HEIGHT);
+	#endif
+
+	uniform vec3 u_samples[64];
+	uniform float u_radius;
+	uniform float u_bias;
+
+	uniform float u_max_dist;
+	uniform float u_min_dist;
 
 	varying vec2 v_coord;
 
-	vec3 getWorldPosition(float depth) {
+	#import "matrixOp.inc"
 
-		float z = depth * 2.0 - 1.0;
-
-		vec4 clipSpacePosition = vec4(v_coord * 2.0 - 1.0, z, 1.0);
-		vec4 worldSpacePosition = u_invp * clipSpacePosition;
-		return worldSpacePosition.xyz;
+	vec3 getPositionWSFromDepth(float depth)
+	{
+		//build pixel info
+		vec2 pos2D = v_coord * 2.0 - vec2(1.0);
+		vec4 pos = vec4( pos2D, depth, 1.0 );
+		pos = u_invvp * pos;
+		pos.xyz = pos.xyz / pos.w;
+		return pos.xyz;
 	}
 
-	vec3 getViewPosition(float depth) {
-
-		float z = depth * 2.0 - 1.0;
-
-		vec4 clipSpacePosition = vec4(v_coord * 2.0 - 1.0, z, 1.0);
-		vec4 worldSpacePosition = u_invp * clipSpacePosition;
-
-		// To view space
-		vec4 viewSpacePosition = worldSpacePosition;
-		viewSpacePosition /= viewSpacePosition.w;
-
-		return viewSpacePosition.xyz;
+	float readDepth(sampler2D depthMap, vec2 coord) {
+		float z_b = texture2D(depthMap, coord).r;
+		float z_n = 2.0 * z_b - 1.0;
+		float z_e = 2.0 * u_near * u_far / (u_far + u_near - z_n * (u_far - u_near));
+		return z_e;
 	}
 
-	float perspectiveDepthToViewZ( float invClipZ, float near, float far ) {
-	
-		return ( near * far ) / ( ( far - near ) * invClipZ - far );
-	}
-
-	float viewZToOrthographicDepth( float viewZ, float near, float far ) {
-		return ( viewZ + near ) / ( near - far );
-		
-	}
-
-	float readDepth( vec2 coord, float n, float f) {
-		
-		float z = texture2D(u_fbo_depth_texture, coord).r * 2.0 - 1.0;
-
-		float EZ  = (2.0 * n * f) / (f + n - z * (f - n));
-		float LZ  = (EZ - n) / (f - n);
-		float LZ2 = EZ / f;
-
-		return z;
-	}
-
-	/*float getLinearDepth( vec2 screenPosition ) {
-
-		float fragCoordZ = texture2D( u_fbo_depth_texture, screenPosition ).x;
-		float viewZ = perspectiveDepthToViewZ( fragCoordZ, u_near, u_far );
-		return viewZToOrthographicDepth( viewZ, u_near, u_far );
-	}*/
-
-	vec2 getScreenCoord(vec3 hitCoord) {
-
-		vec4 projectedCoord = u_projection * vec4(hitCoord, 1.0);
-		projectedCoord /= projectedCoord.w;
-		return projectedCoord.xy * 0.5 + 0.5;
-	}
-
-	float roundEven( float x ) {
-	
-		float f = floor(x);
-		return (mod(f, 2.0) == 0.0) ? f : floor(x+1.0);
-	}
-
-	float getLinearDepth( float z, float n, float f) {
-		
-		float EZ  = (2.0 * n * f) / (f + n - z * (f - n));
-		float LZ  = (EZ - n) / (f - n);
-
-		return LZ;
-	}
-
-	float rand(vec2 co)  {
-	    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+	vec2 viewSpaceToScreenSpaceTexCoord(vec3 p) {
+		vec4 projectedPos = u_projection * vec4(p, 1.0);
+		vec2 ndcPos = projectedPos.xy / projectedPos.w; //normalized device coordinates
+		vec2 coord = ndcPos * 0.5 + 0.5;
+		return coord;
 	}
 
 	void main() {
 		
-		float depth = texture2D(u_fbo_depth_texture, v_coord).r;
-		depth = getLinearDepth(depth, u_near, u_far);
-
-		vec3 viewPosition = getViewPosition(depth);
-		vec3 worldPos = getWorldPosition(depth);
-
-		vec3 viewNormal = normalize( texture2D(u_fbo_normal_texture, v_coord).xyz * 2.0 - 1.0 );
-		viewNormal = ( vec4(viewNormal, 0.0) * u_invv ).xyz;
-
-		/*const vec2 resolution = vec2(INPUT_TEX_WIDTH, INPUT_TEX_HEIGHT);
-		vec2 noiseScale = vec2(float(resolution.x) / u_noise_tiling, float(resolution.y) / u_noise_tiling);
-		float aspect = roundEven( float(resolution.x) / float(resolution.y) );
-		vec2 coords = vec2(v_coord.x * aspect * 150.0, v_coord.y * 150.0);
-		vec3 rvec = normalize(texture2D(u_noise_texture, coords).xyz);
-		rvec = normalize( vec3( rand(v_coord.xy), rand(v_coord.yx), 1.0 ) );*/
+		/*
+		*	GET INFO
+		*/
 		
-		// Find a random rotation angle based on the world coords
-		float rand_val = rand(worldPos.xy);
-		float angle = 2.0 * 3.14159268 * (rand_val);
-		float cos_angle = cos( angle );
-		float sin_angle = sin( angle );
+		// Texture Maps
+		vec4 colorMap = texture2D( u_color_texture, v_coord );
+		vec4 depthMap = texture2D( u_depth_texture, v_coord);
+		vec4 normalMap = texture2D( u_normal_texture, v_coord);
+		vec3 normal    = normalize(normalMap.xyz * 2. - 1.);
+		vec4 positionMap = texture2D( u_position_texture, v_coord);
+		
+		// Properties and depth
+		float depth = readDepth(u_depth_texture, v_coord);
 
-		vec3 rvec = vec3(rand_val);
-
-		vec3 tangent = rvec - viewNormal * dot(rvec, viewNormal);
-		normalize(tangent);
-		vec3 bitangent = cross(viewNormal, tangent);
-		mat3 tbn = mat3(tangent, bitangent, viewNormal);
-
-		float occlusion = 0.0;
-
-		float amount_normal_z = u_normal_z;
-		float amount_displaced = u_radius / u_far;
-		float zrange_discard = u_z_discard;
-
-		for (int i = 0; i < 12; i++) {
-			
-			vec2 coords = u_kernel[i];
-			 vec2 rotated_coord = vec2( 
-                              coords.x * cos_angle - coords.y * sin_angle,
-                              coords.y * cos_angle + coords.x * sin_angle 
-                              );
-
-			// get sample position and reorient in view space
-			vec3 sample = vec3(rotated_coord, amount_normal_z) * tbn;
-			vec3 samplePoint = viewPosition + (sample * amount_displaced);
-			float sampleDepth = -samplePoint.z;
-		  
-			// project sample position:
-			vec2 projected = getScreenCoord(samplePoint);
-			float _depth = texture2D( u_fbo_depth_texture, projected).r;
-			/*_depth = perspectiveDepthToViewZ(_depth, u_near, u_far);
-			_depth = viewZToOrthographicDepth( _depth , u_near, u_far );*/
-			_depth = getLinearDepth( _depth, u_near, u_far);
-
-			// This is to prevent large Z range to generate occlusion... will remove black halos in the character head
-			// v1
-			/*float rangeCheck= abs(depth - _depth) < amount_displaced ? 1.0 : 0.0;
-			occlusion += (_depth <= sampleDepth ? 1.0 : 0.0) * rangeCheck;*/
-
-			// v2
-			float rangeCheck = smoothstep( 0.0, zrange_discard, abs(depth - _depth) );
-			occlusion += ( _depth <= sampleDepth ? 1.0 : 0.0) * rangeCheck;
-			
-			// v3
-			/*float delta = viewZToOrthographicDepth( sampleDepth , u_near, u_far ) - _depth;
-
-			if ( delta > 0.005 && delta < 0.1 ) {
-
-				occlusion += 1.0;
-
-			}*/
+		// Random vector per fragment
+		if(u_downsampled)
+		{
+			width /= 4.0;
+			height /= 4.0;
 		}
 
-		occlusion =  1.0 - clamp( occlusion / 12.0, 0.0, 1.0);
+		vec2 noiseScale = vec2(width/4.0, height/4.0); 
+		vec3 randomVec = texture2D(u_noise_texture, v_coord * noiseScale).xyz * 2.0 - vec3(1.0);
+
+		// Vectors
+		vec3 position = positionMap.xyz; //getPositionWSFromDepth(depth);
+		
+		/*
+		*	SSAO
+		*/
+
+		vec3 tangent   = normalize(randomVec - normal * dot(randomVec, normal));
+		vec3 bitangent = cross(normal, tangent);
+		mat3 TBN       = mat3(tangent, bitangent, normal);  
+
+		float radius = u_radius;
+		float bias = u_bias;
+		float occlusion = 0.0;
+
+		for(int i = 0; i < 64; ++i)
+		{
+			// get sample position
+			vec3 sample = TBN * u_samples[i]; // From tangent to view-space
+			sample = position + sample * radius;
+			
+			// transform to screen space 
+			vec2 offset = viewSpaceToScreenSpaceTexCoord(sample);
+			float sampleDepth = readDepth(u_depth_texture, offset);
+
+			if( abs( (-sample.z) - sampleDepth ) > u_max_dist )
+			continue;
+
+			if( abs( (-sample.z) - sampleDepth ) < u_min_dist )
+			continue;
+
+			float rangeCheck =  smoothstep(0.0, 1.0, radius / abs((-sample.z) - sampleDepth));
+  			occlusion += (sampleDepth <= -sample.z ? 1.0 : 0.0) * rangeCheck;
+		} 
+
+		occlusion = 1.0 - (occlusion / 64.0);
 		gl_FragColor = vec4(vec3(occlusion), 1.0);
 	}
 
-\finalDeferred.fs
-
-	#extension GL_EXT_shader_texture_lod : enable
-	#extension GL_OES_standard_derivatives : enable
+\multiplyPass.fs
 
 	precision highp float;
-	uniform vec3 u_camera_position;
-	uniform vec3 u_light_position;
-	uniform float u_light_intensity;
-	uniform vec4 u_viewport;
-	uniform mat4 u_invp;
-	uniform mat4 u_projection;
-	uniform mat4 u_invv;
-	uniform mat4 u_view;
-
-	uniform float u_near;
-	uniform float u_far;
-
-	uniform bool u_enableSSAO;
-	uniform vec2 u_noiseScale;
-	uniform vec3 u_kernel[64];
-	uniform float u_radius;
-
-	uniform float u_outputChannel;
-	uniform float u_noise_tiling;
-
-	uniform sampler2D u_fbo_color_texture;
-	uniform sampler2D u_fbo_normal_texture;
-	uniform sampler2D u_fbo_depth_texture;
-	uniform sampler2D u_fbo_roughness_texture;
-	uniform sampler2D u_ssao_texture;
-	uniform sampler2D u_ssao_texture_blur;
-
+	uniform sampler2D u_color_texture;
+	uniform sampler2D u_output_texture;
 	varying vec2 v_coord;
 
-	float getLinearDepth( float z, float n, float f) {
-		
-		float EZ  = (2.0 * n * f) / (f + n - z * (f - n));
-		float LZ  = (EZ - n) / (f - n);
-
-		return LZ;
-	}
+	uniform int u_output_buffer;
 
 	void main() {
 		
-		float occlusion = texture2D(u_ssao_texture, v_coord).r;
-		float occlusion_blur = texture2D(u_ssao_texture_blur, v_coord).r;
-		float depth = getLinearDepth(texture2D(u_fbo_depth_texture, v_coord).r, u_near, u_far );
-		vec3 viewNormal = normalize( texture2D(u_fbo_normal_texture, v_coord).xyz );
-		vec4 color = texture2D(u_fbo_color_texture, v_coord) * (u_enableSSAO == true ? occlusion_blur : 1.0);
+		vec4 color = texture2D( u_color_texture, v_coord );
+		vec4 pass_output = texture2D( u_output_texture, v_coord );
+		
+		if(u_output_buffer == 0) // DEFAULT
+			color *= pass_output;
+		else if(u_output_buffer == 1)	 // SSAO
+			color = pass_output;
 
-		gl_FragColor = (u_outputChannel == 0.0) ? color : 
-		(u_outputChannel == 1.0) ? vec4(occlusion) :
-		(u_outputChannel == 2.0) ? vec4(occlusion_blur) :
-		(u_outputChannel == 3.0) ? vec4(depth,0.0,0.0, 1.0) :
-		vec4(vec3(viewNormal), 1.0);
+		// else its BEAUTY 
+
+		gl_FragColor = color;
 	}
 
 \linearDepth.fs
@@ -1934,37 +1953,73 @@ pbr testpbr.vs testpbr.fs
 
 \testpbr.vs
 
+	precision highp float;
 	attribute vec3 a_vertex;
 	attribute vec3 a_normal;
 	attribute vec2 a_coord;
+	attribute vec4 a_bone_indices;
+	attribute vec4 a_weights;
 
 	varying vec3 v_wPosition;
 	varying vec3 v_wNormal;
 	varying vec2 v_coord;
 
+	varying vec3 v_vPosition;
+	varying vec3 v_vNormal;	
+
 	uniform vec4 u_properties_array0;
 	uniform vec4 u_properties_array1;
+	uniform mat4 u_bones[64];
+	uniform bool u_Skinning;
 
 	uniform float u_bumpScale;
 	uniform sampler2D u_height_texture;
 	uniform mat4 u_mvp;
 	uniform mat4 u_viewprojection;
 	uniform mat4 u_model;
+	uniform mat4 u_view;
+
+	void computeSkinning(inout vec3 vertex, inout vec3 normal)
+	{
+		vec4 v = vec4(vertex,1.0);
+		vertex = (u_bones[int(a_bone_indices.x)] * a_weights.x * v + 
+				u_bones[int(a_bone_indices.y)] * a_weights.y * v + 
+				u_bones[int(a_bone_indices.z)] * a_weights.z * v + 
+				u_bones[int(a_bone_indices.w)] * a_weights.w * v).xyz;
+		vec4 N = vec4(normal,0.0);
+		normal =	(u_bones[int(a_bone_indices.x)] * a_weights.x * N + 
+				u_bones[int(a_bone_indices.y)] * a_weights.y * N + 
+				u_bones[int(a_bone_indices.z)] * a_weights.z * N + 
+				u_bones[int(a_bone_indices.w)] * a_weights.w * N).xyz;
+		normal = normalize(normal);
+	}
 
 	void main() {
 
-		v_wPosition = (u_model * vec4(a_vertex, 1.0)).xyz;
-		v_wNormal = (u_model * vec4(a_normal, 0.0)).xyz;
+		vec3 vertex = a_vertex;
+		vec3 normal = a_normal;
+
+		if(u_Skinning)
+			computeSkinning(vertex,normal);
+
+		v_wPosition = (u_model * vec4(vertex, 1.0)).xyz;
+		v_wNormal = (u_model * vec4(normal, 0.0)).xyz;
 		v_coord = a_coord;
 
-		vec3 position = a_vertex;
+		// view space vectors for screen space
+		mat4 mv = u_view * u_model;
+		v_vPosition = (mv * vec4(a_vertex,1.0)).xyz;
+		v_vNormal = normalize((mv * vec4(a_normal,0.0)).xyz);
+		// ***********
+
+		vec3 position = vertex;
 		mat4 transform_matrix = u_viewprojection;
 
 		// has_bump
 		if(u_properties_array1.w == 1.) {
 		    vec4 bumpData = texture2D( u_height_texture, v_coord );
 		    float vAmount = bumpData.r;
-		    position += (v_wNormal * vAmount * u_bumpScale);
+		    position += (normalize(v_wNormal) * vAmount * u_bumpScale);
 		    v_wPosition = (u_model * vec4(position, 1.0)).xyz;
 		}
 
@@ -1989,6 +2044,8 @@ pbr testpbr.vs testpbr.fs
 
 	varying vec3 v_wPosition;
 	varying vec3 v_wNormal;
+	varying vec3 v_vPosition;
+	varying vec3 v_vNormal;	
 	varying vec2 v_coord;
 
 	uniform float u_mipCount;
@@ -1996,24 +2053,29 @@ pbr testpbr.vs testpbr.fs
 	uniform float u_light_intensity;
 	uniform vec3 u_light_color;
 	uniform vec3 u_light_position;
+	uniform vec3 u_light_direction;
+	uniform vec2 u_light_angle;
 	uniform vec3 u_camera_position;
 	uniform vec3 u_background_color;
 	uniform vec4 u_viewport;
 	uniform bool u_show_layers;
 	uniform bool u_applyGamma;
 
-	uniform sampler2D u_brdf_texture;
+	// Mat properties
+	uniform vec3 u_albedo;
+	uniform float u_roughness;
+	uniform float u_metalness;
+	uniform float u_alpha;
+	uniform float u_alpha_cutoff;
+	uniform vec3 u_tintColor;
+	uniform float u_emissiveScale;
+	uniform float u_normalFactor;
+	uniform bool u_metallicRough;
+	uniform vec3 u_reflectance;
+	uniform float u_clearCoat;
+	uniform float u_clearCoatRoughness;
 
-	// Environment textures
-	uniform samplerCube u_SpecularEnvSampler_texture;
-	uniform samplerCube u_Mip_EnvSampler1_texture;
-	uniform samplerCube u_Mip_EnvSampler2_texture;
-	uniform samplerCube u_Mip_EnvSampler3_texture;
-	uniform samplerCube u_Mip_EnvSampler4_texture;
-	uniform samplerCube u_Mip_EnvSampler5_texture;
-	uniform samplerCube u_Mip_EnvSampler6_texture;
-	uniform samplerCube u_Mip_EnvSampler7_texture;
-	uniform samplerCube u_Mip_EnvSampler8_texture;
+	uniform sampler2D u_brdf_texture;
 
 	// Mat textures
 	uniform sampler2D u_albedo_texture;
@@ -2025,17 +2087,8 @@ pbr testpbr.vs testpbr.fs
 	uniform sampler2D u_emissive_texture;
 	uniform sampler2D u_ao_texture;
 
-	// Mat properties
-	uniform vec3 u_albedo;
-	uniform float u_roughness;
-	uniform float u_metalness;
-	uniform float u_alpha;
-	uniform vec3 u_tintColor;
-	uniform float u_emissiveScale;
-	uniform bool u_metallicRough;
-	uniform vec3 u_reflectance;
-	uniform float u_clearCoat;
-	uniform float u_clearCoatRoughness;
+	// Environment textures
+	uniform samplerCube u_SpecularEnvSampler_texture;
 
 	uniform vec4 u_properties_array0;
 	uniform vec4 u_properties_array1;
@@ -2047,6 +2100,12 @@ pbr testpbr.vs testpbr.fs
 	uniform float u_ibl_intensity;
 	uniform bool u_enable_ao;
 	uniform bool u_gamma_albedo;
+	
+	struct Light
+	{
+		float fallOf;
+		vec3 direction;
+	};	
 
 	struct PBRMat
 	{
@@ -2069,6 +2128,7 @@ pbr testpbr.vs testpbr.fs
 		float NoH;
 		float LoH;
 		float VoH;
+		Light light;
 		float clearCoat;
 		float clearCoatRoughness;
 		float clearCoatLinearRoughness;
@@ -2219,13 +2279,27 @@ pbr testpbr.vs testpbr.fs
 
 	vec3 f0ClearCoatToSurface(const vec3 f0, float ior) {
 
-
 		return vec3( clamp(iorToF0(  f0ToIor(f0.x), ior ), 0.0, 1.0) );
-	
+	}
 
-		// Approximation of iorTof0(f0ToIor(f0), 1.5)
-		// This assumes that the clear coat layer has an IOR of 1.5
-		//return clamp(f0 * (f0 * (0.941892 - 0.263008 * f0) + 0.346479) - 0.0285998, 0.0, 1.0);
+	float spotFalloff(vec3 spotDir, vec3 lightDir, float angle_phi, float angle_theta) {
+			
+		float sqlen = dot(lightDir,lightDir);
+		float atten = 1.0;
+		
+		vec4 spotParams = vec4( cos(angle_phi/2.), cos(angle_theta/2.), 1.0, 0.0 );
+		spotParams.w = 1.0 / (spotParams.x-spotParams.y);
+		
+		vec3 dirUnit = lightDir * sqrt(sqlen); //we asume they are normalized
+		float spotDot = dot(spotDir, dirUnit);
+		if (spotDot <= spotParams.y)// spotDot <= cos phi/2
+			return 0.0;
+		else if (spotDot > spotParams.x) // spotDot > cos theta/2
+			return 1.0;
+		
+		// vertex lies somewhere beyond the two regions
+		float ifallof = pow( (spotDot-spotParams.y)*spotParams.w,spotParams.z );
+		return ifallof;
 	}
 
 	void updateVectors (inout PBRMat material) {
@@ -2235,18 +2309,30 @@ pbr testpbr.vs testpbr.fs
 
 		if(u_properties_array0.w != 0.){
 			vec3 normal_map = texture2D(u_normal_texture, v_coord).xyz;
-			n = normalize( perturbNormal( v_wNormal, -v, v_coord, normal_map ) );
+			vec3 n2 = normalize( perturbNormal( n, -v, v_coord, normal_map ) );
+			n = normalize(mix(n, n2, u_normalFactor));
 		}
 
+		// OMNI
 		vec3 l = normalize(u_light_position - v_wPosition);
+		material.light.fallOf = 1.0;
+		
+		#if LIGHT_TYPE == 2 // SPOT
+			material.light.fallOf = spotFalloff(normalize(u_light_direction), l, u_light_angle.x, u_light_angle.y);
+		#elif LIGHT_TYPE == 3 // DIRECTIONAL
+			l = normalize(u_light_direction);
+		#endif
+
 		vec3 h = normalize(v + l);
 
+		material.light.direction = l;
 		material.reflection = normalize(reflect(v, n));
 
 		if(u_flipX)
 			material.reflection.x = -material.reflection.x;
 		material.N = n;
 		material.V = v;
+		material.H = h;
 		material.H = h;
 		material.NoV = clamp(dot(n, v), 0.0, 0.99) + 1e-6;
 		material.NoL = clamp(dot(n, l), 0.0, 1.0) + 1e-6;
@@ -2278,8 +2364,7 @@ pbr testpbr.vs testpbr.fs
 		vec3 baseColor = u_albedo;
 		if(u_properties_array0.x != 0.){
 			vec3 albedo_tex = texture2D(u_albedo_texture, v_coord).rgb;
-			if( u_gamma_albedo )
-				albedo_tex = pow(albedo_tex, vec3(GAMMA));
+			albedo_tex = pow(albedo_tex, vec3(GAMMA));
 			baseColor *= albedo_tex;
 		}
 
@@ -2381,32 +2466,22 @@ pbr testpbr.vs testpbr.fs
 
 	vec3 prem(vec3 R, float roughness, float rotation) {
 
-		float lod = roughness * u_mipCount;
-
-		vec3 r = (rotationMatrix(vec3(0.0,1.0,0.0),rotation) * vec4(R,1.0)).xyz;
+		float 	f = roughness * u_mipCount;
+		vec3 	r = (rotationMatrix(vec3(0.0,1.0,0.0),rotation) * vec4(R,1.0)).xyz;
 
 		vec4 color;
 
-		if(lod < 1.0) color = mix( textureCube(u_SpecularEnvSampler_texture, r), textureCube(u_Mip_EnvSampler1_texture, r), lod );
-		else if(lod < 2.0) color = mix( textureCube(u_Mip_EnvSampler1_texture, r), textureCube(u_Mip_EnvSampler2_texture, r), lod - 1.0 );
-		else if(lod < 3.0) color = mix( textureCube(u_Mip_EnvSampler2_texture, r), textureCube(u_Mip_EnvSampler3_texture, r), lod - 2.0 );
-		else if(lod < 4.0) color = mix( textureCube(u_Mip_EnvSampler3_texture, r), textureCube(u_Mip_EnvSampler4_texture, r), lod - 3.0 );
+		if(f < 1.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 0.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 1.0), f );
+		else if(f < 2.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 1.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 2.0), f - 1.0 );
+		else if(f < 3.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 2.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 3.0), f - 2.0 );
+		else if(f < 4.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 3.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 4.0), f - 3.0 );
+		else if(f < 5.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 4.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 5.0), f - 4.0 );
+		else color = textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 5.0);
 
-		#ifdef MIP_COUNT
-			
-			else if(lod < 5.0) color = mix( textureCube(u_Mip_EnvSampler4_texture, r), textureCube(u_Mip_EnvSampler5_texture, r), lod - 4.0 );
-			else if(lod < 6.0) color = mix( textureCube(u_Mip_EnvSampler5_texture, r), textureCube(u_Mip_EnvSampler6_texture, r), lod - 5.0 );
-			else if(lod < 7.0) color = mix( textureCube(u_Mip_EnvSampler6_texture, r), textureCube(u_Mip_EnvSampler7_texture, r), lod - 6.0 );
-			else if(lod < 8.0) color = mix( textureCube(u_Mip_EnvSampler7_texture, r), textureCube(u_Mip_EnvSampler8_texture, r), lod - 7.0 );
-			else color = textureCube(u_Mip_EnvSampler8_texture, r);
-
-		#else
-			
-			else color = mix( textureCube(u_Mip_EnvSampler4_texture, r), textureCube(u_Mip_EnvSampler5_texture, r), lod - 4.0 );
-
-		#endif
-
-		//color /= (color + vec4(1.0));
+		/*else if(f < 6.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 5.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 6.0), f - 5.0 );
+		else if(f < 7.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 6.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 7.0), f - 6.0 );
+		else if(f < 8.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 7.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 8.0), f - 7.0 );
+		else color = textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 8.0);*/
 
 		return color.rgb;
 	}
@@ -2434,7 +2509,6 @@ pbr testpbr.vs testpbr.fs
 		vec3 Favg = material.f0 + (1.0 - material.f0) * RECIPROCAL_PI;
 		vec3 Fms = FssEss * Favg / (1.0 - Ems * Favg);
 		
-
 		// Dielectrics
 		vec3 Edss = 1.0 - (FssEss + Fms * Ems);
 		vec3 kD =  pow(material.baseColor, vec3(1.0/GAMMA)) * Edss;
@@ -2453,7 +2527,11 @@ pbr testpbr.vs testpbr.fs
 		vec2 brdfSamplePoint = vec2(NdotV, material.roughness);
 		vec2 brdf = texture2D(u_brdf_texture, brdfSamplePoint).rg;
 
-		vec3 diffuseSample = prem(material.reflection, 1.0, u_rotation);
+		vec3 normal = -material.N;
+		if(u_flipX)
+			normal.x *= -1.;
+
+		vec3 diffuseSample = prem(normal, 1.0, u_rotation); // diffuse part uses normal vector (no reflection)
 		vec3 specularSample = prem(material.reflection, material.roughness, u_rotation);
 
 		vec3 specularColor = mix(material.f0, material.baseColor.rgb, material.metallic);
@@ -2500,59 +2578,43 @@ pbr testpbr.vs testpbr.fs
 
 		vec3 Fr_d = specularBRDF( material );
 		vec3 Fd_d = material.diffuseColor * Fd_Burley (material.NoV, material.NoL, material.LoH, material.linearRoughness);
-		// Fd_d = material.diffuseColor * Fd_Lambert();
 		vec3 direct = Fr_d + Fd_d;
 
 		// COMPOSE
-
-		vec3 lightParams = material.NoL * u_light_color * u_light_intensity;
-		color  =   indirect * u_ibl_intensity;// * u_background_color;
-		color +=  direct   * lightParams;
+		vec3 lightParams = material.NoL * u_light_color * u_light_intensity * material.light.fallOf;
+		color  =   indirect * u_ibl_intensity;
+		color +=  direct * lightParams;
 	}
 
 	void main() {
         
+		float alpha = u_alpha;
+
+		if(u_properties_array1.y != 0.)
+			alpha *= texture2D(u_opacity_texture, v_coord).r;
+		else
+			alpha *= texture2D( u_albedo_texture, v_coord ).a;
+
+		if(alpha < u_alpha_cutoff)
+		discard;
+
 		PBRMat material;
 		vec3 color;
-		float alpha = u_alpha;
 
 		createMaterial( material );
 		do_lighting( material, color);
 
-		if(u_properties_array1.y != 0.)
-			alpha = texture2D(u_opacity_texture, v_coord).r;
-
 		if(u_properties_array1.x != 0.)
-			 color += texture2D(u_emissive_texture, v_coord).rgb * u_emissiveScale;
-		  
+			color += texture2D(u_emissive_texture, v_coord).rgb * u_emissiveScale;
 		
-		if(u_show_layers)
-		{
-			const int channels = 6; // 5: add one extra for limits
-			float x = (gl_FragCoord.x / u_viewport.z);
-			float y = (gl_FragCoord.y / u_viewport.w);
-
-			if(x < 0.25)
-				color = vec3(material.baseColor);
-			else if(x > 0.25 && x < 0.5)
-				color = vec3(material.roughness);
-			else if(x > 0.5 && x < 0.75)
-				color = vec3(material.metallic);
-			else
-				color = vec3(material.reflectance);
-			
-		}
-        
-		//color = pow(color, vec3(1.0/2.2));
 		gl_FragData[0] = vec4(color, alpha);
-		gl_FragData[1] = vec4((material.N * 0.5 + vec3(0.5) ), 1.0); 
-		// gl_FragData[2] = vec4(vec3(material.roughness), 1.0);
-		// gl_FragColor = vec4(color, alpha);
+		// set vectors in view space
+		gl_FragData[1] = vec4( v_vNormal * 0.5 + vec3(0.5), 1.0); 
+		gl_FragData[2] = vec4( v_vPosition, 1.0);
 	}
 
 \grid.fs
 
-	#extension GL_EXT_draw_buffers : require
 	precision highp float;
 	varying vec3 v_wPosition;
 	varying vec3 v_wNormal;
@@ -2570,8 +2632,7 @@ pbr testpbr.vs testpbr.fs
 			color = mix(vec4(1.0,0.4,0.4,0.5),color,abs(v_wPosition.z/0.1)); 
 
 		// no normal data			
-		gl_FragData[0] = color;
-		//gl_FragData[1] = vec4((v_wNormal * 0.5 + vec3(0.5) ), 1.0); 
+		gl_FragColor = vec4(color.rgb, 0.85);
 	}
 
 \lines.fs
@@ -2585,14 +2646,9 @@ pbr testpbr.vs testpbr.fs
 
 	void main() {
 
-		vec4 color = u_color; 
-		
-		//if( v_wPosition.x < 0.1 ) 
-			color = mix(vec4(0.4,0.4,1.0,0.5),color,10.0); 
-			
+		vec4 color = u_color;
 		// no normal data			
 		gl_FragData[0] = color;
-		//gl_FragData[1] = vec4((v_wNormal * 0.5 + vec3(0.5) ), 1.0); 
 	}
 
 
@@ -2653,7 +2709,17 @@ pbr testpbr.vs testpbr.fs
 	uniform bool u_applyShading;
 	uniform bool u_hasChromaNormalTexture;
 
+	uniform float u_chroma_ibl_intensity;
+	uniform float u_light_intensity;
+	uniform vec3 u_light_color;
+	uniform vec3 u_light_position;
+
 	uniform samplerCube u_SpecularEnvSampler_texture;
+	uniform samplerCube u_Mip_EnvSampler1_texture;
+	uniform samplerCube u_Mip_EnvSampler2_texture;
+	uniform samplerCube u_Mip_EnvSampler3_texture;
+	uniform samplerCube u_Mip_EnvSampler4_texture;
+	uniform samplerCube u_Mip_EnvSampler5_texture;
 
 	const float PI = 3.14159265359; 
 
@@ -2703,32 +2769,45 @@ pbr testpbr.vs testpbr.fs
 		return normalize(TBN * normal_pixel);
 	}
 
-	vec3 V, R, L, N;
+	vec3 V, R, L, N, pN;
 
 	vec3 getPhong()
 	{
 		V = normalize(u_camera_position - v_wPosition);
 		N = normalize(v_wNormal);
 
-		if(u_hasChromaNormalTexture)
-			N = perturbNormal(N, V, v_coord, texture2D(u_normal_texture, v_coord).rgb);
+		if(u_hasChromaNormalTexture) 
+			pN = perturbNormal(N, V, v_coord, texture2D(u_normal_texture, v_coord).rgb);
+		else
+			pN = N;
 
-		R = reflect(V, N);		
+		// update Y 
+		pN.y = -pN.y;
+
+		R = reflect(V, pN);		
 
 		vec3 ambient = vec3(0.1, 0.1, 0.1);
 
 		// vec3 L = u_lightvector; 
-		vec3 L_pos = vec3(-0.5, 0.5, 1.);
+		vec3 L_pos = u_light_position;
 		L = normalize(L_pos - v_wPosition);
 
-		vec3 Lcolor = vec3(1.0);
+		// plane normal!
+		float f = max(0.0, dot(L,N));
 
-		vec3 R_L = reflect(-L, N);  
+		vec3 Lcolor = u_light_color;
 
-		vec3 Diffuse = vec3(max(0.0, dot(L,N))) * /* Id */ 1.0;
-		vec3 Specular = vec3(pow( clamp(dot(R_L,V),0.001,1.0), 1.0 )) * /* Is */ 0.5;
+		vec3 R_L = reflect(-L, pN);  
+		float NoL = max(0.0, dot(L,pN));
 
-		return ambient + Diffuse + Specular;
+		vec3 Diffuse = vec3(NoL) * /* Id */ 1.0;
+		vec3 Specular = vec3(pow( clamp(dot(R_L,V),0.001,1.0), 1.0 )) * /* Is */ 1.0;
+
+		vec3 IndirectDiffuse = textureCube(u_Mip_EnvSampler5_texture, -pN).rgb;// * max(0.,dot(-R, N));
+
+		return 	ambient + 
+				(Diffuse + Specular) * Lcolor * u_light_intensity + 
+				IndirectDiffuse * u_chroma_ibl_intensity;
 	}
 
 	void main() {
@@ -2765,7 +2844,7 @@ pbr testpbr.vs testpbr.fs
 			pixelPrimary = vec3(0, 0, 1);
 
 		float secondaryComponents = dot(1.0 - pixelPrimary, source.rgb); 
-		float pixelSat = fmax - mix(secondaryComponents/1.5 - fmin, secondaryComponents / 2.0, u_balance); // Saturation
+		float pixelSat = fmax - mix(secondaryComponents - fmin, secondaryComponents / 2.0, u_balance); // Saturation
 
 		// solid pixel if primary color component is not the same as the screen color
 		float diffPrimary = dot(abs(pixelPrimary - screenPrimary), vec3(1.0));
@@ -2789,7 +2868,7 @@ pbr testpbr.vs testpbr.fs
 			//finalColor.g *= (1.0 - smoothstep(0.0, 2.0, despillMask));
 
 			finalColor -= (chromaColor.rgb * screen.rgb * despillMask * u_despill_amount);
-			finalColor += (pixelSat * u_fake_bounce.rgb * despillMask * u_despill_amount);   
+			finalColor += (pixelSat * u_fake_bounce.rgb * despillMask);   
 			finalColor = clamp(finalColor, 0.0, 1.0);
 		}
 
@@ -2799,13 +2878,207 @@ pbr testpbr.vs testpbr.fs
 		vec3 Phong = getPhong();
 
 		if(u_applyShading)
-			finalColor *= Phong * /* light intensity */ 2.0;
-
-		//vec3 tex = textureCube(u_SpecularEnvSampler_texture, R).rgb;
+			finalColor *= Phong;
 		
 		// discard translucid pixels
 		if(alpha > 0.1)
 			alpha = 1.0;
 
-		gl_FragData[0] = vec4(pow(ColorExtraction.rgb, vec3(2.2)), alpha);
+		gl_FragData[0] = vec4(finalColor.rgb, alpha);
 	}
+
+\skinning.vs
+
+	precision highp float;
+	attribute vec3 a_vertex;
+	attribute vec3 a_normal;
+	attribute vec2 a_coord;
+	varying vec3 v_pos;
+	varying vec3 v_normal;
+	varying vec2 v_coord;
+	uniform mat4 u_model;
+	uniform mat4 u_viewprojection;
+	attribute vec4 a_bone_indices;
+	attribute vec4 a_weights;
+	uniform mat4 u_bones[64];
+
+	void computeSkinning(inout vec3 vertex, inout vec3 normal)
+	{
+		vec4 v = vec4(vertex,1.0);
+		vertex = (u_bones[int(a_bone_indices.x)] * a_weights.x * v + 
+				u_bones[int(a_bone_indices.y)] * a_weights.y * v + 
+				u_bones[int(a_bone_indices.z)] * a_weights.z * v + 
+				u_bones[int(a_bone_indices.w)] * a_weights.w * v).xyz;
+		vec4 N = vec4(normal,0.0);
+		normal =	(u_bones[int(a_bone_indices.x)] * a_weights.x * N + 
+				u_bones[int(a_bone_indices.y)] * a_weights.y * N + 
+				u_bones[int(a_bone_indices.z)] * a_weights.z * N + 
+				u_bones[int(a_bone_indices.w)] * a_weights.w * N).xyz;
+		normal = normalize(normal);
+	}
+
+	void main() {
+		vec3 vertex = a_vertex;
+		vec3 normal = a_normal;
+		computeSkinning(vertex,normal);
+		v_pos = (u_model * vec4(vertex,1.0)).xyz;
+		v_normal = (u_model * vec4(normal,0.0)).xyz;
+		v_coord = a_coord;
+		gl_Position = u_viewprojection * vec4( v_pos , 1.0 );
+	}
+
+\skinning.fs
+
+	#extension GL_EXT_draw_buffers : require
+	precision highp float;
+	uniform vec4 u_color;
+	uniform sampler2D u_color_texture;
+	varying vec2 v_coord;
+	void main() {
+		gl_FragData[0] = u_color * texture2D(u_color_texture,v_coord);
+		
+	}
+
+\SH.vs
+
+	precision highp float;
+	attribute vec3 a_vertex;
+	attribute vec3 a_normal;
+	attribute vec2 a_uv;
+	attribute vec4 a_color;
+
+	uniform vec3 u_camera_pos;
+
+	uniform mat4 u_model;
+	uniform mat4 u_viewprojection;
+
+	//this will store the color for the pixel shader
+	varying vec3 v_position;
+	varying vec3 v_world_position;
+	varying vec3 v_normal;
+	varying vec2 v_uv;
+	varying vec4 v_color;
+
+	void main()
+	{	
+		//calcule the normal in camera space (the NormalMatrix is like ViewMatrix but without traslation)
+		v_normal = (u_model * vec4( a_normal, 0.0) ).xyz;
+		
+		//calcule the vertex in object space
+		v_position = a_vertex;
+		v_world_position = (u_model * vec4( v_position, 1.0) ).xyz;
+		
+		//store the color in the varying var to use it from the pixel shader
+		v_color = a_color;
+
+		//store the texture coordinates
+		v_uv = a_uv;
+
+		//calcule the position of the vertex using the matrices
+		gl_Position = u_viewprojection * vec4( v_world_position, 1.0 );
+	}
+
+\SH.fs
+
+	#extension GL_EXT_draw_buffers : require
+	precision highp float;
+	varying vec3 v_position;
+	varying vec3 v_world_position;
+	varying vec3 v_normal;
+	varying vec2 v_uv;
+
+	uniform vec3 u_sh_coeffs[9];
+	uniform bool u_flipX;
+
+	const float Pi = 3.141592654;
+	const float CosineA0 = Pi;
+	const float CosineA1 = (2.0 * Pi) / 3.0;
+	const float CosineA2 = Pi * 0.25;
+
+	struct SH9
+	{
+		float c[9];
+	};
+
+	struct SH9Color
+	{
+		vec3 c[9];
+	};
+
+	void SHCosineLobe(in vec3 dir, out SH9 sh)
+	{
+		
+		// Band 0
+		sh.c[0] = 0.282095 * CosineA0;
+		
+		// Band 1
+		sh.c[1] = 0.488603 * dir.y * CosineA1;
+		sh.c[2] = 0.488603 * dir.z * CosineA1;
+		sh.c[3] = 0.488603 * dir.x * CosineA1;
+		
+		// Band 2
+		#ifndef SH_LOW
+		
+		sh.c[4] = 1.092548 * dir.x * dir.y * CosineA2;
+		sh.c[5] = 1.092548 * dir.y * dir.z * CosineA2;
+		sh.c[6] = 0.315392 * (3.0 * dir.z * dir.z - 1.0) * CosineA2;
+		sh.c[7] = 1.092548 * dir.x * dir.z * CosineA2;
+		sh.c[8] = 0.546274 * (dir.x * dir.x - dir.y * dir.y) * CosineA2;
+		#endif
+		
+	}
+
+	vec3 ComputeSHIrradiance(in vec3 normal, in SH9Color radiance)
+	{
+		if(u_flipX)
+			normal.x = -normal.x;
+
+		// Compute the cosine lobe in SH, oriented about the normal direction
+		SH9 shCosine;
+		SHCosineLobe(normal, shCosine);
+
+		// Compute the SH dot product to get irradiance
+		vec3 irradiance = vec3(0.0);
+		#ifndef SH_LOW
+		const int num = 9;
+		#else
+		const int num = 4;
+		#endif
+		
+		for(int i = 0; i < num; ++i)
+			irradiance += radiance.c[i] * shCosine.c[i];
+		
+		return irradiance;
+	}
+
+	vec3 ComputeSHDiffuse(in vec3 normal, in SH9Color radiance)
+	{
+		// Diffuse BRDF is albedo / Pi
+		return ComputeSHIrradiance( normal, radiance ) * (1.0 / Pi);
+	}
+
+	void main()
+	{
+		vec3 normal = normalize( v_normal );
+		SH9Color coeffs;
+		coeffs.c[0] = u_sh_coeffs[0];
+		coeffs.c[1] = u_sh_coeffs[1];
+		coeffs.c[2] = u_sh_coeffs[2];
+		coeffs.c[3] = u_sh_coeffs[3];
+		coeffs.c[4] = u_sh_coeffs[4];
+		coeffs.c[5] = u_sh_coeffs[5];
+		coeffs.c[6] = u_sh_coeffs[6];
+		coeffs.c[7] = u_sh_coeffs[7];
+		coeffs.c[8] = u_sh_coeffs[8];
+
+		vec3 irradiance = ComputeSHDiffuse( -normal, coeffs );
+
+		gl_FragData[0] =  vec4(max( vec3(0.001), irradiance ), 1.0 );
+	}
+	
+\matrixOp.inc
+
+	vec3 world2view( vec3 a ){ return  (u_view * vec4(a,1.0)).xyz; }
+	vec3 view2world( vec3 a ){ return (u_invv * vec4(a,1.0)).xyz; }
+	vec3 view2screen( vec3 a){ return  (u_projection * vec4(a,1.0)).xyz; }
+	vec3 screen2view( vec3 a){ return (u_invp * vec4(a,1.0)).xyz; }

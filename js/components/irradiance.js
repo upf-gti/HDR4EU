@@ -46,6 +46,7 @@ function IrradianceCache()
 	this.collapsed = false;
 }
 
+IrradianceCache.icon = "https://webglstudio.org/latest/imgs/mini-icon-lightfx.png";
 IrradianceCache.show_probes = false;
 IrradianceCache.show_cubemaps = false;
 IrradianceCache.probes_size = 1;
@@ -68,50 +69,50 @@ Object.assign( IrradianceCache.prototype, {
 		console.log(RM);
 	},
 
-	create(widgets, root) {
+	create(widgets, no_section) {
 		
 		var that = this;
 
-		widgets.on_refresh = function(){
+		widgets.widgets_per_row = 1;
 
-			//widgets.clear();
-			widgets.widgets_per_row = 1;
+    if(!no_section || no_section.constructor === LiteGUI.Panel)
+    {
+      var element = widgets.addSection("Irradiance Cache", {collapsed: that.collapsed, callback: function(no_collapsed){
+        that.collapsed = !no_collapsed;
+      }});
 
-			var element = widgets.addSection("Irradiance Cache", {collapsed: that.collapsed, callback: function(no_collapsed){
-				that.collapsed = !no_collapsed;
-			}});
-			
-			element.addEventListener("dragstart", function(e){
-					e.dataTransfer.setData("type", "gui");
-					e.dataTransfer.setData("component", "TextureTools");
-			});
+      element.addEventListener("dragstart", function(e){
+          e.dataTransfer.setData("type", "gui");
+          e.dataTransfer.setData("component", "IrradianceCache");
+      });
 
-			element.setAttribute("draggable", true);
+      element.setAttribute("draggable", true);
+    }
 
-			widgets.addVector3("Size", that.size, {min: 0.1, step: 0.1, precision: 3, callback: function(v){ that.size = v; }});
-			widgets.addVector3("Subdivisions", that.subdivisions, {min: 1, max: 256, step: 1, precision: 0, callback: function(v){ that.subdivisions = v; }});
-			widgets.addNumber("Near", that.near, {callback: function(v){ that.near = v; }});
-			widgets.addNumber("Far", that.far, {callback: function(v){ that.far = v; }});
-			widgets.addColor("Background color", [0, 0, 0], {name_width: "30%", callback: function(v){ that.background_color = v; }});
-			widgets.addColor("Intensity color", [1, 1, 1], {name_width: "30%", callback: function(v){ that.intensity_color = v; }});
-			widgets.addCombo("Mode", "VERTEX", {values: ["OBJECT", "VERTEX", "PIXEL"], callback: function(v){ 
-			
-				that.mode = (v == "OBJECT") ? IrradianceCache.OBJECT_MODE : (v == "VERTEX") ? IrradianceCache.VERTEX_MODE : IrradianceCache.PIXEL_MODE;
-			
-			}});
+    widgets.addVector3("Size", that.size, {min: 0.1, step: 0.1, precision: 3, callback: function(v){ that.size = v; }});
+    widgets.addVector3("Subdivisions", that.subdivisions, {min: 1, max: 256, step: 1, precision: 0, callback: function(v){ that.subdivisions = v; }});
+    widgets.addNumber("Near", that.near, {callback: function(v){ that.near = v; }});
+    widgets.addNumber("Far", that.far, {callback: function(v){ that.far = v; }});
+    widgets.addColor("Background color", [0, 0, 0], {name_width: "30%", callback: function(v){ that.background_color = v; }});
+    widgets.addColor("Intensity color", [1, 1, 1], {name_width: "30%", callback: function(v){ that.intensity_color = v; }});
+    widgets.addCombo("Mode", "VERTEX", {values: ["OBJECT", "VERTEX", "PIXEL"], callback: function(v){ 
 
-			widgets.widgets_per_row = 3;
+      that.mode = (v == "OBJECT") ? IrradianceCache.OBJECT_MODE : (v == "VERTEX") ? IrradianceCache.VERTEX_MODE : IrradianceCache.PIXEL_MODE;
 
-			widgets.addInfo("Compute")
-			widgets.addButton(null, "Irradiance", {callback: function(){ LiteGUI.alert("TO DO") } });
-			widgets.addButton(null, "SH", {callback: function(){ that._shs = that.computeSH( gl.textures[CORE._environment] ) } });
-			widgets.addSeparator();
+    }});
 
-			widgets.widgets_per_row = 1;
-			widgets.addNumber("Probe size", 1);
-		}
+    widgets.widgets_per_row = 3;
 
-		widgets.on_refresh();
+    widgets.addInfo("Compute")
+    widgets.addButton(null, "Irradiance", {callback: function(){ LiteGUI.alert("TO DO") } });
+    widgets.addButton(null, "SH", {callback: function(){ 
+      that._shs = that.computeSH( gl.textures[CORE._environment] ) 
+      CORE.setUniform( "sh_coeffs", that._shs );
+    }});
+    widgets.addSeparator();
+
+    widgets.widgets_per_row = 1;
+    widgets.addNumber("Probe size", 1);
 	},
 
 	//captures the illumination to a cubemap
@@ -131,7 +132,7 @@ Object.assign( IrradianceCache.prototype, {
 		temp_cubemap.copyTo( output_cubemap );
 	},
 
-	computeSH ( cubemap, position)
+	computeSH ( cubemap, position )
 	{
 		//read 6 images from cubemap
 		var faces = [];
@@ -293,4 +294,4 @@ function areaElement (x, y) {
   return Math.atan2(x * y, Math.sqrt(x * x + y * y + 1.0))
 }
 		
-//RM.registerComponent( IrradianceCache, 'IrradianceCache');
+RM.registerClass( IrradianceCache, 'IrradianceCache');

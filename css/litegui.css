@@ -739,9 +739,14 @@ input.text.string:hover{
 	width: 200px;
 }
 
+.inspector .treenode.even{
+	background: rgba(0,0,0,0.1);
+}
+
 .inspector .itemname {
 	display: inline-block;
-	min-width: 50px;
+	width: 50%;
+    overflow: hidden;
 }
 
 .inspector .itemcontent {
@@ -753,6 +758,7 @@ input.text.string:hover{
 
 .inspector .itemvalue {
 	color: #88C;
+	margin-left: 10px;
 }
 
 button.wcombobutton {
@@ -909,7 +915,7 @@ div {
 
 	width: 100%;
 	min-height: 20px;
-	height: 1.5em;
+	height: 1.75em;
 	-moz-user-select: none;  
 	-webkit-user-select: none;  
 	user-select: none; 
@@ -1776,6 +1782,7 @@ button.litebutton.close-button {
 
 	/* max-height: 125px; */
 	/* overflow: scroll; */
+	background: #292929;
 }
 
 .litetree::-webkit-scrollbar{
@@ -1794,6 +1801,10 @@ li.ltreeitem {
 	font-size: 15px;
 }
 
+li.ltreeitem.dbl_clicked div.ltreeitemtitle .incontent{
+	color: rgba(170, 170, 170, 0.25);
+}
+
 li.ltreeitem:hover div.ltreeitemtitle .incontent{
 	color: #EC6;
 	font-weight: bold;
@@ -1802,7 +1813,7 @@ li.ltreeitem:hover div.ltreeitemtitle .incontent{
 
 li.ltreeitem:nth-child(even)
 {
-	background-color: rgba(0,0,0,0.1);
+	background-color: #2f2f2f;
 }
 
 
@@ -1827,6 +1838,10 @@ li.ltreeitem div.ltreeitemtitle {
 	color: #EC6;
 	font-weight: bold;
 } */
+
+li.ltreeitem.dbl_clicked.selected  div.ltreeitemtitle .incontent {
+	color: rgba(170, 170, 170, 0.25);
+}
 
 li.ltreeitem.selected  div.ltreeitemtitle .incontent {
 	color: #EC6;
@@ -1861,6 +1876,9 @@ li.ltreeitem .ltreeitemtitle .precontent {
 
 li.ltreeitem .ltreeitemtitle .postcontent {
 	margin-left: 4px;
+
+	float: right;
+    margin-right: 10px;
 }
 
 
@@ -1887,7 +1905,7 @@ li.ltreeitem.hidden, li.ltreeitem.filtered {
 	width: 0.4em;
 	height: 0.4em;
 	color: #36A;
-	background-color: #467;
+	background-color: #36A;
     /* Hide the text. */
     text-indent: 100%;
     white-space: nowrap;

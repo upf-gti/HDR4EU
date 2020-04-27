@@ -360,6 +360,7 @@ NormalGenerator_Shader.FS_CODE = `
 	void main() {
 
 		// http://www.catalinzima.com/2008/01/converting-displacement-maps-into-normal-maps/
+
 		vec3 color = ComputeNormals(v_coord);
 		gl_FragColor = vec4(color, 1.0);
 	}

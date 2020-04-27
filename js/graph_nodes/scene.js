@@ -34,6 +34,7 @@ LiteGraph.registerNodeType("scene/camera", LGraphCamera);
 
 function LGraphUniforms()
 {
+    this.addOutput("u_logLumAvg","Number");
     this.addOutput("u_LumAvg","Number");
     this.properties = {};
 }
@@ -50,7 +51,7 @@ LGraphUniforms.prototype.onExecute = function()
         
         var slot_name = this.outputs[i].name;
         var slot = this.findOutputSlot(slot_name);
-        this.setOutputData(slot, CORE._renderer._uniforms[slot_name] );
+        this.setOutputData(slot, CORE.renderer._uniforms[slot_name] );
     }
 }
 
@@ -60,11 +61,15 @@ LGraphUniforms.prototype.onGetOutputs = function()
     return;
 
     var outputs = [
+        ["u_logLumAvg", "Number"],
         ["u_LumAvg", "Number"]
     ];
 
-    for(var key in CORE._renderer._uniforms)
-    outputs.push( [key, key] );
+    for(var key in CORE.renderer._uniforms)
+    {
+        if(!CORE.renderer._uniforms[key]) continue;
+        outputs.push( [key, CORE.renderer._uniforms[key].constructor.name] );
+    }
 
     var filtered_outputs = [];
 
@@ -72,10 +77,48 @@ LGraphUniforms.prototype.onGetOutputs = function()
     {
         var slot_name = outputs[i][0];
         if(this.findOutputSlot(slot_name) < 0)
-        filtered_outputs.push( outputs[i] );
+            filtered_outputs.push( outputs[i] );
     }
     
     return filtered_outputs;
 }
 
 LiteGraph.registerNodeType("scene/uniforms", LGraphUniforms );
+
+function LGraphPrem()
+{
+    this.addOutput("Level","Skybox");
+	
+	this.properties = {
+		mipLevel: 0
+	};
+	
+	var that = this;
+	this.addWidget("combo", "Mip level", this.properties["mipLevel"], function(v){ 
+
+		that.properties["mipLevel"] = v;
+
+	}, {values:[0, 1, 2, 3, 4, 5]}, this.properties);
+}
+
+LGraphPrem.title = "Prefiltered environment";
+LGraphPrem.desc = "Display PBR prefiltered levels";
+
+LGraphPrem.prototype.onExecute = function()
+{
+	if(!CORE)
+	return;
+	
+	var level = this.properties["mipLevel"];
+
+	// original prem
+	if(level == 0)
+	{
+		this.setOutputData(0, CORE._environment );
+		return;
+	}
+
+	this.setOutputData(0, "@mip" + level + "__" + CORE._environment );
+};
+
+LiteGraph.registerNodeType("scene/prem", LGraphPrem);

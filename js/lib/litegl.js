@@ -9,6 +9,11 @@ var GL = global.GL = {};
 
 if(typeof(glMatrix) == "undefined")
 	throw("litegl.js requires gl-matrix to work. It must be included before litegl.");
+else
+{
+	if(!global.vec2)
+		throw("litegl.js does not support gl-matrix 3.0, download 2.8 https://github.com/toji/gl-matrix/releases/tag/v2.8.1");
+}
 
 //polyfill
 global.requestAnimationFrame = global.requestAnimationFrame || global.mozRequestAnimationFrame || global.webkitRequestAnimationFrame || function(callback) { setTimeout(callback, 1000 / 60); };
@@ -18,9 +23,15 @@ GL.blockable_keys = {"Up":true,"Down":true,"Left":true,"Right":true};
 GL.reverse = null;
 
 //some consts
-GL.LEFT_MOUSE_BUTTON = 1;
-GL.MIDDLE_MOUSE_BUTTON = 2;
-GL.RIGHT_MOUSE_BUTTON = 3;
+//https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent/button
+GL.LEFT_MOUSE_BUTTON = 0;
+GL.MIDDLE_MOUSE_BUTTON = 1;
+GL.RIGHT_MOUSE_BUTTON = 2;
+
+GL.LEFT_MOUSE_BUTTON_MASK = 1;
+GL.RIGHT_MOUSE_BUTTON_MASK = 2;
+GL.MIDDLE_MOUSE_BUTTON_MASK = 4;
+
 GL.last_context_id = 0;
 
 
@@ -226,17 +237,55 @@ global.nearestPowerOfTwo = GL.nearestPowerOfTwo = function nearestPowerOfTwo(v)
 }
 
 
+/**
+* converts from polar to cartesian
+* @method polarToCartesian
+* @param {vec3} out
+* @param {number} azimuth orientation from 0 to 2PI
+* @param {number} inclianation from -PI to PI
+* @param {number} radius
+* @return {vec3} returns out
+*/
+global.polarToCartesian = function( out, azimuth, inclination, radius )
+{
+	out = out || vec3.create();
+	out[0] = radius * Math.sin(inclination) * Math.cos(azimuth);
+	out[1] = radius * Math.cos(inclination);
+	out[2] = radius * Math.sin(inclination) * Math.sin(azimuth);
+	return out;
+}
+
+/**
+* converts from cartesian to polar
+* @method cartesianToPolar
+* @param {vec3} out
+* @param {number} x
+* @param {number} y
+* @param {number} z
+* @return {vec3} returns [azimuth,inclination,radius]
+*/
+global.cartesianToPolar = function( out, x,y,z )
+{
+	out = out || vec3.create();
+	out[2] = Math.sqrt(x*x+y*y+z*z);
+	out[0] = Math.atan2(x,z);
+	out[1] = Math.acos(z/out[2]);
+	return out;
+}
+
 //Global Scope
 //better array conversion to string for serializing
 var typed_arrays = [ Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array, Float32Array, Float64Array ];
-function typedToArray(){ 
+function typedToArray(){
 	return Array.prototype.slice.call(this);
 }
-typed_arrays.forEach( function(v) { 
+typed_arrays.forEach( function(v) {
 	if(!v.prototype.toJSON)
 		Object.defineProperty( v.prototype, "toJSON", {
 			value: typedToArray,
-			enumerable: false
+			enumerable: false,
+            configurable: true,
+            writable: true
 		});
 });
 
@@ -290,7 +339,7 @@ global.getClassName = function getClassName(obj)
 /**
 * clone one object recursively, only allows objects containing number,strings,typed-arrays or other objects
 * @method cloneObject
-* @param {Object} object 
+* @param {Object} object
 * @param {Object} target if omited an empty object is created
 * @return {Object}
 */
@@ -385,7 +434,7 @@ if(typeof(Image) != "undefined") //not existing inside workers
 }
 
 //you must pass an object with characters to replace and replace with what {"a":"A","c":"C"}
-if(!String.prototype.hasOwnProperty("replaceAll")) 
+if(!String.prototype.hasOwnProperty("replaceAll"))
 	Object.defineProperty(String.prototype, "replaceAll", {
 		value: function(words){
 			var str = this;
@@ -394,7 +443,7 @@ if(!String.prototype.hasOwnProperty("replaceAll"))
 			return str;
 		},
 		enumerable: false
-	});	
+	});
 
 /*
 String.prototype.replaceAll = function(words){
@@ -406,7 +455,7 @@ String.prototype.replaceAll = function(words){
 */
 
 //used for hashing keys
-if(!String.prototype.hasOwnProperty("hashCode")) 
+if(!String.prototype.hasOwnProperty("hashCode"))
 	Object.defineProperty(String.prototype, "hashCode", {
 		value: function(){
 			var hash = 0, i, c, l;
@@ -419,7 +468,7 @@ if(!String.prototype.hasOwnProperty("hashCode"))
 			return hash;
 		},
 		enumerable: false
-	});	
+	});
 
 //avoid errors when Typed array is expected and regular array is found
 //Array.prototype.subarray = Array.prototype.slice;
@@ -457,16 +506,16 @@ global.extendClass = GL.extendClass = function extendClass( target, origin ) {
 		for(var i = 0; i < prop_names.length; ++i) //only enumerables
 		{
 			var name = prop_names[i];
-			//if(!origin.prototype.hasOwnProperty(name)) 
+			//if(!origin.prototype.hasOwnProperty(name))
 			//	continue;
 
 			if(target.prototype.hasOwnProperty(name)) //avoid overwritting existing ones
 				continue;
 
-			//copy getters 
+			//copy getters
 			if(origin.prototype.__lookupGetter__(name))
 				target.prototype.__defineGetter__(name, origin.prototype.__lookupGetter__(name));
-			else 
+			else
 				target.prototype[name] = origin.prototype[name];
 
 			//and setters
@@ -475,11 +524,11 @@ global.extendClass = GL.extendClass = function extendClass( target, origin ) {
 		}
 	}
 
-	if(!target.hasOwnProperty("superclass")) 
+	if(!target.hasOwnProperty("superclass"))
 		Object.defineProperty(target, "superclass", {
 			get: function() { return origin },
 			enumerable: false
-		});	
+		});
 }
 
 
@@ -525,7 +574,7 @@ global.HttpRequest = GL.request = function HttpRequest( url, params, callback, e
 	{
 		LEvent.trigger(xhr,"fail",err);
 	}
-	
+
 	if(options)
 	{
 		for(var i in options)
@@ -563,10 +612,10 @@ global.getFileExtension = function getFileExtension(url)
 	if(question != -1)
 		url = url.substr(0,question);
 	var point = url.lastIndexOf(".");
-	if(point == -1) 
+	if(point == -1)
 		return "";
 	return url.substr(point+1).toLowerCase();
-} 
+}
 
 
 //allows to pack several (text)files inside one single file (useful for shaders)
@@ -576,7 +625,7 @@ global.loadFileAtlas = GL.loadFileAtlas = function loadFileAtlas(url, callback, 
 	var deferred_callback = null;
 
 	HttpRequest(url, null, function(data) {
-		var files = GL.processFileAtlas(data); 
+		var files = GL.processFileAtlas(data);
 		if(callback)
 			callback(files);
 		if(deferred_callback)
@@ -622,7 +671,7 @@ global.processFileAtlas = GL.processFileAtlas = function(data, skip_trim)
 global.halfFloatToFloat = function( h )
 {
 	function convertMantissa(i) {
-	    if (i == 0) 
+	    if (i == 0)
 			return 0
 		else if (i < 1024)
 		{
@@ -662,7 +711,7 @@ global.halfFloatToFloat = function( h )
 
 	var v = convertMantissa( convertOffset( h >> 10) + (h & 0x3ff) ) + convertExponent(h >> 10);
 	var a = new Uint32Array([v]);
-	return (new Float32Array(a.buffer))[0]; 
+	return (new Float32Array(a.buffer))[0];
 }
 */
 
@@ -675,7 +724,7 @@ global.typedArrayToArray = function(array)
 	return r;
 }
 
-global.RGBToHex = function(r, g, b) { 
+global.RGBToHex = function(r, g, b) {
 	r = Math.min(255, r*255)|0;
 	g = Math.min(255, g*255)|0;
 	b = Math.min(255, b*255)|0;
@@ -817,6 +866,7 @@ global.hexColorToRGBA = (function() {
 	return color;
 	}
 })();
+
 /**
  * @fileoverview dds - Utilities for loading DDS texture files
  * @author Brandon Jones
@@ -1579,6 +1629,16 @@ vec3.angle = function( a, b )
 	return Math.acos( vec3.dot(a,b) );
 }
 
+vec3.signedAngle = function(from, to, axis)
+{
+	var unsignedAngle = vec3.angle( from, to );
+	var cross_x = from[1] * to[2] - from[2] * to[1];
+	var cross_y = from[2] * to[0] - from[0] * to[2];
+	var cross_z = from[0] * to[1] - from[1] * to[0];
+	var sign = Math.sign(axis[0] * cross_x + axis[1] * cross_y + axis[2] * cross_z);
+	return unsignedAngle * sign;
+}
+
 vec3.random = function(vec, scale)
 {
 	scale = scale || 1.0;
@@ -1688,16 +1748,18 @@ vec3.project = function(out, vec,  mvp, viewport) {
 	var iy = vec[1];
 	var iz = vec[2];
 
-	var ox = m[0] * ix + m[4] * iy + m[8] * iz + m[12]
-	var oy = m[1] * ix + m[5] * iy + m[9] * iz + m[13]
-	var ow = m[3] * ix + m[7] * iy + m[11] * iz + m[15]
+	var ox = m[0] * ix + m[4] * iy + m[8] * iz + m[12];
+	var oy = m[1] * ix + m[5] * iy + m[9] * iz + m[13];
+	var oz = m[2] * ix + m[6] * iy + m[10] * iz + m[14];
+	var ow = m[3] * ix + m[7] * iy + m[11] * iz + m[15];
 
 	var projx =     (ox / ow + 1) / 2;
 	var projy = 1 - (oy / ow + 1) / 2;
+	var projz =     (oz / ow + 1) / 2;
 
 	out[0] = projx * viewport[2] + viewport[0];
 	out[1] = projy * viewport[3] + viewport[1];
-	out[2] = ow;
+	out[2] = projz; //ow
 	return out;
 };
 
@@ -1898,13 +1960,13 @@ quat.toEuler = function(out, quat) {
 	{
 		heading = 2 * Math.atan2(q[0],q[3]);
 		bank = 0;
-		attitude = 0; //Â¿?
+		attitude = 0; //¿?
 	}
 	else if( (q[0]*q[1] + q[2]*q[3]) == 0.5 )
 	{
 		heading = -2 * Math.atan2(q[0],q[3]);
 		bank = 0;
-		attitude = 0; //Â¿?
+		attitude = 0; //¿?
 	}
 	else
 	{
@@ -1997,7 +2059,7 @@ quat.fromEuler = function(out, vec) {
 };
 
 
-//not tested
+//not tested, it gives weird results sometimes
 quat.fromMat4 = function(out,m)
 {
 	var trace = m[0] + m[5] + m[10];
@@ -2007,7 +2069,7 @@ quat.fromMat4 = function(out,m)
 		out[3] = s * 0.5;//w
 		var recip = 0.5 / s;
 		out[0] = ( m[9] - m[6] ) * recip; //2,1  1,2
-		out[1] = ( m[2] - m[8] ) * recip; //0,2  2,0
+		out[1] = ( m[8] - m[2] ) * recip; //0,2  2,0
 		out[2] = ( m[4] - m[1] ) * recip; //1,0  0,1
 	}
 	else
@@ -2144,10 +2206,6 @@ quat.lookAt = (function(){
 		return out;
 	}
 })();
-
-
-
-
 /**
 * @namespace GL
 */
@@ -2535,7 +2593,11 @@ Mesh.prototype.addBuffer = function(name, buffer)
 		this.indexBuffers[name] = buffer;
 
 	if(!buffer.attribute)
-		buffer.attribute = GL.Mesh.common_buffers[name].attribute;
+	{
+		var info = GL.Mesh.common_buffers[name];
+		if(info)
+			buffer.attribute = info.attribute;
+	}
 }
 
 
@@ -4188,13 +4250,15 @@ Mesh.fromURL = function(url, on_complete, gl, options)
 
 	var pos = url.lastIndexOf(".");
 	var extension = url.substr(pos+1).toLowerCase();
+	if(options.extension)
+		extension = options.extension;
 	options.binary = Mesh.binary_file_formats[ extension ];
 
 	HttpRequest( url, null, function(data) {
 		mesh.parse( data, extension );
 		delete mesh["ready"];
 		if(on_complete)
-			on_complete.call(mesh,mesh, url);
+			on_complete.call(mesh, mesh, url);
 	}, function(err){
 		if(on_complete)
 			on_complete(null);
@@ -4644,6 +4708,111 @@ Mesh.circle = function( options, gl ) {
 }
 
 /**
+* Returns a ring mesh 
+* @method Mesh.ring
+* @param {Object} options valid options: radius, thickness, xz = in xz plane, otherwise xy plane
+*/
+Mesh.ring = function( options, gl ) {
+	options = options || {};
+	var size = options.size || options.radius || 1;
+	var thickness = options.thickness || size * 0.1;
+	var slices = Math.ceil(options.slices || 24);
+	var xz = options.xz || false;
+	var empty = options.empty || false;
+	if(slices < 3) slices = 3;
+	var delta = (2 * Math.PI) / slices;
+
+	var center = vec3.create();
+	var A = vec3.create();
+	var B = vec3.create();
+	var N = vec3.fromValues(0,0,1);
+	var uv_center = vec2.fromValues(0.5,0.5);
+	var uv = vec2.create();
+
+	if(xz) N.set([0,1,0]);
+
+	var index = xz ? 2 : 1;
+
+	var vertices = new Float32Array(3 * (slices * 2 + 2));
+	var normals = new Float32Array(3 * (slices * 2 + 2));
+	var coords = new Float32Array(2 * (slices * 2 + 2));
+	var triangles = null;
+
+	var sin = 0;
+	var cos = 0;
+
+	//compute vertices
+	for(var i = 0; i <= slices; ++i )
+	{
+		sin = Math.sin( delta * i );
+		cos = Math.cos( delta * i );
+
+		A[0] = sin * (size - thickness);
+		A[index] = cos * (size - thickness);
+		uv[0] = i/slices;
+		uv[1] = 0;
+		vertices.set(A, i * 6);
+		normals.set(N, i * 6);
+		coords.set(uv, i * 4);
+
+		B[0] = sin * (size + thickness);
+		B[index] = cos * (size + thickness);
+		uv[1] = 1;
+		vertices.set(B, i * 6+3);
+		normals.set(N, i * 6+3);
+		coords.set(uv, i * 4+2);
+	}
+
+	if(empty)
+	{
+		vertices = vertices.subarray(3);
+		normals = vertices.subarray(3);
+		coords = vertices.subarray(2);
+		triangles = null;
+	}
+	else
+	{
+		var triangles = new Uint16Array(6 * slices);
+		var offset = 2;
+		var offset2 = 1;
+		if(xz)
+		{
+			offset = 1;
+			offset2 = 2;
+		}
+
+		//compute indices
+		for(var i = 0; i < slices; ++i )
+		{
+			triangles[i*6] = i*2;
+			triangles[i*6+1] = i*2+offset;
+			triangles[i*6+2] = i*2+offset2;
+			triangles[i*6+3] = i*2+offset2;
+			triangles[i*6+4] = i*2+offset;
+			triangles[i*6+5] = i*2+3;
+		}
+	}
+
+	options.bounding = BBox.fromCenterHalfsize( [0,0,0], xz ? [size+thickness,0,size+thickness] : [size+thickness,size+thickness,0] );
+
+	var buffers = {vertices: vertices, normals: normals, coords: coords, triangles: triangles};
+
+	if(options.wireframe)
+	{
+		var wireframe = new Uint16Array(slices*4);
+		for(var i = 0; i < slices; i++)
+		{
+			wireframe[i*4] = i*2;
+			wireframe[i*4+1] = i*2+2;
+			wireframe[i*4+2] = i*2+1;
+			wireframe[i*4+3] = i*2+3;
+		}
+		buffers.wireframe = wireframe;
+	}
+	return GL.Mesh.load( buffers, options, gl );
+}
+
+/**
 * Returns a cube mesh 
 * @method Mesh.cylinder
 * @param {Object} options valid options: radius, height, subdivisions 
@@ -4846,6 +5015,109 @@ Mesh.cone = function( options, gl ) {
 
 	return Mesh.load( buffers, options, gl );
 }
+
+
+
+/**
+* Returns a torus mesh (warning, it reuses vertices in the last loop so UVs will be messed up, sorry)
+* @method Mesh.torus
+* @param {Object} options valid options: innerradius, outerradius, innerslices, outerslices
+*/
+Mesh.torus = function( options, gl ) {
+	options = options || {};
+	var outerradius = options.outerradius || options.radius || 1;
+	var outerslices = Math.ceil(options.outerslices || options.slices || 24);
+	var innerradius = options.innerradius || outerradius * 0.1;
+	var innerslices = Math.ceil(options.innerslices || outerslices );
+	var angle = options.angle || (Math.PI * 2);
+
+	var innerdelta = Math.PI * 2 / innerslices;
+	var outerdelta = angle / outerslices;
+	var xz = false;
+	var index = xz ? 2 : 1;
+
+	var center = vec3.create();
+	var A = vec3.create();
+	var N = vec3.fromValues(0,0,1);
+	var uv_center = vec2.fromValues(0.5,0.5);
+	var uv = vec2.create();
+	var close = angle == (Math.PI * 2);
+
+	//circle vertices
+	var cvertices = new Float32Array(3 * innerslices);
+	var cnormals = new Float32Array(3 * innerslices);
+
+	var sin = 0;
+	var cos = 0;
+	//compute circle vertices
+	for(var i = 0; i < innerslices; ++i )
+	{
+		sin = Math.sin( innerdelta * i );
+		cos = Math.cos( innerdelta * i );
+		A[0] = sin * innerradius;
+		A[index] = cos * innerradius;
+		uv[0] = sin * 0.5 + 0.5;
+		uv[1] = cos * 0.5 + 0.5;
+		cvertices.set(A, i * 3);
+		vec3.normalize(N,A);
+		cnormals.set(N, i * 3);
+	}
+
+	var vertices = new Float32Array(3 * outerslices * innerslices);
+	var normals = new Float32Array(3 * outerslices * innerslices);
+	var coords = new Float32Array(2 * outerslices * innerslices);
+	var triangles = null;
+
+	var sin = 0;
+	var cos = 0;
+
+	var M = mat4.create();
+	var offset = vec3.fromValues(-outerradius,0,0);
+	var axis = vec3.fromValues(0,1,0);
+	var v = vec3.create();
+
+	var triangles = [];
+	var next = innerslices;
+
+	//compute vertices
+	for(var i = 0; i < outerslices; ++i )
+	{
+		mat4.identity(M);
+		mat4.rotate( M, M, i * outerdelta, axis );
+		mat4.translate( M, M, offset );
+
+		var bindex = i * innerslices;
+		var next = innerslices;
+		if(i >= outerslices - 1 )
+		{
+			next = (outerslices - 1) * -innerslices;
+			if(!close) 	next = 0;
+		}
+
+		for(var j = 0; j < innerslices; ++j )
+		{
+			var cv = cvertices.subarray(j*3,j*3+3);
+			var cn = cnormals.subarray(j*3,j*3+3);
+			mat4.multiplyVec3( A, M, cv );
+			mat4.rotateVec3( N, M, cn );
+			vertices.set(A, j * 3 + i * 3 * innerslices);
+			normals.set(N, j * 3 + i * 3 * innerslices);
+			coords.set([i/outerslices,j/innerslices], j * 2 + i * 2 * innerslices);
+			
+			var a = bindex + j;
+			var b = bindex + (j + 1) % innerslices;
+			triangles.push( b,a,a+next,b,a+next,b+next );
+			//else
+			//	triangles.push( i,i+1,i+next, i,i+next,i+next+1 );
+		}
+	}
+
+	var size = innerradius + outerradius;
+	options.bounding = BBox.fromCenterHalfsize( [0,0,0], xz ? [size,innerradius,size] : [size,size,innerradius] );
+	var buffers = {vertices: vertices, normals: normals, coords: coords, triangles: triangles};
+	return GL.Mesh.load( buffers, options, gl );
+}
+
 
 /**
 * Returns a sphere mesh 
@@ -5889,6 +6161,8 @@ Texture.drawToColorAndDepth = function( color_texture, depth_texture, callback )
 Texture.prototype.copyTo = function( target_texture, shader, uniforms ) {
 	var that = this;
 	var gl = this.gl;
+	if(!target_texture)
+		throw("target_texture required");
 
 	//save state
 	var previous_fbo = gl.getParameter( gl.FRAMEBUFFER_BINDING );
@@ -5912,10 +6186,22 @@ Texture.prototype.copyTo = function( target_texture, shader, uniforms ) {
 	gl.viewport(0,0,target_texture.width, target_texture.height);
 	if(this.texture_type == gl.TEXTURE_2D)
 	{
+		//regular color texture
 		if(this.format !== gl.DEPTH_COMPONENT && this.format !== gl.DEPTH_STENCIL )
 		{
-			gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target_texture.handler, 0);
-			this.toViewport( shader );
+			/* doesnt work
+			if( this.width == target_texture.width && this.height == target_texture.height && this.format == target_texture.format)
+			{
+				gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.handler, 0);
+				gl.bindTexture( target_texture.texture_type, target_texture.handler );
+				gl.copyTexImage2D( target_texture.texture_type, 0, this.format, 0, 0, target_texture.width, target_texture.height, 0);
+			}
+			else
+			*/
+			{
+				gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target_texture.handler, 0);
+				this.toViewport( shader );
+			}
 		}
 		else //copying a depth texture is harder
 		{
@@ -7263,7 +7549,6 @@ Texture.nextPOT = function( size )
 {
 	return Math.pow( 2, Math.ceil( Math.log(size) / Math.log(2) ) );
 }
-
 /** 
 * FBO for FrameBufferObjects, FBOs are used to store the render inside one or several textures 
 * Supports multibuffer and depthbuffer texture, useful for deferred rendering
@@ -7292,6 +7577,7 @@ function FBO( textures, depth_texture, stencil, gl )
 
 	this._stencil_enabled = false;
 	this._num_binded_textures = 0;
+	this.order = null;
 
 	//assign textures
 	if((textures && textures.length) || depth_texture)
@@ -7544,7 +7830,7 @@ FBO.prototype.update = function( skip_disable )
 }
 
 /**
-* Enables this FBO (from now on all the render will be stored in the textures attached to this FBO
+* Enables this FBO (from now on all the render will be stored in the textures attached to this FBO)
 * It stores the previous viewport to restore it afterwards, and changes it to full FBO size
 * @method bind
 * @param {boolean} keep_old keeps the previous FBO is one was attached to restore it afterwards
@@ -7570,6 +7856,7 @@ FBO.prototype.bind = function( keep_old )
 		this.depth_texture._in_current_fbo = true;
 
 	gl.viewport( 0,0, this.width, this.height );
+	FBO.current = this;
 }
 
 /**
@@ -7588,6 +7875,7 @@ FBO.prototype.unbind = function()
 		this.color_textures[i]._in_current_fbo = false;
 	if(this.depth_texture)
 		this.depth_texture._in_current_fbo = false;
+	FBO.current = null;
 }
 
 //binds another FBO without switch back to previous (faster)
@@ -7610,6 +7898,8 @@ FBO.prototype.switchTo = function( next_fbo )
 		next_fbo.color_textures[i]._in_current_fbo = true;
 	if(next_fbo.depth_texture)
 		next_fbo.depth_texture._in_current_fbo = true;
+
+	FBO.current = next_fbo;
 }
 
 FBO.prototype.delete = function()
@@ -7640,6 +7930,50 @@ FBO.testSupport = function( type, format ) {
 	return true;
 }
 
+FBO.prototype.toSingle = function()
+{
+	if( this.color_textures.length < 2 )
+		return; //nothing to do
+	var ext = gl.extensions.WEBGL_draw_buffers;
+	if( ext )
+		ext.drawBuffersWEBGL( [ this.order[0] ] );
+	else
+		gl.drawBuffers( [ this.order[0] ] );
+}
+
+FBO.prototype.toMulti = function()
+{
+	if( this.color_textures.length < 2 )
+		return; //nothing to do
+	var ext = gl.extensions.WEBGL_draw_buffers;
+	if( ext )
+		ext.drawBuffersWEBGL( this.order );
+	else
+		gl.drawBuffers( this.order );
+}
+
+//clears only the secondary buffers (not the main one)
+FBO.prototype.clearSecondary = function( color )
+{
+	if(!this.order || this.order.length < 2)
+		return;
+
+	var ext = gl.extensions.WEBGL_draw_buffers;
+	var new_order = [gl.NONE];
+	for(var i = 1; i < this.order.length; ++i)
+		new_order.push(this.order[i]);
+	if(ext)
+		ext.drawBuffersWEBGL( new_order );
+	else
+		gl.drawBuffers( new_order );
+	gl.clearColor( color[0],color[1],color[2],color[3] );
+	gl.clear( gl.COLOR_BUFFER_BIT );
+
+	if(ext)
+		ext.drawBuffersWEBGL( this.order );
+	else
+		gl.drawBuffers( this.order );
+}
 
 
 /**
@@ -8292,7 +8626,14 @@ Shader.prototype.drawInstanced = function( mesh, primitive, indices, instanced_u
 		length = buffer.buffer.length / buffer.buffer.spacing;
 	}
 
-	var indexBuffer = indices ? mesh.getIndexBuffer( indices ) : null;
+	var indexBuffer = null;
+	if( indices )
+	{
+		if( indices.constructor === String) 
+			indexBuffer = mesh.getIndexBuffer( indices );
+		else if( indices.constructor === GL.Buffer )
+			indexBuffer = indices;
+	}
 
 	//range rendering
 	var offset = 0; //in bytes
@@ -8731,6 +9072,20 @@ Shader.createFX = function(code, uniforms, shader)
 		return new GL.Shader( GL.Shader.SCREEN_VERTEX_SHADER, GL.Shader.SCREEN_FRAGMENT_FX, macros );
 	shader.updateShader( GL.Shader.SCREEN_VERTEX_SHADER, GL.Shader.SCREEN_FRAGMENT_FX, macros );
 	return shader;
+}
+
+/**
+* Given a shader code with some vars inside (like {{varname}}) and an object with the variable values, it will replace them.
+* @method Shader.replaceCodeUsingContext
+* @param {string} code string containg code and vars in {{varname}} format
+* @param {object} context object containing all var values
+*/
+Shader.replaceCodeUsingContext = function( code_template, context )
+{
+	return code_template.replace(/\{\{[a-zA-Z0-9_]*\}\}/g, function(v){
+		v = v.replace( /[\{\}]/g, "" );
+		return context[v] || "";
+	});
 }
 
 Shader.removeComments = function(code, one_line)
@@ -9425,13 +9780,25 @@ GL.create = function(options) {
 		*/
 		isButtonPressed: function(num)
 		{
-			return this.buttons & (1<<num);
+			if(num == GL.LEFT_MOUSE_BUTTON)
+				return this.buttons & GL.LEFT_MOUSE_BUTTON_MASK;
+			if(num == GL.MIDDLE_MOUSE_BUTTON)
+				return this.buttons & GL.MIDDLE_MOUSE_BUTTON_MASK;
+			if(num == GL.RIGHT_MOUSE_BUTTON)
+				return this.buttons & GL.RIGHT_MOUSE_BUTTON_MASK;
 		},
 
 		wasButtonPressed: function(num)
 		{
-			return (this.buttons & (1<<num)) && !(this.last_buttons & (1<<num));
-		},
+			var mask = 0;
+			if(num == GL.LEFT_MOUSE_BUTTON)
+				mask = GL.LEFT_MOUSE_BUTTON_MASK;
+			else if(num == GL.MIDDLE_MOUSE_BUTTON)
+				mask = GL.MIDDLE_MOUSE_BUTTON_MASK;
+			else if(num == GL.RIGHT_MOUSE_BUTTON)
+				mask = GL.RIGHT_MOUSE_BUTTON_MASK;
+			return (this.buttons & mask) && !(this.last_buttons & mask);
+		}
 	};
 
 	/**
@@ -9482,9 +9849,10 @@ GL.create = function(options) {
 		mouse.canvasy = e.canvasy;
 		mouse.clientx = e.mousex;
 		mouse.clienty = e.mousey;
-		mouse.left_button = !!(mouse.buttons & (1<<GL.LEFT_MOUSE_BUTTON));
-		mouse.middle_button = !!(mouse.buttons & (1<<GL.MIDDLE_MOUSE_BUTTON));
-		mouse.right_button = !!(mouse.buttons & (1<<GL.RIGHT_MOUSE_BUTTON));
+		mouse.buttons = e.buttons;
+		mouse.left_button = !!(mouse.buttons & GL.LEFT_MOUSE_BUTTON_MASK);
+		mouse.middle_button = !!(mouse.buttons & GL.MIDDLE_MOUSE_BUTTON_MASK);
+		mouse.right_button = !!(mouse.buttons & GL.RIGHT_MOUSE_BUTTON_MASK);
 
 		if(e.eventType == "mousedown")
 		{
@@ -10118,15 +10486,15 @@ GL.augmentEvent = function(e, root_element)
 	if(e.type == "mousedown")
 	{
 		this.dragging = true;
-		gl.mouse.buttons |= (1 << e.which); //enable
+		//gl.mouse.buttons |= (1 << e.which); //enable
 	}
 	else if (e.type == "mousemove")
 	{
 	}
 	else if (e.type == "mouseup")
 	{
-		gl.mouse.buttons = gl.mouse.buttons & ~(1 << e.which);
-		if(gl.mouse.buttons == 0)
+		//gl.mouse.buttons = gl.mouse.buttons & ~(1 << e.which);
+		if(e.buttons == 0)
 			this.dragging = false;
 	}
 
@@ -10146,10 +10514,14 @@ GL.augmentEvent = function(e, root_element)
 
 	//insert info in event
 	e.dragging = this.dragging;
-	e.buttons_mask = gl.mouse.buttons;
-	e.leftButton = !!(gl.mouse.buttons & (1<<GL.LEFT_MOUSE_BUTTON));
-	e.middleButton = !!(gl.mouse.buttons & (1<<GL.MIDDLE_MOUSE_BUTTON));
-	e.rightButton = !!(gl.mouse.buttons & (1<<GL.RIGHT_MOUSE_BUTTON));
+	e.leftButton = !!(gl.mouse.buttons & GL.LEFT_MOUSE_BUTTON_MASK);
+	e.middleButton = !!(gl.mouse.buttons & GL.MIDDLE_MOUSE_BUTTON_MASK);
+	e.rightButton = !!(gl.mouse.buttons & GL.RIGHT_MOUSE_BUTTON_MASK);
+	//shitty non-coherent API, e.buttons use 1:left,2:right,4:middle) but e.button uses (0:left,1:middle,2:right)
+	e.buttons_mask = 0;
+	if( e.leftButton ) e.buttons_mask = 1;
+	if( e.middleButton ) e.buttons_mask |= 2;
+	if( e.rightButton ) e.buttons_mask |= 4;
 	e.isButtonPressed = function(num) { return this.buttons_mask & (1<<num); }
 }
 
@@ -10823,8 +11195,8 @@ global.geo = {
 		var dd = vec3.dot(d, d);
 
 		// Test if segment fully outside either endcap of cylinder
-		if (md < 0.0 && md + nd < 0.0) return false; // Segment outside â€™pâ€™ side of cylinder
-		if (md > dd && md + nd > dd) return false; // Segment outside â€™qâ€™ side of cylinder
+		if (md < 0.0 && md + nd < 0.0) return false; // Segment outside ’p’ side of cylinder
+		if (md > dd && md + nd > dd) return false; // Segment outside ’q’ side of cylinder
 
 		var nn = vec3.dot(n, n);
 		var mn = vec3.dot(m, n);
@@ -10836,15 +11208,15 @@ global.geo = {
 		{
 			// Segment runs parallel to cylinder axis
 			if (c > 0.0) return false;
-			// â€™aâ€™ and thus the segment lie outside cylinder
+			// ’a’ and thus the segment lie outside cylinder
 			// Now known that segment intersects cylinder; figure out how it intersects
 			if (md < 0.0) t = -mn/nn;
-			// Intersect segment against â€™pâ€™ endcap
+			// Intersect segment against ’p’ endcap
 			else if (md > dd)
 				t=(nd-mn)/nn;
-			// Intersect segment against â€™qâ€™ endcap
+			// Intersect segment against ’q’ endcap
 			else t = 0.0;
-			// â€™aâ€™ lies inside cylinder
+			// ’a’ lies inside cylinder
 			if(result) 
 				vec3.add(result, sa, vec3.scale(result, n,t) );
 			return true;
@@ -10860,7 +11232,7 @@ global.geo = {
 		// Intersection lies outside segment
 		if(md+t*nd < 0.0)
 		{
-			// Intersection outside cylinder on â€™pâ€™ side
+			// Intersection outside cylinder on ’p’ side
 			if (nd <= 0.0) 
 				return false;
 			// Segment pointing away from endcap
@@ -10871,7 +11243,7 @@ global.geo = {
 			return k+2*t*(mn+t*nn) <= 0.0;
 		} else if (md+t*nd>dd)
 		{
-			// Intersection outside cylinder on â€™qâ€™ side
+			// Intersection outside cylinder on ’q’ side
 			if (nd >= 0.0) return false; //Segment pointing away from endcap
 			t = (dd - md) / nd;
 			// Keep intersection if Dot(S(t) - q, S(t) - q) <= r^2
@@ -11473,9 +11845,12 @@ global.BBox = GL.BBox = {
 		bb[3] = halfsize[0];
 		bb[4] = halfsize[1];
 		bb[5] = halfsize[2];
-
-		vec3.sub(bb.subarray(6,9), bb.subarray(0,3), bb.subarray(3,6) );
-		vec3.add(bb.subarray(9,12), bb.subarray(0,3), bb.subarray(3,6) );
+		bb[6] = bb[0] - bb[3];
+		bb[7] = bb[1] - bb[4];
+		bb[8] = bb[2] - bb[5];
+		bb[9] = bb[0] + bb[3];
+		bb[10] = bb[1] + bb[4];
+		bb[11] = bb[2] + bb[5];
 		if(radius)
 			bb[12] = radius;
 		else
@@ -11588,6 +11963,25 @@ global.BBox = GL.BBox = {
 		return out;
 	},
 
+	clampPoint: function(out, box, point)
+	{
+		out[0] = Math.clamp( point[0], box[0] - box[3], box[0] + box[3]);
+		out[1] = Math.clamp( point[1], box[1] - box[4], box[1] + box[4]);
+		out[2] = Math.clamp( point[2], box[2] - box[5], box[2] + box[5]);
+	},
+
+	isPointInside: function( bbox, point )
+	{
+		if( (bbox[0] - bbox[3]) > point[0] ||
+			(bbox[1] - bbox[4]) > point[1] ||
+			(bbox[2] - bbox[5]) > point[2] ||
+			(bbox[0] + bbox[3]) < point[0] ||
+			(bbox[1] + bbox[4]) < point[1] ||
+			(bbox[2] + bbox[5]) < point[2] )
+			return false;
+		return true;
+	},
+
 	getCenter: function(bb) { return bb.subarray(0,3); },
 	getHalfsize: function(bb) { return bb.subarray(3,6); },
 	getMin: function(bb) { return bb.subarray(6,9); },
@@ -11647,6 +12041,11 @@ Octree.MAX_NODE_TRIANGLES_RATIO = 0.1;
 Octree.MAX_OCTREE_DEPTH = 8;
 Octree.OCTREE_MARGIN_RATIO = 0.01;
 Octree.OCTREE_MIN_MARGIN = 0.1;
+
+//mode
+Octree.NEAREST = 0; //returns the nearest collision
+Octree.FIRST = 1; //returns the first collision
+Octree.ALL = 2;  //returns the all collisions
 
 var octree_tested_boxes = 0;
 var octree_tested_triangles = 0;
@@ -11844,6 +12243,8 @@ Octree.prototype.trim = function(node)
 * @param {vec3} direction ray direction position
 * @param {number} dist_min
 * @param {number} dist_max
+* @param {number} test_backfaces if rays colliding with the back face must be considered a valid collision
+* @param {number} mode which mode to use (Octree.NEAREST: nearest collision to origin, Octree.FIRST: first collision detected (fastest), Octree.ALL: all collision (slowest)
 * @return {HitTest} object containing pos and normal
 */
 Octree.prototype.testRay = (function(){ 
@@ -11852,10 +12253,11 @@ Octree.prototype.testRay = (function(){
 	var min_temp = vec3.create();
 	var max_temp = vec3.create();
 
-	return function(origin, direction, dist_min, dist_max, test_backfaces )
+	return function(origin, direction, dist_min, dist_max, test_backfaces, mode )
 	{
 		octree_tested_boxes = 0;
 		octree_tested_triangles = 0;
+		mode = mode || Octree.NEAREST;
 
 		if(!this.root)
 		{
@@ -11871,18 +12273,99 @@ Octree.prototype.testRay = (function(){
 		if(!test) //no collision with mesh bounding box
 			return null;
 
-		var test = Octree.testRayInNode( this.root, origin_temp, direction_temp, test_backfaces );
-		if(test != null)
-		{
-			var pos = vec3.scale( vec3.create(), direction, test.t );
-			vec3.add( pos, pos, origin );
-			test.pos = pos;
-			return test;
-		}
+		var test = Octree.testRayInNode( this.root, origin_temp, direction_temp, test_backfaces, mode );
+		if(test == null )
+			return null;
 
-		return null;
+		if(mode == Octree.ALL)
+			return test;
+
+		var pos = vec3.scale( vec3.create(), direction, test.t );
+		vec3.add( pos, pos, origin );
+		test.pos = pos;
+		return test;
 	}
 })();
+
+//tests collisions with a node of the octree and its children
+//WARNING: cannot use static here, it uses recursion
+Octree.testRayInNode = function( node, origin, direction, test_backfaces, mode )
+{
+	var test = null;
+	var prev_test = null;
+	octree_tested_boxes += 1;
+
+	//test faces
+	if(node.faces)
+		for(var i = 0, l = node.faces.length; i < l; ++i)
+		{
+			var face = node.faces[i];
+			octree_tested_triangles += 1;
+			test = Octree.hitTestTriangle( origin, direction, face.subarray(0,3) , face.subarray(3,6), face.subarray(6,9), test_backfaces );
+			if (test == null)
+				continue;
+			if(mode == Octree.FIRST)
+				return test;
+			if(mode == Octree.ALL)
+			{
+				if(!prev_test)
+					prev_test = [];
+				prev_test.push(test);
+			}
+			else { //find closer
+				test.face = face;
+				if(prev_test)
+					prev_test.mergeWith( test );
+				else
+					prev_test = test;
+			}
+		}
+
+	//WARNING: cannot use statics here, this function uses recursion
+	var child_min = vec3.create();
+	var child_max = vec3.create();
+
+	//test children nodes faces
+	var child;
+	if(node.c)
+		for(var i = 0; i < node.c.length; ++i)
+		{
+			child = node.c[i];
+			child_min.set( child.min );
+			child_max.set( child.max );
+
+			//test with node box
+			test = Octree.hitTestBox( origin, direction, child_min, child_max );
+			if( test == null )
+				continue;
+
+			//nodebox behind current collision, then ignore node
+			if(mode != Octree.ALL && prev_test && test.t > prev_test.t)
+				continue;
+
+			//test collision with node
+			test = Octree.testRayInNode( child, origin, direction, test_backfaces, mode );
+			if(test == null)
+				continue;
+			if(mode == Octree.FIRST)
+				return test;
+
+			if(mode == Octree.ALL)
+			{
+				if(!prev_test)
+					prev_test = [];
+				prev_test.push(test);
+			}
+			else {
+				if(prev_test)
+					prev_test.mergeWith( test );
+				else
+					prev_test = test;
+			}
+		}
+
+	return prev_test;
+}
 
 /**
 * test collision between sphere and the triangles in the octree (only test if there is any vertex inside the sphere)
@@ -11907,65 +12390,6 @@ Octree.prototype.testSphere = function( origin, radius )
 		return false; //out of the box
 
 	return Octree.testSphereInNode( this.root, origin, rr );
-}
-
-//WARNING: cannot use static here, it uses recursion
-Octree.testRayInNode = function( node, origin, direction, test_backfaces )
-{
-	var test = null;
-	var prev_test = null;
-	octree_tested_boxes += 1;
-
-	//test faces
-	if(node.faces)
-		for(var i = 0, l = node.faces.length; i < l; ++i)
-		{
-			var face = node.faces[i];
-			octree_tested_triangles += 1;
-			test = Octree.hitTestTriangle( origin, direction, face.subarray(0,3) , face.subarray(3,6), face.subarray(6,9), test_backfaces );
-			if (test==null)
-				continue;
-			test.face = face;
-			if(prev_test)
-				prev_test.mergeWith( test );
-			else
-				prev_test = test;
-		}
-
-	//WARNING: cannot use statics here, this function uses recursion
-	var child_min = vec3.create();
-	var child_max = vec3.create();
-
-	//test children nodes faces
-	var child;
-	if(node.c)
-		for(var i = 0; i < node.c.length; ++i)
-		{
-			child = node.c[i];
-			child_min.set( child.min );
-			child_max.set( child.max );
-
-			//test with node box
-			test = Octree.hitTestBox( origin, direction, child_min, child_max );
-			if( test == null )
-				continue;
-
-			//nodebox behind current collision, then ignore node
-			if(prev_test && test.t > prev_test.t)
-				continue;
-
-			//test collision with node
-			test = Octree.testRayInNode( child, origin, direction, test_backfaces );
-			if(test == null)
-				continue;
-
-			if(prev_test)
-				prev_test.mergeWith( test );
-			else
-				prev_test = test;
-		}
-
-	return prev_test;
 }
 
 //WARNING: cannot use static here, it uses recursion
@@ -12423,6 +12847,279 @@ Raytracer.hitTestTriangle = function(origin, ray, a, b, c) {
 * @return {Object} mesh information (vertices, coords, normals, indices)
 */
 
+/*
+Mesh.parseOBJ = function(text, options)
+{
+	options = options || {};
+	var MATNAME_EXTENSION = options.matextension || "";//".json";
+	var support_uint = true;
+
+	//unindexed containers
+	var vertices = [];
+	var normals = [];
+	var uvs = [];
+
+	//final containers
+	var vertices_buffer_data = [];
+	var normals_buffer_data = [];
+	var uvs_buffer_data = [];
+
+	//groups
+	var group_id = 0;
+	var groups = [];
+	var current_group_materials = {};
+	var last_group_name = null;
+	var materials_found = {};
+	var mtllib = null;
+	var group = createGroup();
+
+	var indices_map = new Map();
+	var next_index = 0;
+
+	var V_CODE = 1;
+	var VT_CODE = 2;
+	var VN_CODE = 3;
+	var F_CODE = 4;
+	var G_CODE = 5;
+	var O_CODE = 6;
+	var USEMTL_CODE = 7;
+	var MTLLIB_CODE = 8;
+	var codes = { v: V_CODE, vt: VT_CODE, vn: VN_CODE, f: F_CODE, g: G_CODE, o: O_CODE, usemtl: USEMTL_CODE, mtllib: MTLLIB_CODE };
+
+	var x,y,z;
+
+	var lines = text.split("\n");
+	var length = lines.length;
+	for (var lineIndex = 0;  lineIndex < length; ++lineIndex) {
+
+		var line = lines[lineIndex];
+		line = line.replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
+
+		if(line[ line.length - 1 ] == "\\") //breakline support
+		{
+			lineIndex += 1;
+			var next_line = lines[lineIndex].replace(/[ \t]+/g, " ").replace(/\s\s*$/, ""); //better than trim
+			line = (line.substr(0,line.length - 1) + next_line).replace(/[ \t]+/g, " ").replace(/\s\s*$/, "");
+		}
+		
+		if (line[0] == "#")
+			continue;
+		if(line == "")
+			continue;
+
+		var tokens = line.split(" ");
+		var code = codes[ tokens[0] ];
+
+		if( code <= VN_CODE ) //v,vt,vn
+		{
+			x = parseFloat(tokens[1]);
+			y = parseFloat(tokens[2]);
+			if( code != VT_CODE ) //not always present
+				z = parseFloat(tokens[3]); 
+		}
+		
+		switch(code)
+		{
+			case V_CODE: vertices.push(x,y,z);	break;
+			case VT_CODE: uvs.push(x,y);	break;
+			case VN_CODE: normals.push(x,y,z);	break;
+			case F_CODE: 
+				if (tokens.length < 4)
+					continue; //faces with less that 3 vertices? nevermind
+				//get the triangle indices
+				var polygon_indices = [];
+				for(var i = 1; i < tokens.length; ++i)
+					polygon_indices.push( getIndex( tokens[i] ) );
+				group.indices.push( polygon_indices[0], polygon_indices[1], polygon_indices[2] );
+				//polygons are break intro triangles
+				for(var i = 2; i < polygon_indices.length-1; ++i)
+					group.indices.push( polygon_indices[0], polygon_indices[i], polygon_indices[i+1] );
+				break;
+			case G_CODE:  
+			case O_CODE:  //whats the difference?
+				var name = tokens[1];
+				last_group_name = name;
+				if(!group.name)
+					group.name = name;
+				else
+				{
+					current_group_materials = {};
+					group = createGroup( name );
+				}
+				break;
+			case USEMTL_CODE: 
+				changeMaterial( tokens[1] );
+				break;
+			case MTLLIB_CODE:
+				mtllib = tokens[1];
+				break;
+			default:
+		}
+	}
+
+	//generate indices
+	var indices = [];
+	var group_index = 0;
+	var final_groups = [];
+	for(var i = 0; i < groups.length; ++i)
+	{
+		var group = groups[i];
+		if(!group.indices) //already added?
+			continue;
+		group.start = group_index;
+		group.length = group.indices.length;
+		indices = indices.concat( group.indices );
+		delete group.indices; //do not store indices in JSON format!
+		group_index += group.length;
+		final_groups.push( group );
+	}
+	groups = final_groups;
+
+	//finish mesh
+	var mesh = {};
+
+	if(!vertices.length)
+	{
+		console.error("mesh without vertices");
+		return null;
+	}
+
+	//create typed arrays
+	mesh.vertices = new Float32Array( vertices_buffer_data );
+	if ( normals_buffer_data.length )
+		mesh.normals = new Float32Array( normals_buffer_data );
+	if ( uvs_buffer_data.length )
+		mesh.coords = new Float32Array( uvs_buffer_data );
+	if ( indices && indices.length > 0 )
+		mesh.triangles = new ( support_uint && group_index > 256*256 ? Uint32Array : Uint16Array )(indices);
+
+	//extra info
+	mesh.bounding = GL.Mesh.computeBoundingBox( mesh.vertices );
+	var info = {};
+	if(groups.length > 1)
+	{
+		info.groups = groups;
+		//compute bounding of groups? //TODO: this is complicated, it is affected by indices, etc, better done afterwards
+	}
+
+	mesh.info = info;
+	if( !mesh.bounding )
+	{
+		console.log("empty mesh");
+		return null;
+	}
+
+	if( mesh.bounding.radius == 0 || isNaN(mesh.bounding.radius))
+		console.log("no radius found in mesh");
+	//console.log(mesh);
+	return mesh;
+
+	//this function helps reuse triplets that have been created before
+	function getIndex( str )
+	{
+		var pos,tex,nor,f;
+		var has_negative = false;
+
+		//cannot use negative indices as keys, convert them to positive
+		if(str.indexOf("-") == -1)
+		{
+			var index = indices_map.get(str);
+			if(index !== undefined)
+				return index;
+		}
+		else
+			has_negative = true;
+
+		if(!f) //maybe it was parsed before
+			f = str.split("/");
+
+		if (f.length == 1) { //unpacked
+			pos = parseInt(f[0]);
+			tex = pos;
+			nor = pos;
+		}
+		else if (f.length == 2) { //no normals
+			pos = parseInt(f[0]);
+			tex = parseInt(f[1]);
+			nor = pos;
+		}
+		else if (f.length == 3) { //all three indexed
+			pos = parseInt(f[0]);
+			tex = parseInt(f[1]);
+			nor = parseInt(f[2]);
+		}
+		else {
+			console.log("Problem parsing: unknown number of values per face");
+			return -1;
+		}
+
+		//negative indices are relative to the end
+		if(pos < 0) 
+			pos = vertices.length / 3 + pos + 1;
+		if(nor < 0)
+			nor = normals.length / 2 + nor + 1;
+		if(tex < 0)
+			tex = uvs.length / 2 + tex + 1;
+
+		//try again to see if we already have this
+		if(has_negative)
+		{
+			str = pos + "/" + tex + "/" + nor;
+			var index = indices_map.get(str);
+			if(index !== undefined)
+				return index;
+		}
+
+		//fill buffers
+		pos -= 1; tex -= 1; nor -= 1; //indices in obj start in 1, buffers in 0
+		vertices_buffer_data.push( vertices[pos*3+0], vertices[pos*3+1], vertices[pos*3+2] );
+		if(uvs.length)
+			uvs_buffer_data.push( uvs[tex*2+0], uvs[tex*2+1] );
+		if(normals.length)
+			normals_buffer_data.push( normals[nor*3+0], normals[nor*3+1], normals[nor*3+2] );
+
+		//store index
+		var index = next_index;
+		indices_map.set( str, index );
+		++next_index;
+		return index;
+	}
+
+	function createGroup( name )
+	{
+		var g = {
+			name: name || "",
+			material: "",
+			start: -1,
+			length: -1,
+			indices: []
+		};
+		groups.push(g);
+		return g;
+	}
+
+	function changeMaterial( material_name )
+	{
+		if( !group.material )
+		{
+			group.material = material_name + MATNAME_EXTENSION;
+			current_group_materials[ material_name ] = group;
+			return group;
+		}
+
+		var g = current_group_materials[ material_name ];
+		if(!g)
+		{
+			g = createGroup( last_group_name + "_" + material_name );
+			g.material = material_name + MATNAME_EXTENSION;
+			current_group_materials[ material_name ] = g;
+		}
+		group = g;
+		return g;
+	}
+}
+*/
+
 Mesh.parseOBJ = function( text, options )
 {
 	options = options || {};
@@ -12716,7 +13413,7 @@ Mesh.parseOBJ = function( text, options )
 		mesh.triangles = new Uint16Array(indicesArray);
 
 	var info = {};
-	if(groups.length > 1)
+	//if(groups.length > 1) //???
 		info.groups = groups;
 	mesh.info = info;
 
@@ -12729,6 +13426,7 @@ Mesh.parseOBJ = function( text, options )
 	final_mesh.updateBoundingBox();
 	return final_mesh;
 }
+//*/
 
 Mesh.parsers["obj"] = Mesh.parseOBJ;
 

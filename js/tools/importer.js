@@ -1,5 +1,5 @@
 /*
-*   Alex Rodríguez
+*   Alex Rodrï¿½guez
 *   @jxarco 
 */
 
@@ -53,6 +53,425 @@ function getFilesFromEvent( e, options )
     return files;
 }
 
+var parserCR2 = {
+
+	ONLY_METADATA: 1,
+
+	extension: "cr2",
+	type: "image",
+	
+	tags: {
+		"t256": "Width",
+		"t257": "Height",
+		"t258": "BitsPerSample",
+		// "t259": "Compression",
+		"t271": "Make",
+		"t272": "Model",
+		// "t273": "PreviewImageStart",
+		"t274": "Orientation",
+		// "t279": "PreviewImageLength",
+		"t282": "XResolution",
+		"t283": "YResolution",
+		// "t296": "ResolutionUnit",
+		"rgba8": "rgba8",
+	},
+
+	exifIFD_Tags: {
+		"t33434": "ExposureTime",
+		"t33437": "FNumber",
+		"t34850": "ExposureProgram",
+		"t34855": "ISO",
+		"t34864": "SensitivityType",
+		"t34866": "RecommendedExposureIndex",
+		// "t36868": "CreateDate",
+		// "t37121": "ComponentsConfiguration",
+		"t37377": "ShutterSpeedValue",
+		"t37378": "ApertureValue",
+		"t37380": "ExposureCompensation",
+		// "t37383": "MeteringMode",
+		"t37385": "Flash",
+		"t37386": "FocalLength",
+		"t42036": "ZoomLens"
+	},
+
+	parse: function(buffer, name, dcraw_options)
+	{
+		var ifds;
+		var out;
+		var img = {};
+
+		if(!dcraw_options)
+		{
+			if(!UTIF)
+			throw("missing UTIF.js");
+
+			ifds = UTIF.decode(buffer);
+			out = ifds[0];
+			UTIF.decodeImage(buffer, out);
+			out.rgba8 = UTIF.toRGBA8(out);
+		}
+		else
+		{
+			var metadata = dcraw(new Uint8Array(buffer), { verbose: true, identify: true }).split("\n").filter(String);
+
+			if(dcraw_options === this.ONLY_METADATA)
+			{
+				console.log(metadata);
+				return;
+			}
+
+			var RawData = dcraw(new Uint8Array(buffer), dcraw_options);
+
+			var ifds = UTIF.decode(RawData);
+			var out = ifds[0];
+			UTIF.decodeImage(RawData, out);
+		}
+
+		for(var i in out)
+			if(this.tags[i])
+				img[ this.tags[i] ] = out[i];
+
+		for(var i in out.exifIFD)
+			if(this.exifIFD_Tags[i])
+				img[ this.exifIFD_Tags[i] ] = out.exifIFD[i];
+
+		img.originalData = [1, out]; // 1 makes this object no be not shown in gui
+		img.metadata = metadata;
+
+		// parse verbose info from dcraw call
+		img.verbose = this.parseVerbose( globalData );
+		
+		switch(img.BitsPerSample[0])
+		{
+			case 8:
+				img.rgba8 = UTIF.toRGBA8(out);
+				break;
+			case 16:
+
+				// SET RGB16
+				img.rgb16 = new Uint16Array(out.data.buffer);
+				img.rgba16 = HDRTool.addAlphaChannel( img.rgb16, Math.pow(2, 16) - 1);
+
+				// SET RGB8
+				// auto
+				if(true)
+				{
+					img.rgba8 = UTIF.toRGBA8(out);
+				}
+				else
+				{
+					img.rgba8 = new Uint8Array(img.rgba16.length);
+					for(var i = 0; i < img.rgba8.length; i+=4)
+					{
+						img.rgba8[i] = Math.floor(  (img.rgba16[i] / Math.pow(2, 16)) * Math.pow(2, 8)  );
+						img.rgba8[i+1] = Math.floor(  (img.rgba16[i+1] / Math.pow(2, 16)) * Math.pow(2, 8)  );
+						img.rgba8[i+2] = Math.floor(  (img.rgba16[i+2] / Math.pow(2, 16)) * Math.pow(2, 8)  );
+						img.rgba8[i+3] = Math.floor(  (img.rgba16[i+3] / Math.pow(2, 16)) * Math.pow(2, 8)  );
+					}
+				}
+
+				// SET RGB32
+				img.rgba32 = new Float32Array(img.rgba16.length);
+				for(var i = 0; i < img.rgba32.length; i+=4)
+				{
+					img.rgba32[i] 	= img.rgba16[i]      / Math.pow(2, 16);
+					img.rgba32[i+1] = img.rgba16[i+1]   / Math.pow(2, 16);
+					img.rgba32[i+2] = img.rgba16[i+2]   / Math.pow(2, 16);
+					img.rgba32[i+3] = img.rgba16[i+3]   / Math.pow(2, 16);
+				}
+				
+				break;
+		}
+
+		//LiteGUI.downloadFile("qwefwef.tiff", RawData);
+
+		console.log(img);
+		return img;
+	},
+
+	parseVerbose: function(verbose)
+	{
+		if(!verbose.length){
+			console.error("no verbose info");
+			return [];
+		}
+
+		var obj = {};
+
+		for( i in verbose )
+		{
+			var text = verbose[i].string;
+
+			switch(i)
+			{
+				case "0":
+				case "3":
+				case "4":
+					break;
+				case "1":
+					obj["darkness"] = parseInt(text.substr(22, text.length).split(" ")[0].replace(",", ""));
+					obj["saturation"] = parseInt(text.substr(36, text.length).split(" ")[0].replace(",", ""));
+					break;
+				case "2":
+					text = text.substr( 12, 4 * 9);
+					obj["multipliers"] = [];
+					for(k = 0; k < text.length; k += 9)
+					obj["multipliers"].push( parseFloat(text.substr(k, 8)) );
+					break;
+			}
+		}
+
+		return obj;
+	}
+
+};
+
+RM.addSupportedFormat( "cr2", parserCR2 );
+
+var parserDAE = {
+
+	extension: "dae",
+	type: "scene",
+	resource: "SceneNode",
+	format: "text",
+	dataType:'text',
+
+	load: function(file, callback)
+	{
+		if(file.constructor !== File)
+		{
+			LiteGUI.requestText( file, (function( data ){
+
+				this.parse(data, file, callback);
+
+			}).bind(this) );
+
+			return false;
+		}
+		
+		var reader = new FileReader();
+		reader.onprogress = function(e){  $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%") };
+		reader.onload = (function (event) {
+
+			this.parse(event.target.result, file.name, callback);
+
+		}).bind(this);
+		reader.readAsText(file);
+		return false;
+	},
+
+	parse: function(data, filename, callback)
+	{
+		if(!data)
+		return;
+
+		var tokens = filename.split("/");
+        var clean_filename = tokens[ tokens.length - 1 ];
+
+		var that = this;
+		var scene = Collada.parse(data);
+
+		if(callback)
+			callback( this.onParsed( scene, clean_filename ) );
+		else
+		{
+			console.warn("no callback when loading dae");
+			console.log(this.onParsed( scene, clean_filename ) );
+		}
+	},
+
+	onParsed: function(scene, filename)
+	{
+		var options = {};
+
+		Collada.material_translate_table = {
+			reflectivity: "reflection_factor",
+			specular: "specular_factor",
+			shininess: "specular_gloss",
+			emission: "emissive",
+			diffuse: "color"
+		}; //this is done to match LS specification
+
+		scene.root.name = filename;
+
+		//apply 90 degrees rotation to match the Y UP AXIS of the system
+		if( scene.metadata && scene.metadata.up_axis == "Z_UP" ){
+			scene.root.model = mat4.rotateX( mat4.create(), mat4.create(), -90 * 0.0174532925 );
+		}
+
+		//rename meshes, nodes, etc
+		var renamed = {};
+		var basename = filename.substr(0, filename.indexOf("."));
+
+		//rename meshes names
+		var renamed_meshes = {};
+		for(var i in scene.meshes)
+		{
+			var newmeshname = basename + "__" + i + ".wbin";
+			newmeshname = newmeshname.replace(/[^a-z0-9\.\-]/gi,"_"); //newmeshname.replace(/ /#/g,"_");
+			renamed[ i ] = newmeshname;
+			renamed_meshes[ newmeshname ] = scene.meshes[i];
+		}
+		scene.meshes = renamed_meshes;
+
+		for(var i in scene.meshes)
+		{
+			var mesh = scene.meshes[i];
+			this.processMesh( mesh, renamed );
+		}
+
+		//change local collada ids to valid uids 
+		inner_replace_names( scene.root );
+
+		function inner_replace_names( node )
+		{
+			if(node.id == "root")
+			{
+				console.warn("DAE contains a node named root, renamed to _root");
+				node.id = "_root";
+				renamed["root"] = node.id;
+			}
+
+			//change uid
+			if(node.id && !options.skip_renaming )
+			{
+				node.uid = "@" + basename + "::" + node.id;
+				renamed[ node.id ] = node.uid;
+			}
+			
+			//in case the node has some kind of type
+			if(node.type)
+			{
+				node.node_type = node.type;
+				delete node.type; //to be sure it doesnt overlaps with some existing var
+			}
+
+			//rename materials
+			if(node.material)
+			{
+				var new_name = node.material.replace(/[^a-z0-9\.\-]/gi,"_") + ".json";
+				renamed[ node.material ] = new_name
+				node.material = new_name;
+			}
+			if(node.materials)
+				for(var i in node.materials)
+				{
+					var new_name = node.materials[i].replace(/[^a-z0-9\.\-]/gi,"_") + ".json";
+					renamed[ node.material ] = new_name
+					node.materials[i] = new_name;
+				}
+
+			//change mesh names to engine friendly ids
+			if(node.meshes)
+			{
+				for(var i = 0; i < node.meshes.length; i++)
+					if(node.meshes[i] && renamed[ node.meshes[i] ])
+						node.meshes[i] = renamed[ node.meshes[i] ];
+			}
+			if(node.mesh && renamed[ node.mesh ])
+				node.mesh = renamed[ node.mesh ];
+
+			if(node.children)
+				for(var i in node.children)
+					inner_replace_names( node.children[i] );
+		}
+
+		var parent = new RD.SceneNode();
+		CORE.root.addChild(parent);
+		parent.name = filename;
+
+		if(scene.root.model)
+		mat4.multiply(parent._local_matrix, parent._local_matrix, scene.root.model);
+		parent.updateLocalMatrix();
+
+		//replace skinning joint ids
+		for(var i in scene.meshes)
+		{
+			var mesh = scene.meshes[i];
+			if(mesh.bones)
+			{
+				for(var j in mesh.bones)
+				{
+					var id = mesh.bones[j][0];
+					var uid = renamed[ id ];
+					if(uid)
+						mesh.bones[j][0] = uid;
+				}
+			}
+		}
+
+		var nodes = [];
+
+		for(var i in scene.root.children)
+		{
+			var node = scene.root.children[i];
+			var node_mesh = scene.meshes[ node.mesh ];
+			nodes.push( node.name );
+			CORE.addMesh( node_mesh.mesh_data, null, node.name, {parent: parent} );
+		}
+
+		console.log(scene);
+
+		return nodes;
+	},
+
+	processMesh: function( mesh, renamed )
+	{
+		if(!mesh.vertices)
+			return; //mesh without vertices?!
+
+		var num_vertices = mesh.vertices.length / 3;
+		var num_coords = mesh.coords ? mesh.coords.length / 2 : 0;
+
+		if(num_coords && num_coords != num_vertices )
+		{
+			var old_coords = mesh.coords;
+			var new_coords = new Float32Array( num_vertices * 2 );
+
+			if(num_coords > num_vertices) //check that UVS have 2 components (MAX export 3 components for UVs)
+			{
+				for(var i = 0; i < num_vertices; ++i )
+				{
+					new_coords[i*2] = old_coords[i*3];
+					new_coords[i*2+1] = old_coords[i*3+1];
+				}
+			}
+			mesh.coords = new_coords;
+		}
+
+		//rename morph targets names
+		if(mesh.morph_targets)
+			for(var j = 0; j < mesh.morph_targets.length; ++j)
+			{
+				var morph = mesh.morph_targets[j];
+				if(morph.mesh && renamed[ morph.mesh ])
+					morph.mesh = renamed[ morph.mesh ];
+			}
+
+		//var name = renamed[ mesh.name ];
+		//gl.meshes[ mesh.name ] = GL.Mesh.load(mesh);
+		mesh.mesh_data = GL.Mesh.load(mesh);
+	},
+
+	renameResource: function( old_name, new_name, resources )
+	{
+		var res = resources[ old_name ];
+		if(!res)
+		{
+			if(!resources[ new_name ])
+				console.warn("Resource not found: " + old_name );
+			return new_name;
+		}
+		delete resources[ old_name ];
+		resources[ new_name ] = res;
+		res.filename = new_name;
+		return new_name;
+	},
+
+};
+
+RM.addSupportedFormat( "dae", parserDAE );
+
 var parserOBJ = {
 	extension: 'obj',
 	type: 'mesh',
@@ -65,6 +484,7 @@ var parserOBJ = {
 	parse: function(text, options)
 	{
 		options = options || {};
+		var MATNAME_EXTENSION = options.matextension || "";//".json";
 		var support_uint = true;
 
 		//unindexed containers
@@ -315,7 +735,7 @@ var parserOBJ = {
 		{
 			if( !group.material )
 			{
-				group.material = material_name + ".json";
+				group.material = material_name + MATNAME_EXTENSION;
 				current_group_materials[ material_name ] = group;
 				return group;
 			}
@@ -324,12 +744,13 @@ var parserOBJ = {
 			if(!g)
 			{
 				g = createGroup( last_group_name + "_" + material_name );
-				g.material = material_name + ".json";
+				g.material = material_name + MATNAME_EXTENSION;
 				current_group_materials[ material_name ] = g;
 			}
 			group = g;
 			return g;
 		}
+
 	}
 };
 

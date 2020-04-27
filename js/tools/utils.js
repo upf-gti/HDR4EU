@@ -92,6 +92,57 @@ var myMath = {
 
 var Tools =  {
 
+    UTF8ArrayToString: function(u8Array, idx)
+    {
+        var UTF8Decoder = typeof TextDecoder !== "undefined" ? new TextDecoder("utf8") : undefined;
+        var endPtr = idx;
+        while (u8Array[endPtr])
+        ++endPtr;
+        if (endPtr - idx > 16 && u8Array.subarray && UTF8Decoder) {
+            return UTF8Decoder.decode(u8Array.subarray(idx, endPtr))
+        } else {
+            var u0, u1, u2, u3, u4, u5;
+            var str = "";
+            while (1) {
+                u0 = u8Array[idx++];
+                if (!u0)
+                return str;
+                if (!(u0 & 128)) {
+                    str += String.fromCharCode(u0);
+                    continue
+                }
+                u1 = u8Array[idx++] & 63;
+                if ((u0 & 224) == 192) {
+                    str += String.fromCharCode((u0 & 31) << 6 | u1);
+                    continue
+                }
+                u2 = u8Array[idx++] & 63;
+                if ((u0 & 240) == 224) {
+                    u0 = (u0 & 15) << 12 | u1 << 6 | u2
+                } else {
+                    u3 = u8Array[idx++] & 63;
+                    if ((u0 & 248) == 240) {
+                        u0 = (u0 & 7) << 18 | u1 << 12 | u2 << 6 | u3
+                    } else {
+                        u4 = u8Array[idx++] & 63;
+                        if ((u0 & 252) == 248) {
+                            u0 = (u0 & 3) << 24 | u1 << 18 | u2 << 12 | u3 << 6 | u4
+                        } else {
+                            u5 = u8Array[idx++] & 63;
+                            u0 = (u0 & 1) << 30 | u1 << 24 | u2 << 18 | u3 << 12 | u4 << 6 | u5
+                        }
+                    }
+                }
+                if (u0 < 65536) {
+                    str += String.fromCharCode(u0)
+                } else {
+                    var ch = u0 - 65536;
+                    str += String.fromCharCode(55296 | ch >> 10, 56320 | ch & 1023)
+                }
+            }
+        }
+    },
+
     BLI_hammersley_1d(n)
     {
         return myMath.radical_inverse(n);
@@ -138,7 +189,7 @@ var Tools =  {
         vec3.transformMat4(local_target, target, mat);
 
         var tmpMat4 = mat4.create(), tmpQuat = quat.create();
-        mat4.lookAt(tmpMat4, local_target, [0,0,0], RD.UP);
+        mat4.lookAt(tmpMat4, local_target, [0,0,0], top);
         quat.fromMat4(tmpQuat, tmpMat4);
         //quat.slerp(tmpQuat, tmpQuat, node.rotation, 0.95);
         node._rotation = tmpQuat;
@@ -212,13 +263,16 @@ var GFX = {
         delete gl.textures["@Borders_" + tex_name];
 		delete gl.textures["@Blur_" + tex_name];
 		delete gl.textures["@ColorBlur_" + tex_name];
-		delete gl.textures["@Normals_" + tex_name];
+        delete gl.textures["@Normals_" + tex_name];
+        
+        var width = 512;
+        var height = texture.height / (texture.width / 512);
     
-        var borders_tex = new Texture(texture.width, texture.height, texture.getProperties());
-        var blur_tex = new Texture(texture.width, texture.height, texture.getProperties());
-        var blur_tex_original = new Texture(texture.width, texture.height, texture.getProperties());
-        var blur_color_tex = new Texture(texture.width, texture.height, texture.getProperties());
-        var normal_tex = new Texture(texture.width, texture.height, texture.getProperties());
+        var borders_tex = new Texture(width, height, texture.getProperties());
+        var blur_tex = new Texture(width, height, texture.getProperties());
+        var blur_tex_original = new Texture(width, height, texture.getProperties());
+        var blur_color_tex = new Texture(width, height, texture.getProperties());
+        var normal_tex = new Texture(width, height, texture.getProperties());
     
         var offset = options.blur.offset || 4.5;
         var iterations = options.blur.iterations || 12;
@@ -235,10 +289,13 @@ var GFX = {
         /*
             Blur silhouette
         */
-    
-        borders_tex.applyBlur(offset, offset, intensity, blur_tex);
-        for(var i = 0; i < iterations - 1; i++)
-            blur_tex.applyBlur(offset, offset, intensity);
+        for(var i = 0; i < iterations; i++){
+            if(!i)
+                borders_tex.applyBlur(offset, offset, intensity, blur_tex);
+            else
+                blur_tex.applyBlur(offset, offset, intensity);
+        }
+            
     
         /*
             Add color to silhouette
@@ -246,9 +303,12 @@ var GFX = {
         */
     
         if(options.color.blur) {
-            texture.applyBlur(offset, offset, intensity, blur_tex_original);
-            for(var i = 0; i < iterations - 1; i++)
-                blur_tex_original.applyBlur(offset, offset);
+            
+            for(var i = 0; i < iterations; i++)
+                if(!i)    
+                    texture.applyBlur(offset, offset, intensity, blur_tex_original);
+                else
+                    blur_tex_original.applyBlur(offset, offset);
     
             blur_tex_original.bind(1);
         }
@@ -293,17 +353,8 @@ var GFX = {
         gl.textures["@ColorBlur_" + tex_name] = blur_color_tex;
         gl.textures["@Normals_" + tex_name] = normal_tex;
 
-        if(options.normal.force_update)
-        {
-            if(node)
-            {
-                delete options.normal.force_update; // avoid loops
-                node.components["Chroma Key"]._isVideo = true;
-                node.components["Chroma Key"].normal_settings = options;
-            }
-            else
-                LiteGUI.alert("Generate normals from a scene node", {title: "error forcing update"})
-        }
+        // apply settings
+        node.components["ChromaKey"].normal_settings = options;
     
         return true;
     
@@ -514,8 +565,8 @@ async function resize( fullscreen )
         }
         else
         {
-            h = gui.assemblyarea.getSection(0).root.clientHeight - 20;
-			w = gui.assemblyarea.getSection(0).root.clientWidth;
+			w = gui.assemblyarea.getSection(0).root.clientWidth - 8;
+            h = gui.assemblyarea.getSection(0).root.clientHeight - 32;
         }
     }
 
@@ -527,12 +578,23 @@ async function resize( fullscreen )
 	HDRI.resize(w, h);
 
     // change viewport texture properties
-	CORE._viewport_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: gl.FLOAT, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
-	CORE._fx_tex = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: gl.FLOAT, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
-	CORE.texture_linear_depth = new GL.Texture(w,h, { texture_type: GL.TEXTURE_2D, type: gl.FLOAT, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+    CORE.resizeViewportTextures(w, h);
     camera.perspective(camera.fov, w / h, camera.near, camera.far);
 	
 	CORE.setUniform('viewport', gl.viewport_data);
 	RM.shader_macros[ 'INPUT_TEX_WIDTH' ] = gl.viewport_data[2];
     RM.shader_macros[ 'INPUT_TEX_HEIGHT' ] = gl.viewport_data[3];
+}
+
+if( !Float32Array.prototype.hasOwnProperty( "nearEq" ) )
+{
+	Object.defineProperty( Float32Array.prototype, "nearEq", {
+		value: function(v){
+			for(var i = 0; i < this.length; ++i)
+				if( Math.abs(this[i] - v[i]) > 0.00001 )
+					return false;
+			return true;
+		},
+		enumerable: false
+	});
 }

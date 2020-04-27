@@ -1261,7 +1261,7 @@ LGraphVolumetricLight.prototype.onExecute = function()
 
 	var shadowmap = null;
 	if(light && light._shadowmap)
-		shadowmap = light._shadowmap.texture;
+		shadowmap = light._shadowmap._texture;
 
 	if(this.properties.precision === LGraphTexture.PASS_THROUGH || this.properties.enabled === false || !depth || !camera || !light || !shadowmap )
 	{

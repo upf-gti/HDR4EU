@@ -1,4 +1,0 @@
-/*
-*   Alex Rodriguez
-*   @jxarco 
-*/

@@ -1,17 +1,19 @@
 /*
-*   Alex Rodriguez
+*   author: Alex Rodriguez
 *   @jxarco 
 */
+
 function LGraphFrame()
 {
-    this.addInput("Shader", "Shader");
-    this.addInput("Skybox", "Skybox");
+   /* this.addInput("Shader", "Shader");
+    this.addInput("Skybox", "Skybox");*/
 
     this.addOutput("Color","Texture");
-   // this.addOutput("FXColor","Texture");
-    this.addOutput("Depth","Texture");
     this.addOutput("Normal","Texture");
-    this.addOutput("Camera", "Camera");
+    this.addOutput("Depth","Texture");
+    this.addOutput("Position","Texture");
+    this.addOutput("Frame","Array");
+    this.addOutput("Camera","Camera");
     
     this.properties = {};
     this.size[0] = 170;
@@ -36,14 +38,29 @@ LGraphFrame.prototype.onExecute = function()
 
     if(cubeTex)
         CORE.cubemap.texture = cubeTex;
-    else
-        CORE.cubemap.texture = (gui._usePrem0 ? "@mip1__" : "" ) + CORE._environment;
+    else if(gl.textures[CORE._environment])
+    {
+        CORE.cubemap.texture = CORE._environment;
+        CORE.cubemap._uniforms["u_blur"] = gui._usePrem0;
+    }
 
-    this.setOutputData(0, CORE.texture_albedo );
-    //this.setOutputData(1, CORE._fx_tex );
-    this.setOutputData(1, CORE.texture_depth);
-    this.setOutputData(2, CORE.texture_normal);
-    this.setOutputData(3, CORE.controller.camera );
+    this.setOutputData(0, CORE.texture_color );
+    this.setOutputData(1, CORE.texture_normal);
+    this.setOutputData(2, CORE.texture_depth);
+    this.setOutputData(3, CORE.texture_position);
+
+    var cam_slot = this.findOutputSlot( "Camera" );
+    if( cam_slot > -1 )
+        this.setOutputData(cam_slot, CORE.controller.camera );
+
+    var frame_slot = this.findOutputSlot( "Frame" );
+    if( frame_slot > -1 )
+        this.setOutputData(frame_slot, [
+            CORE.texture_color,
+            CORE.texture_normal,
+            CORE.texture_depth,
+            CORE.texture_position
+        ] );
 }
 
 LGraphFrame.prototype.onGetInputs = function()
@@ -66,6 +83,25 @@ LGraphFrame.prototype.onGetInputs = function()
     }
 
     return filtered_inputs;
+}
+
+LGraphFrame.prototype.onGetOutputs = function()
+{   
+    var outputs = [
+        ["Camera", "Camera"],
+        ["Frame", "Array"]
+    ];
+
+    var filtered_outputs = [];
+
+    for(var i in outputs)
+    {
+        var slot_name = outputs[i][0];
+        if(this.findOutputSlot(slot_name) < 0)
+            filtered_outputs.push( outputs[i] );
+    }
+
+    return filtered_outputs;
 }
 
 LiteGraph.registerNodeType("texture/frame", LGraphFrame );

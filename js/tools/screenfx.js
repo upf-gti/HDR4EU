@@ -31,7 +31,7 @@ function SFX()
 	this._offset = 0;
 	this._gamma_correction = true;
 	this._linear_space = false;
-	this.tonemapping = "Exponential";
+	this.tonemapping = "None";
 	this.auto = false;
 	this.mark = false; // show in gui
 	this.collapsed = false;

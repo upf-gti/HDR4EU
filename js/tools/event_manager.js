@@ -1,5 +1,5 @@
 /*
-*   Alex Rodriguez
+*   author: Alex Rodriguez
 *   @jxarco 
 */
 
@@ -8,6 +8,13 @@
 * @class 
 */
 
+TRANSLATE_COLOR_VECTORS = {
+    0: [1, 1, 0, 1],
+    1: [1,  0.1, 0.1, 1.],
+    2: [0.1, 1., 0.1, 1.],
+    3: [0.1, 0.1, 1., 1.]
+}
+
 class EventManager {
 
     constructor(webGLcontext, controller) {
@@ -15,14 +22,10 @@ class EventManager {
         this.context = webGLcontext;
         this.controller = controller;
         this.mouse_speed = 0.25;
-        this.wheel_speed = 0.5;
+        this.wheel_speed = 1;
         this.keys = {};
 
-        this.node_tools = {
-
-            'rot': false,
-            'sca': false,
-        };
+        this.mouse = [0, 0];
 
         this.bind();
     }
@@ -44,7 +47,7 @@ class EventManager {
         this.bindMouse(ctx);
     }
 
-    onDrop(e) {
+    async onDrop(e) {
         
         e.preventDefault();
         e.stopPropagation();
@@ -65,23 +68,32 @@ class EventManager {
             return;
 
         var files = ImporterModule.getFilesFromEvent(e);
+        HDRTool.files_in_load = 0;
 
-        for(var i = 0; i < e.dataTransfer.files.length; i++)
+        for(let i = 0; i < e.dataTransfer.files.length; i++)
         {
             var file = files[i],
             name = file.name,
             tokens = name.split("."),
             extension = tokens[tokens.length-1].toLowerCase(),
-            valid_extensions = [ 'exr', 'hdre', 'png', 'jpg', 'obj', 'wbin', 'json', 'hdrec', "cr2", "jpeg", "hdr" ];
+            valid_extensions = [ 
+                'exr', 'hdre', 'png', 'jpg', 'obj', 
+                'wbin', 'json', 'hdrec', "cr2", "jpeg", 
+                "hdr", "nef", "dae"
+            ];
             
             if(valid_extensions.lastIndexOf(extension) < 0)
             {
                 LiteGUI.showMessage("Invalid file extension", {title: "Error"});
                 return;
             }
-            
-            if(gui.editor == HDRI_TAB)
-                HDRI.onDrag(e, file, extension, name);
+
+            // info about current file
+            e.currentFile = i;
+
+            if(gui.editor == HDRI_TAB) {
+                await HDRI.onDrag(e, file, extension, name);
+            }
             else
                 gui.onDragFile( file, extension, name );
         }
@@ -112,6 +124,7 @@ class EventManager {
                 e.stopPropagation();
 
                 var data = CORE.toJSON();
+                console.log(data);
                 window.localStorage.setItem("_hdr4eu_recovery", JSON.stringify(data));
 
                 // refresh page
@@ -125,26 +138,28 @@ class EventManager {
                 CORE.reloadShaders(); 
             }
                 
-            else if(e.keyCode === 82) // R
+            else if(e.keyCode === 70) // F focus
             {
                 // trick to see if something is selected
                 if(!window.node)
                 return;
-
-                that.node_tools['rot'] = !that.node_tools['rot'];
-
-                if(that.node_tools['rot'])
-                    CORE.getByName("lines").color = [0.5, 1, 1, 1];
-                else
-                    CORE.getByName("lines").color = RD.WHITE;
+                
+                CORE.controller.onNodeLoaded(window.node, CORE.controller.camera.position);
+                
             }
+
+            else if(e.keyCode === 81) // Q
+            {
+                CORE.gizmo.mode = 0;//RD.Gizmo.ROTATEALL
+            }
+            
 
             else if(e.keyCode === 88) // X
             {
-                e.pageX = gl.mouse.mousex;
-                e.pageY = gl.mouse.mousey;
+                e.pageX = that.mouse[0];
+                e.pageY = that.mouse[1];
 
-                var cmenu = new LiteGUI.ContextMenu( [
+                var options = [
                     {
                         title: window.node ? "1 object selected" : (window.nodes ? window.nodes.length + " objects selected" : "No selection"),
                         disabled: true
@@ -159,10 +174,46 @@ class EventManager {
 
                         }
                     }
-                ], { event: e });
+                ];
+
+                if(window.context_menu)
+                    window.context_menu.close();
+                window.context_menu = new LiteGUI.ContextMenu( options, { event: e });
             }
             
-            if(e.keyCode === 83)    // S
+            if(e.keyCode === 65)    // A
+            {
+                if(e.ctrlKey)
+                {
+                    window.nodes = [];
+                    for(var i = 2; i < CORE.root.children.length; ++i)
+                    if(CORE.root.children[i].name !== "lines")
+                    {
+                        window.node = null;
+                        window.nodes.push(CORE.root.children[i]);
+                    }
+                    
+                    e.preventDefault();
+                    e.stopPropagation();
+                }else{
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+
+            }
+
+            else if(e.keyCode === 82) // R rotate
+            {
+                CORE.gizmo.mode = RD.Gizmo.ROTATEALL;
+            }
+
+            else if(e.keyCode === 84) // T translate
+            {
+                //CORE.gizmo.mode = RD.Gizmo.MOVEALL;
+                CORE.gizmo.mode = RD.Gizmo.DRAG | RD.Gizmo.MOVEAXIS;
+            }
+
+            if(e.keyCode === 83)    // S  scale and export scene when ctrl
             {
                 if(e.ctrlKey)
                 {
@@ -172,15 +223,28 @@ class EventManager {
                 }else{
                     e.preventDefault();
                     e.stopPropagation();
+
+                    CORE.gizmo.mode = RD.Gizmo.SCALEALL;
                 }
 
             }
             
-            if(e.keyCode === 49)        // 1
+            if(e.keyCode === 49)   // 1
+            {
+                if(e.ctrlKey)
+                return;
+
                 $("#maintab").click();
+            }      
+                
             else if(e.keyCode === 50)   // 2
+            {
+                if(e.ctrlKey)
+                return;
+                
                 $("#assemblytab").click();
-            
+            }
+                
             if(e.keyCode === 79)        // O
             {
                 if(e.ctrlKey)
@@ -216,43 +280,30 @@ class EventManager {
 
         ctx.onmousemove = function(e)
         {
-            if(!e.dragging && that.node_tools['rot'])
-            {
-                var node = window.node;
-                var dx = e.deltax * 0.5;
+            that.mouse = [e.offsetX, e.offsetY];
 
-                var value = node.rots[1] + dx;
-                node.rots[1] = dx;
-                node.rotate(value * DEG2RAD, RD.UP);
-                return;
-            }
+            if(CORE.gizmo && CORE.gizmo.onMouse(e))
+            return;
 
-            if (e.leftButton) {
+            if (e.leftButton && that.is_mouse_down) {
 
                 controller.orbit(e.deltax * _dt * s, -e.deltay * _dt * s);
             }
             
             if (e.which == 2) {
-                controller.camera.moveLocal([-e.deltax * s * _dt, e.deltay * s * _dt, 0]);
+                var speed = vec3.length( vec3.subtract( vec3.create(), camera.target, camera.position )) * 0.1;
+                controller.camera.move([-e.deltax * speed * _dt, e.deltay * speed * _dt, 0]);
             }
-        }
-
-        ctx.captureTouch(true);
-
-        ctx.onmousewheel = function(e)
-        {
-            if(!e.wheel)
-                return;
-
-            // var w = this._wheel_speed / 10;
-
-            var amount =  (1 + e.delta * -0.05);
-            controller.changeDistance(amount);
         }
 
         ctx.onmousedown = function(e){
         
-            if(e.leftButton )
+            if(CORE.gizmo && CORE.gizmo.onMouse(e))
+            return;
+
+            that.is_mouse_down = true;
+
+            if(e.button == GL.LEFT_MOUSE_BUTTON )
             {
                 var result = vec3.create();
                 var ray = controller.camera.getRay( e.canvasx, e.canvasy );
@@ -262,6 +313,9 @@ class EventManager {
                 {
                     // falta saber si está repetido el uid de entre los multiples
                     if(window.node && window.node._uid === collide_node._uid)
+                    return;
+
+                    if(!collide_node.visible)
                     return;
 
                     // select another node?
@@ -286,57 +340,72 @@ class EventManager {
                         gui.updateSidePanel(null, name);
                     }
                 }
-                /*else
-                {
-                    RM.Get('NodePicker').unSelect()
-                    gui.updateSidePanel(null, "root");
-                }*/
             }
 
-            else if(e.rightButton && !ctx.keys["L"])
+            else if(e.button == GL.RIGHT_MOUSE_BUTTON)
             {
                 if(CORE.browser === "edge")
                     return;
 
-                var contextmenu = new LiteGUI.ContextMenu( getContextMenuActions(), { event: e });
+                if(window.context_menu)
+                    window.context_menu.close();
+                window.context_menu = new LiteGUI.ContextMenu( getContextMenuActions(), { event: e });
             }
+        }
+       
+        ctx.onmousewheel = function(e)
+        {
+            if(!e.wheel)
+                return;
+
+            if(CORE.gizmo && CORE.gizmo.onMouse(e))
+            return;
+
+            var amount =  (1 + e.delta * -0.05) * that.wheel_speed;
+            controller.changeDistance(amount);
         }
 
         ctx.onmouseup = function(e){
         
-            
-        
+            that.is_mouse_down = false;
+
+            if(window.node)
+            {
+                if(CORE.gizmo)
+                CORE.gizmo.onMouse(e);
+                
+                // gui.updateSidePanel( null, window.node.name );
+            }
         }
+
+        ctx.captureTouch(true);
 
     }    
 
-    update(dt, core) {
+    update(dt) {
 
-        if(!core)
+        if(!CORE)
         throw('no core instanced');
 
-        var ctx = core._renderer.context || this.context;
+        var ctx = CORE.renderer.context || this.context;
 
         // Hdri tab has other events binded
         if(gui.editor == 1)
             return;
 
-        var camera = core.controller.camera;
+        if(this.keys[16])
+            this.wheel_speed = 1.1;
+        else
+            this.wheel_speed = 1;
 
-        if(window.destination_eye)
+        var camera = CORE.controller.camera;
+
+        if(window.destination_eye) {
+
             vec3.lerp(camera.position, camera.position, window.destination_eye, 0.3);
-
-        /*var w = this._wheel_speed * 25;
-        var s = core.selected_radius ? core.selected_radius * w : w;
-
-        if(ctx.keys["UP"] || ctx.keys["W"]){            camera.moveLocal([0,0,-dt * s]);}
-        else if(ctx.keys["DOWN"] || ctx.keys["S"]){     camera.moveLocal([0,0,dt * s]);}
-
-        if(ctx.keys["RIGHT"] || ctx.keys["D"]){         camera.moveLocal([dt * s,0,0]);}
-        else if(ctx.keys["LEFT"] || ctx.keys["A"]){     camera.moveLocal([dt * -s,0,0]);}
-
-        if(ctx.keys["SPACE"]){                              camera.moveLocal([0,dt * s,0]);}
-        else if(ctx.keys["SHIFT"]){                         camera.moveLocal([0,dt * -s,0]);}*/
+            if(camera.position.nearEq(window.destination_eye))
+                window.destination_eye = undefined;
+        }
     }
 }
 
@@ -362,7 +431,7 @@ function getContextMenuActions()
             title: "Model", //text to show
             has_submenu: true,
             submenu: {
-                options: shaded_models
+                options: shaded_models.sort( e => e.title)
             }
         },
         {
@@ -383,31 +452,28 @@ function getContextMenuActions()
             }
             
         },
-        {
-            title: "Component", //text to show
-            has_submenu: true,
-            submenu: {
-                options: 
-                [{
-                    title: "Irradiance Cache",
-                    callback: function() { RM.registerComponent( IrradianceCache, 'IrradianceCache'); gui.updateSidePanel(null, "root", {maxScroll: true}); }
-                }]
-            }
-        },
-/*        {
-            title: "Render mode", //text to show
-            has_submenu: true,
-            submenu: {
-                options: 
-                [{
-                    title: "FORWARD",
-                    callback: function() { if(RenderComponent) RenderComponent.render_mode = RM.FORWARD; gui.updateSidePanel(null, 'root');}
-                },{
-                    title: "DEFERRED",
-                    callback: function() { if(RenderComponent) RenderComponent.render_mode = RM.DEFERRED; gui.updateSidePanel(null, 'root');}
-                }]
-            }
-        }*/
+        // {
+        //     title: "Component", //text to show
+        //     has_submenu: true,
+        //     submenu: {
+        //         options: 
+        //         [{
+        //             title: "Irradiance Cache",
+        //             callback: function() { 
+        //                 RM.registerComponent( IrradianceCache, 'IrradianceCache'); 
+        //                 gui.updateSidePanel(null, "root", {tab: "IrradianceCache"});
+        //             }
+        //         },
+        //         {
+        //             title: "SSAO",
+        //             callback: function() { 
+        //                 RM.registerComponent( SSAO, 'SSAO'); 
+        //                 gui.updateSidePanel(null, "root", {tab: "SSAO"}); 
+        //             }
+        //         }
+        //     ]
+        //     }
+        // }
 	];
 
 	return actions;

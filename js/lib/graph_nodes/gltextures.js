@@ -1198,15 +1198,18 @@
 		this.size[0] = 130;
 	}
 
-	LGraphTextureToViewport.title = "to Viewport";
+	LGraphTextureToViewport.title = "Viewport";
 	LGraphTextureToViewport.desc = "Texture to viewport";
 
 	LGraphTextureToViewport._prev_viewport = new Float32Array(4);
 	LGraphTextureToViewport.prototype.onExecute = function() {
 		var tex = this.getInputData(0);
-		if (!tex) {
+		if (!tex || window.show_texture) {
 			return;
 		}
+
+		if(this.onRenderFX)
+			this.onRenderFX( tex );
 
 		if (this.properties.disable_alpha) {
 			gl.disable(gl.BLEND);
@@ -4243,7 +4246,7 @@ void main(void){\n\
 			scale: 1,
 			gamma: 2.2,
 			average_lum: 1,
-			lum_white: 1e6,
+			lum_white: 3,
 			precision: LGraphTexture.LOW
 		};
 

@@ -41,27 +41,6 @@
             "2": "Cannot get bytes from EXR"
         },
 
-		MipSamplers_128: {
-			1:	128,
-			2:  64,
-			3:	64,
-			4:	32,
-			5:	32,
-			6:	16,
-			7:	16
-		},
-
-		MipSamplers_256: {
-			1:	256,
-			2:  128,
-			3:	128,
-			4:	64,
-			5:	64,
-			6:	32,
-			7:	32,
-			8:	16,
-		},
-
         // ldr stuff (not used since I'm using the other method)
         files_loaded: [],
         files_to_load: 0,
@@ -164,70 +143,66 @@
         var header = r.header;
         var textures = [];
 
+        var version = header.version;
+        printVersion( version );
+
 		if(this.core) {
 			this.core.setUniform("is_rgbe", false);
             this.core.setUniform("mipCount", 5);
             
             // new HDRE does not have all the mipmap chain
             delete RM.shader_macros[ 'MIP_COUNT' ];
-		}
+        }
+        
+        // Get base enviroment texture
 
-        // create textures
-        for(var i = 0; i < _envs.length; i++)
-        {
-            var type = GL.FLOAT;
-            var data = _envs[i].data;
+        var type = GL.FLOAT;
+        var data = _envs[0].data;
 
-            if(header.array_type == 01) // UBYTE
-                type = GL.UNSIGNED_BYTE;
-            if(header.array_type == 02) // HALF FLOAT
-                type = GL.HALF_FLOAT_OES;
-			
-			
-			// OPTION 1: USE FLOATS
-			// OPTION 2 (correct): USE UBYTE
-			
-			if(header.array_type == 04) { // RGBE
-				/*var floats = [];
-				for(var f = 0; f < 6; f++)
-					floats.push( data[f].toFloat() );
-				data = floats;*/
-				
-				type = GL.UNSIGNED_BYTE;
-				if(this.core)
-                    this.core.setUniform("is_rgbe", true);
-			}
-
-            var options = {
-                format: gl.RGBA,
-                type: type,
-				minFilter: gl.LINEAR_MIPMAP_LINEAR,
-                texture_type: GL.TEXTURE_CUBE_MAP,
-                pixel_data: data
-            };
-
-            Texture.setUploadOptions( {no_flip: true} );
-			let tex = new GL.Texture( _envs[i].width, _envs[i].width, options);
-            Texture.setUploadOptions();
-			
-			tex.bind(0);
-			gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
-			tex.unbind();
-
-			textures.push( tex );
+        if(header.array_type == 01) // UBYTE
+            type = GL.UNSIGNED_BYTE;
+        else if(header.array_type == 02) // HALF FLOAT
+            type = GL.HALF_FLOAT_OES;
+        else if(header.array_type == 04) { // RGBE
+            type = GL.UNSIGNED_BYTE;
+            if(this.core)
+                this.core.setUniform("is_rgbe", true);
         }
 
-		var version = header.version;
+        var options = {
+            format: gl.RGBA,
+            type: type,
+            minFilter: gl.LINEAR_MIPMAP_LINEAR,
+            texture_type: GL.TEXTURE_CUBE_MAP,
+            pixel_data: data
+        };
 
-        printVersion( version );
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false );
+        let tex = new GL.Texture( _envs[0].width, _envs[0].width, options);
+        tex.mipmap_data = {};
+        
+        // Generate mipmap
+        tex.bind(0);
+        gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+        tex.unbind();
 
-        // store the texture 
-        gl.textures[tex_name] = textures[0];
+        // Upload prefilter mipmaps
+        for(var i = 1; i < 6; i++){
 
-		for(var i = 1; i < 6; i++){
-			// console.log(i);
-			gl.textures["@mip" + i + "__" + tex_name] = textures[i];
-		}
+            var pixels =  _envs[i].data;
+            
+            for(var f = 0; f < 6; ++f)
+                tex.uploadData( pixels[f], { no_flip: true, cubemap_face: f, mipmap_level: i}, true );
+
+            tex.mipmap_data[i] = pixels;
+        }
+        
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true );
+
+        // Store the texture 
+        gl.textures[tex_name] = tex;
+        tex.has_mipmaps = true;
+        tex.data = null;
 
 		return true;
     }
@@ -333,33 +308,9 @@
 
         var is_cubemap = ( width/4 === height/3 && GL.isPowerOfTwo(width) ) ? true : false;
 
-        // tiny exr library always adds an extra channel we want to remove
-
 		var channels = data.numChannels;
 		var pixelData = data.rgba;
-		var pixelFormat = gl.RGB;
-
-		if(channels > 3)
-		{
-			var oldSize = pixelData.length,
-            newSize = oldSize * (3/4),
-            compressed_data = new Float32Array( newSize ),
-            it = 0;
-
-			for(var i = 0; i < oldSize; i += 4){
-					compressed_data[it] = pixelData[i];
-					compressed_data[it+1] = pixelData[i+1];
-					compressed_data[it+2] = pixelData[i+2];
-					it+=3;
-			}
-
-			channels = compressed_data.length / (width * height);
-
-			 if(channels > 3)
-				throw "Error when removing the extra channel";
-			 else
-				pixelData = compressed_data;
-		}
+		var pixelFormat = gl.RGBA;
 
         if(!width || !height)
         throw( 'No width or height to generate Texture' );
@@ -370,8 +321,7 @@
         var texture = null;
         
 		// Set to default options (flip y)
-		if(options.no_flip)
-			gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, !(options.no_flip));
 
         var params = {
             format: pixelFormat,
@@ -434,17 +384,18 @@
 
             temp.is_cubemap = is_cubemap;
         }
-        else // basic texture or sphere map
+
+        // basic texture or sphere map
+        else 
+        {
             texture = new GL.Texture( width, height, params);
+        }
             
         // texture properties
         texture.wrapS = gl.CLAMP_TO_EDGE;
         texture.wrapT = gl.CLAMP_TO_EDGE;
         texture.magFilter = gl.LINEAR;
         texture.minFilter = gl.LINEAR_MIPMAP_LINEAR;
-
-        // default upload options
-		gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 
         if(is_cubemap)
             return temp;
@@ -513,7 +464,9 @@
 
 		cubemap_texture.bind(0);
 		gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
-		cubemap_texture.unbind();
+        cubemap_texture.unbind();
+        
+        cubemap_texture.has_mipmaps = true;
 
         return cubemap_texture;
     }
@@ -596,23 +549,37 @@
 		
         var inner = function( tex )
         {
-			var blocks = 8;
-			var mipCount = 5; //Math.log2(tex.width);
-			renderer._uniforms["u_mipCount"] = mipCount;
-			that.LOAD_STEPS = 6 * mipCount * blocks;
+            tex.mipmap_data = {};
+
+            var mipCount = 5;
+            // var mipCount = Math.log2(tex.width);
+            renderer._uniforms["u_mipCount"] = mipCount;
+            
+            that.LOAD_STEPS = 0;
+
+            // compute necessary steps
+            for( var i = 1; i <= mipCount; ++i )
+            {
+                var faces = 6;
+                var blocks = Math.min(tex.width / Math.pow( 2, i ), 8);
+                that.LOAD_STEPS += faces * blocks;
+            }
 
 			for( let mip = 1; mip <= mipCount; mip++ )
             {
-				let name = '@mip' + mip + '__' + tex_name;
-
 				that.deferredBlur( tex, mip, mipCount, shader, function(result) {
-					// store
-					gl.textures[name] = result;
+                    
+                    // store
+                    tex.mipmap_data[mip] = result.getCubemapPixels();
 
-					if(options.oncomplete && that.CURRENT_STEP == that.LOAD_STEPS)
+                    for(var f = 0; f < 6; ++f)
+                        tex.uploadData( result.getPixels(f), { no_flip: true, cubemap_face: f, mipmap_level: mip}, true );
+
+                    if(options.oncomplete && that.CURRENT_STEP == that.LOAD_STEPS)
 					{
 						that.CURRENT_STEP = 0;
-						console.timeEnd("Prefiltered in");
+                        console.timeEnd("Prefiltered in");
+                        tex.data = null;
 						options.oncomplete();
 					}
 
@@ -645,8 +612,7 @@
     */
     HDRTool.deferredBlur = function(input, level, mipCount, shader, oncomplete)
     {
-		var blocks = 8;
-        var data = this.getBlurData(input, level, blocks, mipCount);
+        var data = this.getBlurData(input, level, mipCount);
 	
 		// The next prefilter is not first pass
 		this.FIRST_PASS = false;
@@ -654,7 +620,14 @@
         if(!data)
         throw('no data to blur');
         
-        var result = new GL.Texture( data.size, data.size, { format: input.format, texture_type: GL.TEXTURE_CUBE_MAP, type: gl.FLOAT } );
+        var options = {
+            format: gl.RGBA,
+            type: GL.FLOAT,
+            minFilter: gl.LINEAR_MIPMAP_LINEAR,
+            texture_type: GL.TEXTURE_CUBE_MAP
+        };
+
+        var result = new GL.Texture( data.size, data.size, options );
         var current_draw = 0;
 		var hammersley_tex = gl.textures["hammersley_sample_texture"];
 
@@ -727,23 +700,18 @@
     * @param {Number} level
     * @param {Shader} shader
     */
-    HDRTool.getBlurData = function(input, level, blocks, mipCount)
+    HDRTool.getBlurData = function(input, level, mipCount)
     {
-        var size = input.height; // by default
-		size = Math.max(8, size / Math.pow(2, level));
-		//size /= Math.pow(2, level);
+        var blocks = 8;
 
-		// Get correct size for mip samplers
-		// var samplers = input.width == 256 ? this.MipSamplers_256 : this.MipSamplers_128;
-		// var size = samplers[level];
+        var size = input.height; // by default
+		size /= Math.pow(2, level);
 
 		// Recompute number of blocks
-		blocks = Math.min(blocks, size);
+        blocks = Math.min(blocks, size);
 
 		var totalLevels = mipCount;
 		var roughness = (level+1) / (totalLevels + 1);
-
-		// console.log(roughness, size, blocks);
 
         var deferredInfo = {};
 
@@ -893,12 +861,13 @@
         var tex = gl.textures[tex_name] = new GL.Texture(128, 128, options);
 
 		var hammersley_tex = gl.textures["hammersley_sample_texture"];
-		if(!hammersley_tex)
+		if(!hammersley_tex && window.Tools)
 			hammersley_tex = Tools.create_hammersley_sample_texture();
 
         tex.drawTo(function(texture) {
-	
-			hammersley_tex.bind(0);
+    
+            if(hammersley_tex)
+			    hammersley_tex.bind(0);
 
             shader.uniforms({
 				
@@ -906,7 +875,8 @@
 
 			}).draw(Mesh.getScreenQuad(), gl.TRIANGLES);
 
-			hammersley_tex.unbind();
+            if(hammersley_tex)
+			    hammersley_tex.unbind();
         });
     }
 
@@ -924,13 +894,21 @@
     /**
     * Write an HDRE file to store the cubemap and its roughness levels
     * @method getSkybox
-    * @param {string} environment
     * @param {Object} options
     */
-    HDRTool.getSkybox = function( environment, options )
+    HDRTool.getSkybox = function( options )
     {
 		options = options || {};
-		var texture = gl.textures[ environment ];
+        
+        var environment = CORE._environment;
+
+        if(environment.includes(".hdre"))
+        {
+            // is already an hdre, no need to write it again
+            return;
+        }
+        
+        var texture = gl.textures[ environment ];
         var temp = null;
         var width = texture.width;
         var height = texture.height;
@@ -995,13 +973,16 @@
         var originalSkybox = this.processSkybox( temp ? temp : texture, isRGBE );
         var data = [ originalSkybox ];
 
-        // Get all roughness levels
+        // Get all mips
         for(var i = 1; i < 6; i++)
         {
-            let name = '@mip' + i +'__' + environment;
-            let _processed = this.processSkybox(name, isRGBE);
-            if(_processed)
-				data.push( _processed );
+            data.push( {
+
+                width: texture.width / Math.pow(2, i),
+                height: texture.height / Math.pow(2, i),
+                pixelData: texture.mipmap_data[i]
+            } )
+            
         }
 
 		var write_options = {
@@ -1074,7 +1055,8 @@
             console.error("no texture named " + name);
             return;
         }
-        var canvas = tex.toCanvas();
+        var canvas = tex.toCanvas(null, true);
+        canvas.style.height = "100%";
         var a = document.createElement("a");
         a.download = name + ".png";
         a.href = canvas.toDataURL();
@@ -1084,6 +1066,34 @@
         new_window.document.title.innerHTML = "Texture image";
         new_window.document.body.appendChild(a);
         new_window.focus();
+    }
+
+    /**
+    * Upload mipmap data to texture
+    * @method uploadMipmap
+    * @param {Texture} tex where replace mipmaps 
+    * @param {typedArray} data mipmap pixels
+    * @param {Number} level mipmap level to replace
+    */
+    HDRTool.uploadMipmap = function( tex, pixels, level )
+    {
+        if(!level)
+        throw("can't replace base texture");
+
+        tex.bind(0);
+
+        var size = tex.width / Math.pow(2, level);
+
+        if(tex.texture_type === gl.TEXTURE_2D)
+        {
+            gl.texSubImage2D(gl.TEXTURE_2D, level, 0, 0, size, size, tex.format, tex.type, pixels);
+        }else if(tex.texture_type === gl.TEXTURE_CUBE_MAP)
+        {
+            for(var i = 0; i < 6; i++)
+                gl.texSubImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, level, 0, 0, size, size, tex.format, tex.type, pixels[i]);
+        }
+
+        tex.unbind();
     }
 
     /**
@@ -1147,7 +1157,7 @@
     * @method assembleHDR_HDRGPU
     * @param {} 
     */
-	HDRTool.assembleHDR_HDRGPU = function(images)
+	HDRTool.assembleHDR_HDRGPU = function(hdr_scale)
 	{
 
         if(!this.core)
@@ -1157,7 +1167,7 @@
 		delete gl.textures["CROPPED_MIP"]; 
 		console.time('assembly');
 
-		images = images || this.files_loaded;
+		var images = this.files_loaded;
 		this._sortFiles();
 
 		var that = this;
@@ -1167,47 +1177,51 @@
 			throw("EXT_sRGB not supported");
 
 		const numImages = images.length;
-		const width = images[0].width;
-		const height = images[0].height;
+		const width = images[0].Width;
+		const height = images[0].Height;
 
 		// output texture
 		var hdr = new GL.Texture( width, height, { type: GL.FLOAT, format: GL.RGBA} );
 		// var hdr = new GL.Texture( nearestPowerOfTwo(width), nearestPowerOfTwo(height), { type: GL.FLOAT, format: GL.RGBA, minFilter: GL.LINEAR_MIPMAP_LINEAR} );
 
-		// stack
-		var stack = [];
+        var stack           = [];
+        var ExposureTimes   = [];
+        var uniforms        = {
+            u_numImages: numImages,
+            u_ExposureTimes: [],
+            u_WhiteBalance: [],
+            u_hdr_scale: hdr_scale
+        };
+
 		for(var i = 0; i < numImages; i++)
 		{
-			var tex = new GL.Texture( width, height, {internalFormat: ext.SRGB_EXT, format: ext.SRGB_EXT, pixel_data: images[i].data });
-			stack.push( tex );
-			tex.bind(i);
-		}
+            images[i].texture.bind(i);
+            uniforms["u_ExposureTimes"].push( images[i].ExposureTime[0] );
+            if(images[i].verbose)
+                uniforms["u_WhiteBalance"].push( new Float32Array( images[i].verbose.multipliers ) );
+            uniforms["u_stack" + i] = i;
+        }
+        
+        // first is raw?
+        if(images[0].verbose)
+        uniforms["u_WhiteBalance"] = GL.linearizeArray( uniforms["u_WhiteBalance"] );
 
 		var shader = gl.shaders['HDRassembly'];
 		if(!shader)
-		throw("no shader");
-
+        throw("no shader");
+        
 		hdr.drawTo(function(){
 
-			shader.uniforms({
-				u_numImages: numImages,
-			}).draw(Mesh.getScreenQuad(), gl.TRIANGLES);
+			shader.uniforms(uniforms).draw(Mesh.getScreenQuad(), gl.TRIANGLES);
 
 		});
 
 		for(var i = 0; i < numImages; i++)
-			stack[i].unbind();
+            images[i].texture.unbind(); 
 
-        this.core.setUniform('Key', 0.18);
-        this.core.setUniform('Ywhite', 1e6);
-        this.core.setUniform('Yexposure', 1);
-        this.core.setUniform('Saturation', 1);
-
-		HDRI.dragscale.changeScale( 855 / width );
+		//HDRI.changeScale( 855 / width );
 
 		var mipmaps_assembled = new GL.Texture( nearestPowerOfTwo(width), nearestPowerOfTwo(height), { type: GL.FLOAT, format: GL.RGBA, minFilter: GL.LINEAR_MIPMAP_LINEAR} );
-
-
 
 		mipmaps_assembled.drawTo( function() {
 			renderer.clear( that.core._background_color );
@@ -1225,765 +1239,782 @@
 		console.timeEnd('assembly');
 	}
     
-	// HDR ASSEMBLY + RECOVERING CAMERA RESPONSE
-    Object.assign( HDRTool, {
+    HDRTool.parseCR2 = function( buffer, name )
+    {
+        if(!parserCR2)
+        throw("cr2 parser missing");
 
-        parseCR2: function( buffer )
-        {
-            var ifds = UTIF.decode(buffer);
-            var img = ifds[0];
-            UTIF.decodeImage(buffer, img);
-            img.rgba8 = UTIF.toRGBA8(img);
-            return img;
-        },
-
-        parseJPG: function( buffer )
-        {
-            var decoder = new JpegImage();
-            decoder.parse( new Uint8Array(buffer) );
-
-            var w = decoder.width, h = decoder.height;
-            var data = decoder.getData(w, h);
-
-            return {
-                rgba8: this.addAlphaChannel(data),
-                width: w,
-                height: h,
-                data: data
-            };
-        },
         
-        parsePNG: function( buffer )
-        {
-            var img  = UPNG.decode(buffer);        // put ArrayBuffer of the PNG file into UPNG.decode
-            img.rgba8 = this.addAlphaChannel(img.data );
-            return img;
-        },
-		
-		parseHDR: function( buffer )
-        {
-           var img = RGBE.parseHdr(buffer);
-			
-		   return {
-                rgba8: img.data,
-                width: img.shape[0],
-                height: img.shape[1],
-				hdr: true
-            };
-        },
-        
-        parseLDRI: function( buffer, extension )
-        {
-            switch(extension){
-                
-                case 'hdr':
-                    return this.parseHDR( buffer );
-				case 'cr2':
-                    return this.parseCR2( buffer );
-                case 'jpg':
-                    return this.parseJPG( buffer );
-                case 'png':
-                    return this.parsePNG( buffer );
-            }
-        
-        },
+        //parserCR2.parse(buffer, name, parserCR2.ONLY_METADATA );
 
-		_sortFiles: function(higher_first)
-		{
-			this.files_loaded.sort(function(a, b){
-
-				if(higher_first)
-				{
-					var aux = Object.assign(a);
-					a = b;
-					b = aux;
-				}
-
-				if(a.name.includes("sample-"))
-					return parseInt(a.name[7]) - parseInt(b.name[7]);
-
-				if(a.name.includes("DSC_")){
-
-					var an = parseInt( a.name.slice(4, a.name.length - 4) );
-					var bn = parseInt( b.name.slice(4, b.name.length - 4) );
-					return parseInt(an - bn);
-				}
-					
-
-				if(!a.exp_time || !b.exp_time)
-					console.warn("missing exp times");
-
-				return a.exp_time - b.exp_time;
-			
-			});
-
-			this.log_exposure_times.sort(function(a, b){
-			
-				return a - b;
-			
-			});
-		},
-        
-        loadLDRI: function( content, extension, name, callback )
-        {
-            var that = this;
-
-            var getParams = function (e) {
-
-                var data = e ? e.target.result : content;
-                let img = that.parseLDRI(data, extension);
-
-                img.name = name;
-                img.rgb = that.extractChannels(img.rgba8, img.width*img.height);
-				img.url = extension == "cr2" ? "assets/CR2_Example.JPG" : URL.createObjectURL( content );
-
-                // fill exposures in case of CR2
-                if( !img['exifIFD'] ) {
-
-					// allow editing later
-					img.exp_time = 1/(1+that.files_loaded.length);
-					evaluate(img);
-                }
-                else{
-                
-					var t = img['exifIFD']['t33434'][0];
-                    // that.log_exposure_times.push( t );
-					img.exp_time = t;
-					evaluate(img);
-                }
-             
-            };
-
-			var evaluate = function (img) {
-                
-                Texture.setUploadOptions( {no_flip: false} );
-                var tex;
-
-				if(!img.hdr)
-					tex = new GL.Texture( img.width, img.height, {pixel_data: img.rgba8, format: gl.RGBA } );
-				else
-					tex = new GL.Texture( img.width, img.height, {pixel_data: img.rgba8, format: gl.RGBA, type: GL.FLOAT } );
-
-                gl.textures[img.name] = tex;
-                that.files_loaded.push( img );
-
-                var prog_width = (that.files_loaded.length / that.files_to_load) * 100;
-
-				$("#xhr-load").css('width', prog_width + "%");
-                
-                // all files loaded
-                if(prog_width == 100)
-                { 
-					console.log("Images loaded");
-					that._sortFiles();
-
-					if(callback)
-						callback();
-                }
-            };
-
-            // content is binary
-            if(content.constructor === ArrayBuffer)
-            {
-                //processFile();
-                console.warn('TODO');
-
-            // content is a file
-            }else{
-
-                var reader = new FileReader();
-                reader.onload = getParams;
-                reader.readAsArrayBuffer(content);
-            }
-        },
-
-		getUniforms: function()
-		{
-			var uniforms = {
-                    u_hdr_avg: this.hdr_avg,
-                    u_tmp_avg: this.tmp_avg,
-                
-                    u_hdr_min: this.hdr_min,
-                    u_hdr_max: this.hdr_max,
-                
-                    u_max_lum_pixel: this.max_lum_pixel,
-                    u_max_lum: this.max_lum,
-                
-                    u_min_lum_pixel: this.min_lum_pixel,
-                    u_min_lum: this.min_lum,
-                
-                    u_max_radiance: this.max_radiance
-
-                };
-
-			return uniforms;
-		},
-
-		
-
-		assembleHDR_DEBEVEC: function( images )
-        {
-            if(this.core)
-            return;
-
-			images = images || this.files_loaded;
-		
-			this._sortFiles();
-
-			var that = this;
-            const channels = 3;
-
-            const width = images[0].width;
-            const height = images[0].height;
-
-			// # Loading exposure images into a list
-
-			if(!this.log_exposure_times.length)
-			{
-				LiteGUI.alert("No exposure times loaded", {title: "Missing step"});
-				return;
-			}
+        var dcraw_options = { 
 				
-			
-			const exposure_times = this.log_exposure_times;
+            verbose: true, 					// -v 
+            use16BitLinearMode: true, 		// -6 -W -g 1 1
+            //setCustomGammaCurve: "1 1",                       // no gamma -> linear
+            //setNoAutoBrightnessMode: true,	// -W
+            useCameraWhiteBalance: true, 	// -w
+            //useCustomWhiteBalance: "1 1 0 0",
+            setInterpolationQuality: 2,
+            exportAsTiff: true				// -T 
+        };
 
-			var hdr = this.computeOutput(); //gl.textures["output.hdr"];
+        return parserCR2.parse(buffer, name, dcraw_options);
+    }
 
-			var mipmaps_assembled = new GL.Texture( nearestPowerOfTwo(width), nearestPowerOfTwo(height), { type: GL.FLOAT, format: GL.RGBA, minFilter: GL.LINEAR_MIPMAP_LINEAR} );
+    HDRTool.parseJPG = function( buffer, name )
+    {
+        var decoder = new JpegImage();
+        decoder.parse( new Uint8Array(buffer) );
 
-			mipmaps_assembled.drawTo( function() {
-				renderer.clear( that.core._background_color );
-				Object.assign( renderer._uniforms, HDRTool.getUniforms() );
-				hdr.toViewport();
-			});
+        var w = decoder.width, h = decoder.height;
+        var data = decoder.getData(w, h);
 
-			mipmaps_assembled.bind(0);
-			gl.generateMipmap(gl.TEXTURE_2D);
-			mipmaps_assembled.unbind();
+        return {
+            rgba8: this.addAlphaChannel(data),
+            Width: w,
+            Height: h,
+            data: data
+        };
+    }
+    
+    HDRTool.parsePNG = function( buffer, name )
+    {
+        var img  = UPNG.decode(buffer);        // put ArrayBuffer of the PNG file into UPNG.decode
+        img.rgba8 = this.addAlphaChannel(img.data);
 
-			gl.textures["ASSEMBLED"] = hdr;
-			gl.textures["ASSEMBLED_MIP"] = mipmaps_assembled;
-
+        return {
+            rgba8: img.rgba8,
+            Width: img.width,
+            Height: img.height,
+        };
+    }
+    
+    HDRTool.parseHDR = function( buffer, name )
+    {
+        var img = RGBE.parseHdr(buffer);
+        
+        return {
+            rgba8: img.data,
+            Width: img.shape[0],
+            Height: img.shape[1],
+            hdr: true
+        };
+    }
+    
+    HDRTool.parseLDRI = function( buffer, name, extension )
+    {
+        switch(extension){
             
-		},
+            case 'hdr':
+                return this.parseHDR( buffer, name );
+            case 'nef':
+            case 'cr2':
+                return this.parseCR2( buffer, name );
+            case 'jpg':
+                return this.parseJPG( buffer, name );
+            case 'png':
+                return this.parsePNG( buffer, name );
+        }
+    
+    }
 
-        /*
-            This method computes the final HDR image with the radiance map 
-            of every image channel 
+    HDRTool._sortFiles = function(higher_first)
+    {
+        this.files_loaded.sort(function(a, b){
 
-            Returns array(channels) of array(w*h)
-        */
-        computeOutput: function( images )
-        {
-            images = images || this.files_loaded;
-		
-			this._sortFiles();
-
-			var that = this;
-            const channels = 3;
-            const smoothing_lambda = 100;
-
-            const width = images[0].width;
-            const height = images[0].height;
-
-            var hdr_image = new Float32Array( width * height * channels );
-            this.hdr_image = hdr_image;
-
-            // shader: normalize, tonemap, adjust, normalize
-
-            console.time('compute');
-
-            // python version
-            for( var ch = 0; ch < channels; ch++ )
+            if(higher_first)
             {
-                // this is the data of all the images per channel
-                var layer_stack = [];
-                for(var i = 0; i < images.length; i++) layer_stack.push( images[i].rgb[ch] );
-                
-                // now we want to get the intensities for each image (of a channel) in the layer stack
-                var intensity_samples = this.sampleIntensitiesLayer( layer_stack, width);
-                var response_curve = this.computeResponseCurveLayer( intensity_samples, layer_stack, smoothing_lambda );
-                var radiance_map = this.computeRadianceMapLayer( layer_stack, response_curve, width, height, ch);
-                // final step, fill hdr image with each radiance_map
-                this.composeImageLayer( radiance_map, hdr_image, ch );
+                var aux = Object.assign(a);
+                a = b;
+                b = aux;
             }
 
-            // save lum
+            if(a.name.includes("sample-"))
+                return parseInt(a.name[7]) - parseInt(b.name[7]);
 
-            /*this.max_lum = -Infinity;
-            this.min_lum = Infinity;
-            this.max_lum_pixel = null;
-            this.min_lum_pixel = null;
+            if(a.name.includes("DSC_")){
 
-            for( var i = 0; i < this.hdr_image.length; )
-            {
-                var color = [this.hdr_image[i++],this.hdr_image[i++],this.hdr_image[i++]];
-                var lum = 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2];
-                
-                if(lum > this.max_lum)
-                {
-                    this.max_lum = lum;
-                    this.max_lum_pixel = color;
-                }
-                else if(lum < this.min_lum)
-                {
-                    this.min_lum = lum;
-                    this.min_lum_pixel = color;
-                }
-                    
-            }*/
-
-            console.timeEnd('compute');
-
-			var hdr_tex = new GL.Texture( width, height, {type: GL.FLOAT, pixel_data: hdr_image, format: gl.RGB } );
-
-            return hdr_tex;
-        },
-
-        _GPU_downloadHDR: function()
-        {
-            var max_radiance = this.max_radiance; // ojo con this
-            var ldr_tex = gl.textures["combined"];
-            var norm_tex = gl.textures["combined_scaled"] = new GL.Texture( ldr_tex.width, ldr_tex.height, {type: GL.FLOAT, format: gl.RGB } );
-            var shader = gl.shaders['combineHDR'];
-
-            if(!shader)
-            throw("no shader");
-
-            var that = this;
-
-            console.time('download');
-
-            ldr_tex.bind(0);
-            norm_tex.drawTo(function(){
-
-                shader.uniforms({
-                    u_hdr_avg: that.hdr_avg,
-                    u_tmp_avg: that.tmp_avg,
-                
-                    u_hdr_min: that.hdr_min,
-                    u_hdr_max: that.hdr_max,
-                
-                    u_max_lum_pixel: that.max_lum_pixel,
-                    u_max_lum: that.max_lum,
-                
-                    u_min_lum_pixel: that.min_lum_pixel,
-                    u_min_lum: that.min_lum,
-                
-                    u_max_radiance: max_radiance
-
-                }).draw(Mesh.getScreenQuad(), gl.TRIANGLES);
-
-            });
-            ldr_tex.unbind();
-
-			return norm_tex;
-
-            console.timeEnd('download');
-        },
-
-        /*
-            This method normalizes the final HDR image in the CPU
-        */
-        _CPU_downloadHDR: function()
-        {
-            var hdr_image = this.hdr_image;
-            var new_data = new Float32Array(hdr_image.length);
-            var max_radiance = this.max_radiance;
+                var an = parseInt( a.name.slice(4, a.name.length - 4) );
+                var bn = parseInt( b.name.slice(4, b.name.length - 4) );
+                return parseInt(an - bn);
+            }
             
-            console.time('download');
+            if(a.name.includes("IMG_")){
 
-            for( var i = 0; i < hdr_image.length; i+=3 )
-            {
-                var pixel = [hdr_image[i], hdr_image[i+1], hdr_image[i+2]];
-
-                // linear normalizing to 0-1
-                pixel = this.normalize(pixel);
-
-                // scale (not linear) to max intensity (100, 200, 300??)
-                pixel = this.scaleToRadiance(pixel, max_radiance);
-
-                // adjust with pattern intensities
-                pixel = this.adjustIntensity(pixel,2.0, max_radiance);
-
-                new_data[i] = pixel[0];
-                new_data[i+1] = pixel[1];
-                new_data[i+2] = pixel[2];
+                var an = parseInt( a.name.slice(4, a.name.length - 4) );
+                var bn = parseInt( b.name.slice(4, b.name.length - 4) );
+                return parseInt(an - bn);
             }
 
-            console.timeEnd('download');
+            if(!a.ExposureTime || !b.ExposureTime)
+                console.warn("missing exp times");
 
-            this.texture_data = new_data;
-            var ldr_tex = gl.textures["combined"];
-			return gl.textures["combined_scaled"] = new GL.Texture( ldr_tex.width, ldr_tex.height, {type: GL.FLOAT, pixel_data: new_data, format: gl.RGB } );
-        },
+            return a.ExposureTime - b.ExposureTime;
+        
+        });
 
-        normalize: function( Xi )
+        this.log_exposure_times.sort(function(a, b){
+        
+            return a - b;
+        
+        });
+    }
+    
+    HDRTool.loadLDRI = function( content, extension, name, options )
+    {
+        options = options || {};
+        var that = this;
+
+        var getParams = function (e) {
+
+            var data = e ? e.currentTarget.result : content;
+            let img = that.parseLDRI(data, name, extension);
+
+            img.name = name;
+            if(img.rgba8)
+                img.rgb = that.extractChannels(img.rgba8, img.Width * img.Height);
+            img.url = extension == "cr2" ? "assets/CR2_Example.JPG" : URL.createObjectURL( content );
+
+            // fill exposures in case of png or jpg
+            if( !img['ExposureTime'] )
+                img['ExposureTime'] = 1/(1+that.files_loaded.length);
+            
+            evaluate(img);
+            
+        };
+
+        var evaluate = function (img) {
+            
+            Texture.setUploadOptions( {no_flip: false} );
+            var tex;
+
+            var w = img.Width;
+            var h = img.Height;
+
+            if(!img.hdr) {
+
+                if(img.BitsPerSample && img.BitsPerSample[0] == 16)
+                    tex = new GL.Texture( w, h, {type: GL.FLOAT, pixel_data: img.rgba32, format: gl.RGBA } );
+                else
+                    tex = new GL.Texture( w, h, {pixel_data: img.rgba8, format: gl.RGBA } );
+            
+            }
+            else
+                tex = new GL.Texture( w, h, {pixel_data: img.rgba8, format: gl.RGBA, type: GL.FLOAT } );
+
+            tex.filename = img.name;
+            
+            gl.textures[img.name] = tex;
+            img.texture = tex;
+            that.files_loaded.push( img );
+
+            that.files_in_load++;
+
+            var prog_width = (that.files_in_load / that.files_to_load ) * 100;
+
+            $("#xhr-load").css('width', prog_width + "%");
+            
+            // all files loaded
+            if(prog_width == 100)
+            { 
+                that._sortFiles();
+
+                if(options.callback)
+                    options.callback();
+            }
+        };
+
+        // content is binary
+        if(content.constructor === ArrayBuffer)
         {
-            var pixel = new Float32Array(3);
-            var maxLum = this.max_lum_pixel;
-            var minLum = this.min_lum_pixel;
+            //processFile();
+            console.warn('TODO');
 
-            pixel[0] = (1.0)/(maxLum[0]-minLum[0])*(Xi[0]-minLum[0]);
-            pixel[1] = (1.0)/(maxLum[1]-minLum[1])*(Xi[1]-minLum[1]);
-            pixel[2] = (1.0)/(maxLum[2]-minLum[2])*(Xi[2]-minLum[2]);
+        // content is a file
+        }else{
 
-            return pixel;
-        },
+            var reader = new FileReader();
+            reader.onload = getParams;
+            reader.readAsArrayBuffer(content);
+        }
+    }
 
-        scaleToRadiance: function( Xi, max_radiance )
+    HDRTool.getUniforms = function()
+    {
+        var uniforms = {
+                u_hdr_avg: this.hdr_avg,
+                u_tmp_avg: this.tmp_avg,
+            
+                u_hdr_min: this.hdr_min,
+                u_hdr_max: this.hdr_max,
+            
+                u_max_lum_pixel: this.max_lum_pixel,
+                u_max_lum: this.max_lum,
+            
+                u_min_lum_pixel: this.min_lum_pixel,
+                u_min_lum: this.min_lum,
+            
+                u_max_radiance: this.max_radiance
+
+            };
+
+        return uniforms;
+    }
+
+    HDRTool.assembleHDR_DEBEVEC = function( images )
+    {
+        images = images || this.files_loaded;
+    
+        var that = this;
+        const channels = 3;
+
+        const width = images[0].Width;
+        const height = images[0].Height;
+
+        // # Loading exposure images into a list
+
+        var exposure_times = [];
+
+        for(var i in images)
+        exposure_times.push( images[i].ExposureTime );
+
+        var hdr = this.computeOutput(exposure_times);
+
+        var mipmaps_assembled = new GL.Texture( nearestPowerOfTwo(width), nearestPowerOfTwo(height), { type: GL.FLOAT, format: GL.RGBA, minFilter: GL.LINEAR_MIPMAP_LINEAR} );
+
+        mipmaps_assembled.drawTo( function() {
+            renderer.clear( that.core._background_color );
+            Object.assign( renderer._uniforms, HDRTool.getUniforms() );
+            hdr.toViewport();
+        });
+
+        mipmaps_assembled.bind(0);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        mipmaps_assembled.unbind();
+
+        gl.textures["ASSEMBLED"] = hdr;
+        gl.textures["ASSEMBLED_MIP"] = mipmaps_assembled;
+
+        
+    }
+
+    /*
+        This method computes the final HDR image with the radiance map 
+        of every image channel 
+
+        Returns array(channels) of array(w*h)
+    */
+    HDRTool.computeOutput = function( ExposureTimes )
+    {
+        var images = this.files_loaded;
+    
+        var that = this;
+        const channels = 3;
+        const smoothing_lambda = 100;
+
+        const width = images[0].Width;
+        const height = images[0].Height;
+
+        var hdr_image = new Float32Array( width * height * channels );
+        this.hdr_image = hdr_image;
+
+        // shader: normalize, tonemap, adjust, normalize
+
+        this.log_exposure_times = ExposureTimes;
+
+        console.time('compute');
+
+        // python version
+        for( var ch = 0; ch < channels; ch++ )
         {
-            const A = 20.4730;
-			const B = 44.9280;
-			const C = 36.7912;
-			const D = 13.5250;
-			const E = 2.47270;
-			const F = 0.14253;
-			const G = 0.00032;
+            // this is the data of all the images per channel
+            var layer_stack = [];
+            for(var i = 0; i < images.length; i++) layer_stack.push( images[i].rgb[ch] );
+            
+            // now we want to get the intensities for each image (of a channel) in the layer stack
+            var intensity_samples = this.sampleIntensitiesLayer( layer_stack, width);
+            var response_curve = this.computeResponseCurveLayer( intensity_samples, layer_stack, smoothing_lambda );
+            var radiance_map = this.computeRadianceMapLayer( layer_stack, response_curve, width, height, ch);
+            // final step, fill hdr image with each radiance_map
+            this.composeImageLayer( radiance_map, hdr_image, ch );
+        }
 
+        // save lum
 
-            var pixel = new Float32Array(3);
+        /*this.max_lum = -Infinity;
+        this.min_lum = Infinity;
+        this.max_lum_pixel = null;
+        this.min_lum_pixel = null;
 
-            for(var i = 0; i < Xi.length; i++)
-                pixel[i] = (A * Math.pow(Xi[i],6.0)
-                    - B * Math.pow(Xi[i],5.0)
-                    + C * Math.pow(Xi[i],4.0)
-                    - D * Math.pow(Xi[i],3.0)
-                    + E * Math.pow(Xi[i],2.0)
-                    - F * Xi[i]
-                    + G) * max_radiance;
-
-            return pixel;
-        },
-
-        adjustIntensity: function( Xi, BIAS, max_radiance )
+        for( var i = 0; i < this.hdr_image.length; )
         {
-            if(!BIAS)
-                BIAS = 1.0;
+            var color = [this.hdr_image[i++],this.hdr_image[i++],this.hdr_image[i++]];
+            var lum = 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2];
+            
+            if(lum > this.max_lum)
+            {
+                this.max_lum = lum;
+                this.max_lum_pixel = color;
+            }
+            else if(lum < this.min_lum)
+            {
+                this.min_lum = lum;
+                this.min_lum_pixel = color;
+            }
+                
+        }*/
 
-            var pixel = new Float32Array(3);
-            var pattern = this.tmp_avg; // pattern is already in range 0-1
-            var average = this.normalize(this.hdr_avg);// this average is not
+        console.timeEnd('compute');
 
-            //pattern = this.scaleToRadiance(pattern, max_radiance);
-            //average = this.scaleToRadiance(average, max_radiance);
+        var hdr_tex = new GL.Texture( width, height, {type: GL.FLOAT, pixel_data: hdr_image, format: gl.RGB } );
 
-            var patternMatch = numeric.div(pattern, average);
-            patternMatch = numeric.mul(patternMatch, BIAS);
+        return hdr_tex;
+    }
 
-            pixel[0] = Xi[0] * patternMatch[0];
-            pixel[1] = Xi[1] * patternMatch[1];
-            pixel[2] = Xi[2] * patternMatch[2];
+    HDRTool._GPU_downloadHDR = function()
+    {
+        var max_radiance = this.max_radiance; // ojo con this
+        var ldr_tex = gl.textures["combined"];
+        var norm_tex = gl.textures["combined_scaled"] = new GL.Texture( ldr_tex.width, ldr_tex.height, {type: GL.FLOAT, format: gl.RGB } );
+        var shader = gl.shaders['combineHDR'];
 
-            return pixel;
-        },
+        if(!shader)
+        throw("no shader");
 
-        sampleIntensitiesLayer: function( images, width )
+        var that = this;
+
+        console.time('download');
+
+        ldr_tex.bind(0);
+        norm_tex.drawTo(function(){
+
+            shader.uniforms({
+                u_hdr_avg: that.hdr_avg,
+                u_tmp_avg: that.tmp_avg,
+            
+                u_hdr_min: that.hdr_min,
+                u_hdr_max: that.hdr_max,
+            
+                u_max_lum_pixel: that.max_lum_pixel,
+                u_max_lum: that.max_lum,
+            
+                u_min_lum_pixel: that.min_lum_pixel,
+                u_min_lum: that.min_lum,
+            
+                u_max_radiance: max_radiance
+
+            }).draw(Mesh.getScreenQuad(), gl.TRIANGLES);
+
+        });
+        ldr_tex.unbind();
+
+        return norm_tex;
+
+        console.timeEnd('download');
+    }
+
+    /*
+        This method normalizes the final HDR image in the CPU
+    */
+    HDRTool._CPU_downloadHDR = function()
+    {
+        var hdr_image = this.hdr_image;
+        var new_data = new Float32Array(hdr_image.length);
+        var max_radiance = this.max_radiance;
+        
+        console.time('download');
+
+        for( var i = 0; i < hdr_image.length; i+=3 )
         {
-            if(!images)
-                throw('bad params');
+            var pixel = [hdr_image[i], hdr_image[i+1], hdr_image[i+2]];
 
-            const z_min = 0, z_max = 255;
-            const num_intensities = z_max - z_min + 1;
-            const num_images = images.length;
+            // linear normalizing to 0-1
+            pixel = this.normalize(pixel);
 
-            // Find the middle image to use as the source for pixel intensity locations
-            var mid_img = images[( num_images / 2 )|0];
+            // scale (not linear) to max intensity (100, 200, 300??)
+            pixel = this.scaleToRadiance(pixel, max_radiance);
 
-            // compute size of ocurrence vector
-            var rows = new Uint32Array( 1 );
-            var cols = new Uint32Array( 1 );
+            // adjust with pattern intensities
+            pixel = this.adjustIntensity(pixel,2.0, max_radiance);
 
-            var intensities = [];
+            new_data[i] = pixel[0];
+            new_data[i+1] = pixel[1];
+            new_data[i+2] = pixel[2];
+        }
+
+        console.timeEnd('download');
+
+        this.texture_data = new_data;
+        var ldr_tex = gl.textures["combined"];
+        return gl.textures["combined_scaled"] = new GL.Texture( ldr_tex.width, ldr_tex.height, {type: GL.FLOAT, pixel_data: new_data, format: gl.RGB } );
+    }
+
+    HDRTool.normalize = function( Xi )
+    {
+        var pixel = new Float32Array(3);
+        var maxLum = this.max_lum_pixel;
+        var minLum = this.min_lum_pixel;
+
+        pixel[0] = (1.0)/(maxLum[0]-minLum[0])*(Xi[0]-minLum[0]);
+        pixel[1] = (1.0)/(maxLum[1]-minLum[1])*(Xi[1]-minLum[1]);
+        pixel[2] = (1.0)/(maxLum[2]-minLum[2])*(Xi[2]-minLum[2]);
+
+        return pixel;
+    }
+
+    HDRTool.scaleToRadiance = function( Xi, max_radiance )
+    {
+        const A = 20.4730;
+        const B = 44.9280;
+        const C = 36.7912;
+        const D = 13.5250;
+        const E = 2.47270;
+        const F = 0.14253;
+        const G = 0.00032;
+
+
+        var pixel = new Float32Array(3);
+
+        for(var i = 0; i < Xi.length; i++)
+            pixel[i] = (A * Math.pow(Xi[i],6.0)
+                - B * Math.pow(Xi[i],5.0)
+                + C * Math.pow(Xi[i],4.0)
+                - D * Math.pow(Xi[i],3.0)
+                + E * Math.pow(Xi[i],2.0)
+                - F * Xi[i]
+                + G) * max_radiance;
+
+        return pixel;
+    }
+
+    HDRTool.adjustIntensity = function( Xi, BIAS, max_radiance )
+    {
+        if(!BIAS)
+            BIAS = 1.0;
+
+        var pixel = new Float32Array(3);
+        var pattern = this.tmp_avg; // pattern is already in range 0-1
+        var average = this.normalize(this.hdr_avg);// this average is not
+
+        //pattern = this.scaleToRadiance(pattern, max_radiance);
+        //average = this.scaleToRadiance(average, max_radiance);
+
+        var patternMatch = numeric.div(pattern, average);
+        patternMatch = numeric.mul(patternMatch, BIAS);
+
+        pixel[0] = Xi[0] * patternMatch[0];
+        pixel[1] = Xi[1] * patternMatch[1];
+        pixel[2] = Xi[2] * patternMatch[2];
+
+        return pixel;
+    }
+
+    HDRTool.sampleIntensitiesLayer = function( images, width )
+    {
+        if(!images)
+            throw('bad params');
+
+        const z_min = 0, z_max = 255;
+        const num_intensities = z_max - z_min + 1;
+        const num_images = images.length;
+
+        // Find the middle image to use as the source for pixel intensity locations
+        var mid_img = images[( num_images / 2 )|0];
+
+        // compute size of ocurrence vector
+        var rows = new Uint32Array( 1 );
+        var cols = new Uint32Array( 1 );
+
+        var intensities = [];
+
+        for( var j = 0; j < num_images; j++ ) {
+
+            var intensity_values = new Uint8Array(num_intensities);
+            var img = images[j];
+    
+            for(var i = 0; i < num_intensities; i++) {
+
+                // very slow if no max ocurrences defined
+                var num_rows = this.FastgetXYFromArray( mid_img, width, i, rows, cols, 1);
+                
+                if(!num_rows)
+                    continue;
+
+                var idx = 0;//(Math.random() * num_rows)|0;
+                
+                var index1D = width * rows[idx] + cols[idx];
+                var value = img[ index1D ];
+                intensity_values[i] = value;
+            }
+            
+            // push each channel intensity for each image
+            intensities.push( intensity_values );
+        }
+
+        return intensities;
+    }
+
+    /*
+    Parameters
+    ----------
+    smoothing_lambda : float
+        A constant value used to correct for scale differences between
+        data and smoothing terms in the constraint matrix
+    Returns
+    -------
+        Return a vector g(z) where the element at index i is the log exposure
+        of a pixel with intensity value z = i (e.g., g[0] is the log exposure
+        of z=0, g[1] is the log exposure of z=1, etc.)
+    */
+    HDRTool.computeResponseCurveLayer = function(intensity_samples, images, smoothing_lambda)
+    {
+        var z_min = 0, z_max = 255, 
+        intensity_range = z_max - z_min,
+        smoothing_lambda = smoothing_lambda || 100;
+
+        const num_samples = intensity_range+1;
+        const num_images = images.length;
+        const log_exposure_times = this.log_exposure_times;
+
+        if(log_exposure_times.length < num_images){
+
+            LiteGUI.alert("Log exposures times missing", {title: "error"});
+            throw("no enough log exposures");
+        }
+        
+        var aN = num_images * num_samples + intensity_range;
+        var aM = num_samples + intensity_range + 1;
+        var mat_A = new Float64Array( aN * aM );// [ aN, aM ] -> inv: 	[ aM, aN ]
+        var mat_b = new Float64Array( aN * 1 ); // [ aN,  1 ] -> 		[ aN,  1 ] can be multiplied! later!!
+        
+        // 1. Add data-fitting constraints:
+        var k = 0;
+
+        for(var i = 0; i < num_samples; i++) {
 
             for( var j = 0; j < num_images; j++ ) {
 
-                var intensity_values = new Uint8Array(num_intensities);
-                var img = images[j];
-        
-                for(var i = 0; i < num_intensities; i++) {
-
-                    // very slow if no max ocurrences defined
-                    var num_rows = this.FastgetXYFromArray( mid_img, width, i, rows, cols, 1);
-                    
-                    if(!num_rows)
-                        continue;
-
-                    var idx = 0;//(Math.random() * num_rows)|0;
-                    
-                    var index1D = width * rows[idx] + cols[idx];
-                    var value = img[ index1D ];
-                    intensity_values[i] = value;
-                }
-                
-                // push each channel intensity for each image
-                intensities.push( intensity_values );
-            }
-
-            return intensities;
-        },
-
-        /*
-        Parameters
-        ----------
-        smoothing_lambda : float
-            A constant value used to correct for scale differences between
-            data and smoothing terms in the constraint matrix
-        Returns
-        -------
-            Return a vector g(z) where the element at index i is the log exposure
-            of a pixel with intensity value z = i (e.g., g[0] is the log exposure
-            of z=0, g[1] is the log exposure of z=1, etc.)
-        */
-        computeResponseCurveLayer: function(intensity_samples, images, smoothing_lambda)
-        {
-            var z_min = 0, z_max = 255, 
-            intensity_range = z_max - z_min,
-            smoothing_lambda = smoothing_lambda || 100;
-
-            const num_samples = intensity_range+1;
-            const num_images = images.length;
-            const log_exposure_times = this.log_exposure_times;
-
-            if(log_exposure_times.length < num_images){
-
-                LiteGUI.alert("Log exposures times missing", {title: "error"});
-                throw("no enough log exposures");
-            }
-            
-            var aN = num_images * num_samples + intensity_range;
-            var aM = num_samples + intensity_range + 1;
-            var mat_A = new Float64Array( aN * aM );// [ aN, aM ] -> inv: 	[ aM, aN ]
-            var mat_b = new Float64Array( aN * 1 ); // [ aN,  1 ] -> 		[ aN,  1 ] can be multiplied! later!!
-            
-            // 1. Add data-fitting constraints:
-            var k = 0;
-
-            for(var i = 0; i < num_samples; i++) {
-
-                for( var j = 0; j < num_images; j++ ) {
-
-                    // mat[i][j] == array[width*j+i]
-                    var z_ij = intensity_samples[j][i];
-                    var w_ij = this.linearWeight(z_ij);
-                    var iMa1 = aM * k + z_ij;
-                    var iMa2 = aM * k + ((intensity_range + 1) + i);
-                    mat_A[ iMa1 ] = w_ij;
-                    mat_A[ iMa2 ] = -w_ij;
-                    mat_b[ k ] = w_ij * log_exposure_times[j];
-                    k++;
-                }
-            }
-
-            // 2. Add smoothing constraints:
-            for(var z_k = (z_min + 1); z_k < z_max; z_k++) {
-
-                var w_k = this.linearWeight(z_k);
-                var iMa1 = aM * k + (z_k - 1);
-                var iMa2 = aM * k + (z_k);
-                var iMa3 = aM * k + (z_k + 1);
-                mat_A[ iMa1] = w_k * smoothing_lambda;
-                mat_A[ iMa2 ] = -2 * w_k * smoothing_lambda;
-                mat_A[ iMa3 ] = w_k * smoothing_lambda;
+                // mat[i][j] == array[width*j+i]
+                var z_ij = intensity_samples[j][i];
+                var w_ij = this.linearWeight(z_ij);
+                var iMa1 = aM * k + z_ij;
+                var iMa2 = aM * k + ((intensity_range + 1) + i);
+                mat_A[ iMa1 ] = w_ij;
+                mat_A[ iMa2 ] = -w_ij;
+                mat_b[ k ] = w_ij * log_exposure_times[j];
                 k++;
             }
-
-            // 3. Add color curve centering constraint:
-            var constraint = (intensity_range/2)|0;
-            var iMa = aM * k + constraint;
-            mat_A[ iMa ] = 1;
-
-            // create A from mat_A array
-            var A = this.listToMatrix(mat_A, aM);
-            var B = this.listToMatrix(mat_b, 1);
-
-            var inv_A = numbers.matrix.pinv(A); // pseudo-inverse (numeric.js and linearAlgebra.js)
-
-            var x = numbers.matrix.multiply(inv_A, B);
-            var g = x.slice( 0, intensity_range + 1 );
-
-            return GL.linearizeArray( g, Float64Array );
-        },
-        /*
-            """Calculate a radiance map for each pixel from the response curve.
-            Parameters
-            ----------
-            images : list
-            response_curve : list
-            weighting_function : Function
-            Returns
-            -------
-            array(float64)
-                The image radiance map (in log space)
-            """
-        */
-        computeRadianceMapLayer: function(images, response_curve, width, height, channel)
-        {
-            // matrix of image w, h
-            var num_images = images.length;
-            var img_rad_map = new Float32Array(width * height);
-
-            var log_exposure_times = this.log_exposure_times;
-            var curves = new Float32Array(num_images);
-            var weights = new Float32Array(num_images);
-
-            // Find the middle image to use as the source for pixel intensity locations
-            var mid_img = images[( num_images / 2 )|0];
-            var avg = 0;
-
-            for(var i = 0; i < width; i++)
-            for(var j = 0; j < height; j++) {
-
-                var index = height * i + j;
-
-                // get here template average????
-                avg += mid_img[index];
-
-
-                for( var k = 0; k < num_images; k++ ) {
-                    var img_data = images[k];
-                    curves[k] = response_curve[ img_data[index] ];
-                    weights[k] = this.linearWeight( img_data[index] );
-                }
-
-                var SumW = weights.reduce((a, b) => a + b, 0);
-
-                if(SumW > 0) {
-                    var A = numeric.div( numeric.mul(weights, numeric.sub(curves, log_exposure_times)), SumW );
-                    var value = A.reduce((a, b) => a + b, 0);
-                    img_rad_map[index] = value;
-                }
-                else
-                {
-                    var imi = (num_images/2)|0;
-                    var value = curves[ imi ] - log_exposure_times[ imi ];
-                    img_rad_map[index] = value;
-                }
-            }
-
-            this.tmp_avg[channel] = (avg/(width*height))/255.0;
-            return img_rad_map;
-        },
-
-        /**
-         */
-        composeImageLayer: function( radiance_map, hdr_image, channel )
-        {
-            var num_channels = 3;
-
-            // go through all radiance map as i
-            // K begins in channel and k+=channel
-            var k = channel;
-
-            // save from here the max and min values
-            var min = Infinity;
-            var max = -Infinity;
-            var avg = 0;
-
-            for( var i = 0; i < radiance_map.length; i++){
-
-                var value = radiance_map[i];
-                
-                hdr_image[k] = value;
-                k+=num_channels;
-
-                // save min, max, avg
-                avg += value;
-                if(value < min) min = value;
-                else if(value > max) max = value;
-            }
-
-            this.hdr_min[channel] = min;
-            this.hdr_max[channel] = max;
-            this.hdr_avg[channel] = avg/radiance_map.length;
-        },
-
-        addAlphaChannel: function( array, value )
-        {
-            value = value || 1;
-            var new_size = array.length + array.length/3;
-            var data = new array.constructor(new_size);
-            var k = 0;
-
-            for( var i = 0; i < new_size;  )
-            {
-                data[i++] = array[k++];
-                data[i++] = array[k++];
-                data[i++] = array[k++];
-                data[i++] = value;
-            }
-
-            return data;
-        },
-
-        // extract channels from RGBA
-        extractChannels: function( img_data, size)
-        {
-            var values = [];
-            img_data = img_data.slice(0, size*4); // get only valid pixels
-
-            for( var n = 0; n < 3; n++ ) {
-
-                var new_data = new Uint8Array( size );
-
-                for(var i = n, id = 0; i < img_data.length; i+=4, id++)
-                {
-                    new_data[id] = img_data[i];
-                }
-                values.push( new_data );
-            }
-            
-            return values;
-        },
-
-        FastgetXYFromArray: function( array, width, prof, rows, cols, max_p) {
-
-            var r = array.length;
-            var index = 0;
-        
-            for(var i = 0; i < r; i++) {
-        
-                if(array[i] == prof) {
-                    rows[index] = ( i/width )|0;
-                    cols[index] = i % width;
-                    
-                    ++index;
-        
-                    if(index > max_p)
-                        return index;
-                }
-            }
-        
-            return index;
-        },
-
-        listToMatrix: function(list, elementsPerSubArray) {
-            var matrix = [], i, k;
-        
-            for (i = 0, k = -1; i < list.length; i++) {
-                if (i % elementsPerSubArray === 0) {
-                    k++;
-                    matrix[k] = [];
-                }
-        
-                matrix[k].push(list[i]);
-            }
-        
-            return matrix;
-        },
-
-        /*"""	Linear weighting function based on pixel intensity that reduces the
-                weight of pixel values that are near saturation.
-        """*/
-        linearWeight: function( value )
-        {
-            var z_min = 0, z_max = 255;
-
-            if( value <= ((z_min + z_max) / 2))
-                return value - z_min;
-            return z_max - value;
         }
-    } )
+
+        // 2. Add smoothing constraints:
+        for(var z_k = (z_min + 1); z_k < z_max; z_k++) {
+
+            var w_k = this.linearWeight(z_k);
+            var iMa1 = aM * k + (z_k - 1);
+            var iMa2 = aM * k + (z_k);
+            var iMa3 = aM * k + (z_k + 1);
+            mat_A[ iMa1] = w_k * smoothing_lambda;
+            mat_A[ iMa2 ] = -2 * w_k * smoothing_lambda;
+            mat_A[ iMa3 ] = w_k * smoothing_lambda;
+            k++;
+        }
+
+        // 3. Add color curve centering constraint:
+        var constraint = (intensity_range/2)|0;
+        var iMa = aM * k + constraint;
+        mat_A[ iMa ] = 1;
+
+        // create A from mat_A array
+        var A = this.listToMatrix(mat_A, aM);
+        var B = this.listToMatrix(mat_b, 1);
+
+        var inv_A = numbers.matrix.pinv(A); // pseudo-inverse (numeric.js and linearAlgebra.js)
+
+        var x = numbers.matrix.multiply(inv_A, B);
+        var g = x.slice( 0, intensity_range + 1 );
+
+        return GL.linearizeArray( g, Float64Array );
+    }
+    /*
+        """Calculate a radiance map for each pixel from the response curve.
+        Parameters
+        ----------
+        images : list
+        response_curve : list
+        weighting_function : Function
+        Returns
+        -------
+        array(float64)
+            The image radiance map (in log space)
+        """
+    */
+    HDRTool.computeRadianceMapLayer = function(images, response_curve, width, height, channel)
+    {
+        // matrix of image w, h
+        var num_images = images.length;
+        var img_rad_map = new Float32Array(width * height);
+
+        var log_exposure_times = this.log_exposure_times;
+        var curves = new Float32Array(num_images);
+        var weights = new Float32Array(num_images);
+
+        // Find the middle image to use as the source for pixel intensity locations
+        var mid_img = images[( num_images / 2 )|0];
+        var avg = 0;
+
+        for(var i = 0; i < width; i++)
+        for(var j = 0; j < height; j++) {
+
+            var index = height * i + j;
+
+            // get here template average????
+            avg += mid_img[index];
+
+
+            for( var k = 0; k < num_images; k++ ) {
+                var img_data = images[k];
+                curves[k] = response_curve[ img_data[index] ];
+                weights[k] = this.linearWeight( img_data[index] );
+            }
+
+            var SumW = weights.reduce((a, b) => a + b, 0);
+
+            if(SumW > 0) {
+                var A = numeric.div( numeric.mul(weights, numeric.sub(curves, log_exposure_times)), SumW );
+                var value = A.reduce((a, b) => a + b, 0);
+                img_rad_map[index] = value;
+            }
+            else
+            {
+                var imi = (num_images/2)|0;
+                var value = curves[ imi ] - log_exposure_times[ imi ];
+                img_rad_map[index] = value;
+            }
+        }
+
+        this.tmp_avg[channel] = (avg/(width*height))/255.0;
+        return img_rad_map;
+    }
+
+    /**
+     */
+    HDRTool.composeImageLayer = function( radiance_map, hdr_image, channel )
+    {
+        var num_channels = 3;
+
+        // go through all radiance map as i
+        // K begins in channel and k+=channel
+        var k = channel;
+
+        // save from here the max and min values
+        var min = Infinity;
+        var max = -Infinity;
+        var avg = 0;
+
+        for( var i = 0; i < radiance_map.length; i++){
+
+            var value = radiance_map[i];
+            
+            hdr_image[k] = value;
+            k+=num_channels;
+
+            // save min, max, avg
+            avg += value;
+            if(value < min) min = value;
+            else if(value > max) max = value;
+        }
+
+        this.hdr_min[channel] = min;
+        this.hdr_max[channel] = max;
+        this.hdr_avg[channel] = avg/radiance_map.length;
+    }
+
+    HDRTool.addAlphaChannel = function( array, value )
+    {
+        value = value || 255;
+        var new_size = array.length + array.length/3;
+        var data = new array.constructor(new_size);
+        var k = 0;
+
+        for( var i = 0; i < new_size;  )
+        {
+            data[i++] = array[k++];
+            data[i++] = array[k++];
+            data[i++] = array[k++];
+            data[i++] = value;
+        }
+
+        return data;
+    }
+
+    // extract channels from RGBA
+    HDRTool.extractChannels = function( img_data, size)
+    {
+        var values = [];
+        img_data = img_data.slice(0, size*4); // get only valid pixels
+
+        for( var n = 0; n < 3; n++ ) {
+
+            var new_data = new Uint8Array( size );
+
+            for(var i = n, id = 0; i < img_data.length; i+=4, id++)
+            {
+                new_data[id] = img_data[i];
+            }
+            values.push( new_data );
+        }
+        
+        return values;
+    }
+
+    HDRTool.FastgetXYFromArray = function( array, width, prof, rows, cols, max_p) {
+
+        var r = array.length;
+        var index = 0;
+    
+        for(var i = 0; i < r; i++) {
+    
+            if(array[i] == prof) {
+                rows[index] = ( i/width )|0;
+                cols[index] = i % width;
+                
+                ++index;
+    
+                if(index > max_p)
+                    return index;
+            }
+        }
+    
+        return index;
+    }
+
+    HDRTool.listToMatrix = function(list, elementsPerSubArray) {
+        var matrix = [], i, k;
+    
+        for (i = 0, k = -1; i < list.length; i++) {
+            if (i % elementsPerSubArray === 0) {
+                k++;
+                matrix[k] = [];
+            }
+    
+            matrix[k].push(list[i]);
+        }
+    
+        return matrix;
+    }
+
+    /*"""	Linear weighting function based on pixel intensity that reduces the
+            weight of pixel values that are near saturation.
+    """*/
+    HDRTool.linearWeight = function( value )
+    {
+        var z_min = 0, z_max = 255;
+
+        if( value <= ((z_min + z_max) / 2))
+            return value - z_min;
+        return z_max - value;
+    }
 
     /* 
         Private methods used in parsing steps
@@ -2279,13 +2310,17 @@
         } 
     }
 
-	numbers.matrix.pinv = function(M) {
+    if(window.numbers)
+    {
+        numbers.matrix.pinv = function(M) {
 
-		if(M.length < M[0].length)
-			return linalg.transposeSync(linalg.pinvSync(linalg.transposeSync(M)))
-		else
-			return linalg.pinvSync(M)
-	}
+            if(M.length < M[0].length)
+                return linalg.transposeSync(linalg.pinvSync(linalg.transposeSync(M)))
+            else
+                return linalg.pinvSync(M)
+        }
+    }
+	
 
 	// http://locutus.io/c/math/frexp/
 	Math.frexp = function(arg) {

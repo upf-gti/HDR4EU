@@ -23,8 +23,9 @@
 
     var HDRE = global.HDRE = {
 
-        version: 2.0,	// v1.5 adds spherical harmonics coeffs for the skybox
-						// v2.0 adds byte padding for C++ uses				
+        version: 2.5,	// v1.5 adds spherical harmonics coeffs for the skybox
+                        // v2.0 adds byte padding for C++ uses				
+                        // v2.5 allows mip levels to be smaller than 8x8
         maxFileSize: 60e6 // bytes
     };
 
@@ -354,8 +355,11 @@
 			var offsetEnd = w * w * numChannels * 6;
             ems.push( data.slice(offset, offset + offsetEnd) );
             offset += offsetEnd;
-			
-			w = Math.max(8, originalWidth / Math.pow(2, mip_level));
+            
+            if(v > 2.0)
+                w = originalWidth / Math.pow(2, mip_level);
+            else
+                w = Math.max(8, originalWidth / Math.pow(2, mip_level));
         }
 
 
@@ -392,8 +396,12 @@
             });
 
             // resize next textures
-			var mip_level = i + 1;
-			w = Math.max(8, originalWidth / Math.pow(2, mip_level));
+            var mip_level = i + 1;
+            
+            if(v > 2.0)
+                w = originalWidth / Math.pow(2, mip_level);
+            else
+                w = Math.max(8, originalWidth / Math.pow(2, mip_level));
 
             if(options.onprogress)
                 options.onprogress( i );

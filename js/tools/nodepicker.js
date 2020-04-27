@@ -22,6 +22,9 @@ Object.assign( NodePicker.prototype, {
         if(node.constructor !== RD.SceneNode)
         throw("bad param");
     
+        if(!node.mesh)
+        return;
+
         if(multiple && this.selected)
         {
             if(this.selected && this.selected.constructor !== Array && this.selected._uid !== node._uid)
@@ -66,10 +69,20 @@ Object.assign( NodePicker.prototype, {
             window.node = node;   
             window.nodes = undefined; 
         }
+
+        CORE.gizmo.setTargets( [].concat(this.selected) );
     },
 
-    unSelect()
+    unSelect( node_id )
     {
+        if(node_id && CORE)
+        {
+            if(!CORE.getByName(node_id))
+                return;
+        }
+
+        // CORE.gizmo.mode = 0;
+        CORE.gizmo.setTargets( [] );
         this.selected = null;
         window.node = undefined;
         window.nodes = undefined;
@@ -77,29 +90,24 @@ Object.assign( NodePicker.prototype, {
     },
 
 
-    delete() {
+    delete( node ) {
 
-        var nodes = this.selected;
+        node = node || this.selected;
 
-        if(!nodes)
+        if(!node)
         return;
 
-        nodes = [].concat(nodes); // always an array
+        var nodes = [].concat(node); // always an array
 
         for(var n = 0; n < nodes.length; ++n)
         {
-            var node = nodes[n];
+            var n = nodes[n];
 
-            if(node.components && node.components["Light"])
-            node.components["Light"].remove();
+            if(n.components && n.components["Light"])
+            n.components["Light"].remove();
 
-            node.destroy();
-            node = null;
-
-            // why am I doing this ? wrong copy paste?
-            /*for(var t in gl.textures)
-                if(t.includes( this._last_environment ))
-                    delete gl.textures[t];*/
+            n.destroy();
+            n = null;
         }
 
         CORE.destroyByName("lines");
@@ -114,6 +122,9 @@ Object.assign( NodePicker.prototype, {
     update() {
 
         if(!this.selected)
+        return;
+
+        // dont render lines
         return;
 
         var nodes = [].concat(this.selected); // always an array 
@@ -172,10 +183,11 @@ Object.assign( NodePicker.prototype, {
             var l = new RD.SceneNode();
             l.flags.ignore_collisions = true;
             l.primitive = gl.LINES;
-			l.layers = 4;
+            l.layers = 4;
+            l._nogui = true;
             l.mesh = "lines";
             l.name = "lines";
-            l.color = [1,1,1,1];
+            l.color = [1,1,0,1];
             l.shader = "lines";
             root.addChild(l);
         }

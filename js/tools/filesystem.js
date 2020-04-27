@@ -1,12 +1,13 @@
 
 class FileSystem{
     
-    constructor(callback)
+    constructor(user, pass, callback)
     {
-        this.lfs = LFS.setup("https://webglstudio.org/users/hermann/files/sauce_dev/src/", this.onReady.bind(this, callback) );
+        this.lfs = LFS.setup("https://webglstudio.org/users/hermann/files/sauce_dev/src/");//, this.onReady.bind(this, user, pass, callback) );
         this.session = null;
         this.parsers = {};
-		this.root = "https://webglstudio.org/users/hermann/files/sauce_dev/files/";
+        this.root = "https://webglstudio.org/users/hermann/files/sauce_dev/files/";
+        this.onReady();
     }
 
    
@@ -29,7 +30,7 @@ class FileSystem{
 
     }
 
-    onReady(callback){
+    onReady(u, p, callback){
         LFS.login( "admin", "foo", this.onLogin.bind(this, callback) );
     }
 

@@ -1,5 +1,5 @@
 /*
-*   Alex Rodriguez
+*   author: Alex Rodriguez
 *   @jxarco 
 */
 
@@ -21,8 +21,8 @@ function CameraController(context, o)
 CameraController.prototype._ctor = function()
 {
     this._fov = 45;
-    this._near = 0.25;
-    this._far = 25 * 40;
+    this._near = 1;
+    this._far = 100;
     this._aspect = gl.canvas.width / gl.canvas.height;
 
     this._eye = [-1.5, 2, 6];
@@ -39,8 +39,8 @@ CameraController.prototype._ctor = function()
 CameraController.prototype.reset = function()
 {
     this._fov = 45;
-    this._near = 0.25;
-    this._far = 25 * 40;
+    this._near = 1;
+    this._far = 100;
     this._aspect = gl.canvas.width / gl.canvas.height;
     
      this._eye = [-1.5, 2, 6];
@@ -94,12 +94,15 @@ CameraController.prototype.getCameraPosition = function()
     return this.camera.position;
 }
 
-
 CameraController.prototype.onNodeLoaded = function(node, newEye)
 {
     var bb = gl.meshes[node.mesh].getBoundingBox();
     var center = BBox.getCenter(bb);
-    var radius = BBox.getRadius(bb);
+    var scale = node.scaling[0];
+
+    if(node.parentNode)
+        scale *= node.parentNode.scaling[0]; 
+    var radius = BBox.getRadius(bb) * scale;
     
     if(CORE)
         CORE.selected_radius = radius;
@@ -109,9 +112,10 @@ CameraController.prototype.onNodeLoaded = function(node, newEye)
     vec3.transformMat4( result, center, globalMat );
 
     this.camera.lookAt(newEye ? newEye : [ 0, radius * 0.5, radius * 3 ], result, RD.UP);
+    window.destination_eye = camera.position;
 
     // update near depending on the BB radius
-    this.camera.near = radius * 0.05;
+    // this.camera.near = radius * 0.45;
 }
 
 // editor.js at webglstudio @javiagenjo
@@ -158,6 +162,16 @@ CameraController.prototype.orbit = function(yaw, pitch)
     vec3.add(window.destination_eye, dist, center);
     //window.destination_eye = eye;
     camera._must_update_matrix = true;
+}
+
+CameraController.prototype.setLSCamera = function( camera )
+{
+    camera.updateMatrices();
+    vec3.copy( LS.Draw.camera_position, camera.position );	
+    LS.Draw.view_matrix.set( camera._view_matrix );
+    LS.Draw.projection_matrix.set( camera._projection_matrix );
+    LS.Draw.viewprojection_matrix.set( camera._viewprojection_matrix );
+    LS.Draw.uniforms.u_perspective = gl.viewport_data[3] * LS.Draw.projection_matrix[5];
 }
 
 Object.defineProperty(CameraController.prototype, 'near', {

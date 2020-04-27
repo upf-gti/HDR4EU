@@ -1,5 +1,5 @@
 /*
-*   Alex Rodriguez
+*   author: Alex Rodriguez
 *   @jxarco 
 */
 
@@ -24,6 +24,7 @@ function GUI()
     
 	this._ctor();
 	this.setup();
+	// this.importData();
 }
 
 GUI.prototype._ctor = function()
@@ -41,7 +42,8 @@ GUI.prototype._ctor = function()
 
     // other properties
     this._allow_drop = true;
-    this._enable_log = false;
+	this._enable_log = false;
+	this._showGizmos = true;
     this._color_picker = false;
 	this._show_layers = false;
 	this._must_update_panel = false;
@@ -78,6 +80,16 @@ GUI.prototype.setup = function()
         that.show_deferred_textures = !that.show_deferred_textures;
         
         if(that.show_deferred_textures)
+            $(this).addClass("enabled");
+        else 
+            $(this).removeClass("enabled");
+	});
+	
+	$(document.querySelector(".tool-forcerender")).on('click', function(){
+
+        CORE._force_render_allFrames = !CORE._force_render_allFrames;
+        
+        if(CORE._force_render_allFrames)
             $(this).addClass("enabled");
         else 
             $(this).removeClass("enabled");
@@ -164,38 +176,20 @@ GUI.prototype.fillMenubar = function( mainmenu )
     } });
 
     mainmenu.add("File/Preferences/Allow drop", { type: "checkbox", instance: this, property: "_allow_drop"});
-    mainmenu.add("File/Preferences/FPS counter", { type: "checkbox", instance: this, property: "_fps_enable", callback: function() { 
+	/*mainmenu.add("File/Preferences/Render PBR channels", { type: "checkbox", instance: this, property: "_show_layers", callback: function(){ 
+        CORE.setUniform("show_layers", that._show_layers);
+    }});*/
+
+	mainmenu.add("View/Fullscreen", { callback: function() { gl.fullscreen() } });
+	mainmenu.separator("View");    
+	mainmenu.add("View/Show gizmos", {  type: "checkbox", instance: this, property: "_showGizmos"});
+	mainmenu.add("View/FPS counter", { type: "checkbox", instance: this, property: "_fps_enable", callback: function() { 
         if(!that._fps_enable) that.closeFPS();
         else that.showFPS();
     }});
-    mainmenu.add("File/Preferences/Color picker", { type: "checkbox", instance: this, property: "_color_picker", callback: function() { 
-        if(!that._color_picker) document.querySelector(".pixelPicker").style.display = 'none';
-        else document.querySelector(".pixelPicker").style.display = 'block';
-    }});
-    mainmenu.add("File/Preferences/Log", { type: "checkbox", instance: this, property: "_enable_log", callback: function(){ 
+    mainmenu.add("View/Log", { type: "checkbox", instance: this, property: "_enable_log", callback: function(){ 
         $("#log").toggle();
 	}});
-	mainmenu.add("File/Preferences/Render PBR channels", { type: "checkbox", instance: this, property: "_show_layers", callback: function(){ 
-        CORE.setUniform("show_layers", that._show_layers);
-    }});
-
-	mainmenu.add("View/PREM/Original", { callback: function() {
-		CORE.cubemap.texture = CORE._environment;
-    }});
-    for(let i = 1; i < 6; i++)
-        mainmenu.add("View/PREM/Level "+i, { callback: function() {
-            var env = CORE._environment;
-            CORE.cubemap.texture = '@mip' + i + '__' + env;
-        }});
-    
-    mainmenu.add("View/SSAO Noise tex", { callback: function() {
-            var node = CORE.addPrimitive('plane');
-            node.shader = "textured";
-            node.textures['albedo'] = "ssao_noise";
-        }});
-    mainmenu.separator("View");    
-    mainmenu.add("View/Fullscreen", { callback: function() { gl.fullscreen() } });
-    mainmenu.add("View/Low panel", { callback: function() { $(that._hdri_bottompanel.root).toggle(); } });
 
 	var scenes = RM.scenes;
 
@@ -228,7 +222,7 @@ GUI.prototype.fillMenubar = function( mainmenu )
 	mainmenu.add("Tools/Chroma Key Tools", { callback: function() { gui.showChromaTools(); }});
 
     mainmenu.add("Help/Version", { callback: function() { LiteGUI.alert("APP v" + RM.version, {title: "App Info"}) } });
-    mainmenu.add("Help/Github page", { callback: function() { LiteGUI.alert("<a href='https://github.com/jxarco'>@jxarco</a>", {title: "App Info"}) } });
+    mainmenu.add("Help/Github page", { callback: function() { LiteGUI.alert("<a href='https://github.com/upf-gti/HDR4EU'>upf-gti/HDR4EU</a>", {title: "App Info"}) } });
     mainmenu.add("Help/Other demos", { callback: function() { LiteGUI.alert("<a href='https://webglstudio.org/users/arodriguez/demos/atmos'>Atmospherical scattering</a><br>"+
     "<a href='https://webglstudio.org/latest/player.html?url=fileserver%2Ffiles%2Farodriguez%2Fprojects%2FHDR4EU%2Fgreen.scene.json'>Chroma Keying</a><br>" +
 	"<a href='https://webglstudio.org/users/arodriguez/demos/cr2parser'>Cr2 parser</a><br>", {title: "App Info"}) } });
@@ -247,7 +241,7 @@ GUI.prototype.createTabPanel = function()
     tabs.appendChild(content);
     
     var SceneTab = this.createTab("Scene", "<img src='https://webglstudio.org/latest/imgs/mini-icon-cube.png'>", true);
-    var hdriTab = this.createTab("Assembly", "<img src='https://webglstudio.org/latest/imgs/mini-icon-texture.png'>");
+    var hdriTab = this.createTab("Assembly", "<img src='imgs/mini-icon-texture.png'>");
 
     SceneTab.id = 'maintab';
     hdriTab.id = 'assemblytab';
@@ -275,7 +269,7 @@ GUI.prototype.createTab = function(name, icon, selected)
 	iconDiv.innerHTML = icon;
 
 	tab.appendChild(nameDiv);
-	tab.appendChild(iconDiv);
+	// tab.appendChild(iconDiv);
 
 	tab.addEventListener('click', function(e){
 		
@@ -284,12 +278,14 @@ GUI.prototype.createTab = function(name, icon, selected)
         
         if(this.id == 'maintab'){
 
-            that.editor = SCENE_TAB;
-			CORE.controller.bindEvents();
+			that.editor = SCENE_TAB;
+			CORE.graph_manager.graph.start();
+			CORE.event_manager.bind();
 		}
         else {
-            that.editor = HDRI_TAB;
-			HDRI.dragscale.bindEvents( HDRI.canvas );
+			that.editor = HDRI_TAB;
+			CORE.graph_manager.graph.stop();
+			HDRI.bind();
 		}
 
         // hide all
@@ -311,12 +307,18 @@ GUI.prototype.createTab = function(name, icon, selected)
 
 GUI.prototype.createSidePanel = function()
 {
-    this._mainarea.split("horizontal",[null,"17.5%"],false);
+	var w = "17.5%";
+	w = "350px"; // fix width?
+
+    this._mainarea.split("horizontal",[null,w],false);
     var docked = new LiteGUI.Panel("right_panel", {title:'Inspector', scroll: true});
     this._mainarea.getSection(1).add( docked );
     $(docked).bind("closed", function() { this._mainarea.merge(); });
     this._sidepanel = docked;
-    this.updateSidePanel( docked, 'root' );
+	this.updateSidePanel( docked, 'root' );
+	
+	docked.content.id = "main-inspector-content";
+	docked.content.style.width = w;
 
 	locations[ "#mainarea" ] = this._mainarea.getSection(0).root;
 }
@@ -370,299 +372,144 @@ GUI.prototype.createBottomPanel = function()
 	{
 		CORE.graph_manager.open();
 	}
-
-	
 }
 
 GUI.prototype.updateSidePanel = function( root, item_selected, options )
 {
     if(!item_selected)
-    return;
-    root = root || this._sidepanel;
+	return;
+
 	options = options || {};
+	this.item_selected = item_selected;
+	this.tab_selected = options.tab ? options.tab : null;
+    root = root || this._sidepanel;
     $(root.content).empty();
     
 	//side panel widget
 
     var mytree = this.updateNodeTree(scene.root);
 
-    var litetree = new LiteGUI.Tree(mytree, {id: "tree", allow_rename:true});
+    var litetree = new LiteGUI.Tree(mytree, {id: "tree", allow_multiselection: true, allow_rename: true});
+	litetree.setSelectedItem(item_selected);
+	var that = this;
 
-    var that = this;
+	//bg click right mouse
+	litetree.onItemContextMenu = function(e, el) { 
 
-    litetree.root.addEventListener('item_selected', function(e){
 		e.preventDefault();
-        that.updateSidePanel( that._sidepanel, e.detail.data.id );
-    });
+		var item = el.item;
+		var node_id = el.data.id;
 
-	// DOES NOT WORK YET
-	litetree.root.addEventListener("click", function(e){
-        e.preventDefault();
+		if(!CORE)
+		return;
 
-		if(!e.rightButton)
-			return;
+		var node = CORE.getByName(node_id);
+		if(!node) // is root 
+		return;
 
 		var actions = [
             {
-                title: "Rename", //text to show
+                title: node.visible ? "Hide" : "Show", //text to show
 				callback: function() { 
-					console.log("TODO");
+					node.visible = !node.visible;
+					node.flags.ignore_collisions = !node.flags.ignore_collisions;
+					that.updateSidePanel(null, node_id);
+
+					if(RM.Get("NodePicker"))
+					{
+						if(!node.visible )
+							RM.Get("NodePicker").unSelect();
+					}
+				}
+			},
+			
+			{
+                title: "Focus",
+				callback: function() { 
+					CORE.controller.onNodeLoaded(node, CORE.controller.camera.position);
+				}
+			},
+			
+			{
+                title: "Copy",
+				callback: function() { 
+					LiteGUI.toClipboard( node.name );
 				}
             },
           
             {
                 title: "Delete", //text to show
                 callback: function() { 
-					CORE.getByName(e.detail.data.id).destroy();
+					if(RM.Get('NodePicker'))
+                        RM.Get('NodePicker').delete( node );
 					that.updateSidePanel(null, "root");
 				}
             },
 		];
 		var contextmenu = new LiteGUI.ContextMenu( actions, { event: e });
-    });
+	};
 
-    litetree.root.addEventListener("item_dblclicked", function(e){
-        e.preventDefault();
+  	litetree.onItemSelected = function(data, node){
+		
+		var selection = data.id;
+
+		if(RM.Get("NodePicker"))
+		{
+			if(selection !== 'root')
+			RM.Get("NodePicker").select( CORE.getByName( selection ) );
+			else
+			RM.Get("NodePicker").unSelect();
+		} 
+
+		that.updateSidePanel( null, selection );
+	};
+
+   	litetree.root.addEventListener("item_dblclicked", function(e){
+		
+		
+		e.preventDefault();
     });
 
 	this.tree = litetree;
-
 	var isRoot = item_selected === "root";
 
-	// if(isRoot)
-	    $(root.content).append( litetree.root );
+	$(root.content).append( litetree.root );
 
 	var widgets_pre = new LiteGUI.Inspector();
     $(root.content).append(widgets_pre.root);
-
-	// widgets_pre.addButton( null, isRoot ? "Show scene uniforms" : "Show root", {callback: function(){ that.updateSidePanel( that._sidepanel, isRoot ? "scene_options" : "root" ) }} );
-	widgets_pre.addButton( null, "Show scene uniforms", {callback: function(){ that.updateSidePanel( that._sidepanel, "scene_options" ) }} );
-
-    //side panel widget
+	
+	widgets_pre.widgets_per_row = 2;
+	widgets_pre.addButton( null, "Scene uniforms", {callback: function(){ that.updateSidePanel( that._sidepanel, "scene_options" ) }} );
+	widgets_pre.addButton( null, "Add component", {callback: function(){ 
+		
+		that.showRootComponents();
+	}});
+	
     var widgets = new LiteGUI.Inspector();
     $(root.content).append(widgets.root);
 
-    var k = 0;
-    for(var node in scene.root.children) if(scene.root.children[k].name == 'lines') continue; else k++; 
-    widgets.root.style.height = "calc( 100% - " + (k * 25) + "px )";
-    
-    var camera = CORE.controller.camera, skybox = CORE.cubemap;
-    var SFXComponent = RM.Get('ScreenFX');
-    var RenderComponent = RM.Get('Render');
-
     if(item_selected == 'root')
     {
-        var current_env = CORE._environment_set || {};
-
-		widgets.addSection("Skybox", {collapsed: skyboxSectionCollapsed, callback: function(no_collapsed){
-				skyboxSectionCollapsed = !no_collapsed;
-			}});
-		
-		widgets.addHDRE( "Environment", CORE._environment );
-        widgets.addList(null, RM.textures, {/*selected: current_env, */height: "75px", callback: function(v){
-            gui.loading();
-            CORE.set( v );
-        }});
-        widgets.widgets_per_row = 1;
-        widgets.addSeparator();
-        widgets.addTitle("Properties");
-        widgets.addNumber("Rotation", renderer._uniforms["u_rotation"], {name_width: "50%", min:-720*DEG2RAD,max:720*DEG2RAD,step:0.05, callback: function(v){ CORE.setUniform("rotation",v);}});
-		widgets.addColor("Background color", CORE._background_color, {name_width: "50%", callback: function(color){ 
-			CORE._background_color = color;
-		}});
-		widgets.widgets_per_row = 3;
-        widgets.addCheckbox("Visible", skybox.flags.visible, {name_width: "75%", callback: function(v) { skybox.flags.visible = v; }});
-		widgets.addCheckbox("Blur", this._usePrem0, {name_width: "75%", callback: function(v) { 
-			that._usePrem0 = v; 
-		}});
-		widgets.addCheckbox("Flip X", renderer._uniforms["u_flipX"], {name_width: "75%", callback: function(v) { CORE.setUniform("flipX", v)}});
-		widgets.widgets_per_row = 1;
-		widgets.addSeparator();
-
-        widgets.addSection("Camera", {collapsed: cameraSectionCollapsed, callback: function(no_collapsed){
-				cameraSectionCollapsed = !no_collapsed;
-			}});
-
-        widgets.addVector3("Position",  camera.position, {callback: function(v){
-            camera.position = v;
-        }});
-        widgets.addVector3("Target", camera.target, {callback: function(v){
-            camera.target = v;
-        }});
-        widgets.addSeparator();
-        widgets.widgets_per_row = 2;
-        widgets.addNumber("Near", camera.near, {name_width: "30%", min:0, callback: function(v){
-            CORE.controller.near = v;
-        }});
-        widgets.addNumber("Far", camera.far, {name_width: "30%", min:0, callback: function(v){
-            CORE.controller.far = v;
-        }});
-        widgets.addSeparator();
-        widgets.addButton(null, "Get current", {callback: function() { that.updateSidePanel(that._sidepanel, 'root')}});
-
-        widgets.widgets_per_row = 1;
-        widgets.addSeparator();
-
-		if(CORE.graph_manager)
-			CORE.graph_manager.drawGUI(widgets);
-
-		if(options.callback)
-			options.callback(widgets);
-
-		for (var c in RM.components)
-		{
-			var component = RM.components[c];
-			if( component.mark && component.create )
-				component.create( widgets, root );
-		}
-
-    }
-    else if(item_selected == 'light')
-    {
-        var LightComponent = RM.Get('Light');
-        LightComponent.create( widgets );
+       this.addRootInspector( widgets, options );
     }
     
-    else if(item_selected.includes("scale") || item_selected.includes("matrix"))
-    {
-        var node = CORE.getByName(item_selected);
-		
-		if(!node)
-			return;
-
-		var first_child = node.children[0];
-
-		// update rotations
-        node.rots = node.rots ? node.rots : vec3.create();
-
-        widgets.addSection("Transform");
-        widgets.addVector3("Position", node.position, {callback: function(v){ node.position = v; }});
-		widgets.addVector3("Rotation", node.rots, {callback: function(v){ 
-            
-            var dt = vec3.create();
-            dt = vec3.sub(dt, node.rots, v);
-
-            node.rots = v;
-
-            node.rotate(dt[0] * DEG2RAD, RD.LEFT);
-            node.rotate(dt[1] * DEG2RAD, RD.UP);
-            node.rotate(dt[2] * DEG2RAD, RD.FRONT);
-
-        }});
-        widgets.addNumber("Uniform scale", node.scaling[0], {min: 0.1, callback: function(v){ node.scaling = v; }});
-		widgets.addSection("Shader");
-        widgets.addList(null, ["flat", "textured_phong", "mirror", "textured", "pbr"], {/*selected: first_child.shader, */callback: function(v){ 
-			for(var i in node.children)
-				node.children[i].shader = v;
-		}})
-        widgets.addSection("Properties");
-        widgets.addColor("Base color", renderer._uniforms["u_albedo"], {callback: function(color){ 
-			CORE.setUniform('albedo', color);
-			for(var i in node.children)
-				node.children[i].uniforms['u_color'] = color;
-		}});
-    }
-    else if(item_selected.includes("-")) // is a primitive uid
-    {
-        var node = CORE.getByName(item_selected);
-        
-        // update rotations
-        node.rots = node.rots ? node.rots : vec3.create();
-
-		
-		// Put button to add node component
-		var add_component_node = widgets.addButton(null, "&#10010; Add node component", {callback: function(){
-			
-			that.showNodeComponents(node);
-		
-		}});
-		add_component_node.querySelector("button").classList.add("section-button");
-		
-
-		widgets.addSection("Mesh");
-        widgets.addTitle(node.mesh);
-	
-		var groups = gl.meshes[node.mesh].info.groups;
-		var submesh_ids = ["All"];
-
-		for(var i in groups)
-			submesh_ids.push( groups[i].name );
-
-		if(submesh_ids.length)
-		{
-			widgets.addCombo("Submesh", node.submesh || "All", {values: submesh_ids, callback: function(v){
-			
-				node.submesh = v;
-				that.updateSidePanel(null, item_selected);
-					
-				if(v == "All") node.draw_range = null;
-				else 
-				{
-					var index = submesh_ids.indexOf(v) - 1; // remove "All"
-					node.draw_range = [groups[index].start, groups[index].length];
-				}
-			}});
-		}
-
-        widgets.addSection("Transform", {collapsed: true});
-        widgets.addVector3("Position", node.position, {callback: function(v){ node.position = v; }});
-        widgets.addVector3("Rotation", node.rots, {callback: function(v){ 
-            
-            var dt = vec3.create();
-            dt = vec3.sub(dt, node.rots, v);
-
-            node.rots = v;
-
-            node.rotate(dt[0] * DEG2RAD, RD.LEFT);
-            node.rotate(dt[1] * DEG2RAD, RD.UP);
-            node.rotate(dt[2] * DEG2RAD, RD.FRONT);
-
-        }});
-		widgets.addVector3("Scale", node.scaling, {callback: function(v){ node.scaling = v; }});
-        widgets.addNumber("Uniform scale", node.scaling[0], {step: 0.01, callback: function(v){ node.scaling = v; }});
-        widgets.addButton(null, "Set camera", {callback: function() {
-
-            var bb = gl.meshes[node.mesh].getBoundingBox();
-            var center = BBox.getCenter(bb);
-            var radius = BBox.getRadius(bb);
-
-            var globalMat = node.getGlobalMatrix();
-            var result = vec3.create();
-            vec3.transformMat4( result, center, globalMat );
-
-            CORE.controller.camera.lookAt([ 0, radius * 0.5, radius * 2.5 ], result, RD.UP);
-        }});
-        widgets.addSection("Shader", {collapsed: true});
-        widgets.addList(null, ["flat", "textured_phong", "mirror", "textured", "pbr"], {/*selected: node.shader,*/callback: function(v){ 
-			node.shader = v;
-
-			if((v === 'textured' && !node.textures['albedo']) || 
-				(v === 'textured_phong' && !node.textures['albedo']))
-				node.textures['albedo'] = 'white';
-
-			that.updateSidePanel(null, node.name);
-				
-		}});
-
-		if(node.components)
-			for (var c in node.components)
-			{
-				var component = node.components[c];
-				if( component.mark && component.create )
-					component.create( widgets, root );
-			}
-
-		if(!node.components || !node.components["Light"])
-			this.addMaterial(widgets, node);
-    }
 	else if(item_selected == "scene_options")
     {
 		for( let i in renderer._uniforms ) {
 
+			if(renderer._uniforms[i] === undefined)
+			continue;
+
 			var value = renderer._uniforms[i];
 
 			if(value.constructor == Float32Array)
-				continue;//value = "array";
+			{
+				if(value.length > 3)
+					continue;
+				else
+					value = "[" + value[0].toFixed(2) + ", " + value[1].toFixed(2) + ", " + value[2].toFixed(2) + "]";
+			}else if(value.constructor == Number)
+				value = value.toFixed(3);
 
 			var pretitle = "<span title='Drag " + i + "' class='keyframe_icon'></span>";
 			var element = widgets.addInfo(i.replace("u_",""), value.toString(), {pretitle: pretitle, name_width: "50%"});
@@ -686,11 +533,370 @@ GUI.prototype.updateSidePanel = function( root, item_selected, options )
 			gui._uniform_canvas.style.display = 'none';
 		}});
     }
+	else
+    {
+		var node = CORE.getByName(item_selected);
+		if(node)
+			this.addNodeInspector(node, widgets);
+		
+	}
 
-    // update scroll position
+	// update scroll position
 	var element = root.content.querySelectorAll(".inspector")[1];
 	var maxScroll = element.scrollHeight;
 	element.scrollTop = options.maxScroll ? maxScroll : (options.scroll ? options.scroll : 0);
+}
+
+GUI.prototype.addRootInspector = function(widgets, options)
+{
+	var that = this;
+	var camera = CORE.controller.camera, skybox = CORE.cubemap;
+
+	/*
+		NODE INFO -> testing components in tabs
+	*/
+
+	var tree = document.querySelector("#tree");
+	var pansHeight = innerHeight - tree.offsetHeight - 85;
+
+	var container = widgets.addContainer();
+	container.style.width = "100%";
+	container.style.height = "100%";
+	container.style.display = "flex";
+
+	var tabContainer = document.createElement("div");
+	tabContainer.style.background = "#292929";
+	tabContainer.style.width = "30px";
+	tabContainer.style.height = (pansHeight) + "px";
+
+	var infoContainer = document.createElement("div");
+	infoContainer.className = "data-inspector";
+	infoContainer.style.height = (pansHeight) + "px";
+
+	container.appendChild( tabContainer );
+	container.appendChild( infoContainer );
+
+	var node_widgets = new LiteGUI.Inspector();
+	$(infoContainer).append(node_widgets.root);
+
+	// ADD TABS
+
+	// add skybox
+	var icon = "https://webglstudio.org/latest/imgs/mini-icon-dome.png";
+	var tab = document.createElement('span');
+	tab.title = "skybox";
+	tab.className = "side-tab" + (options.tab ? "" : " selected");
+	tab.innerHTML = "<img src=" + icon + " style='width: 100%;'>"
+	tab.addEventListener('click', function(){
+		$(".side-tab").removeClass("selected")
+		this.classList.add( "selected" );
+		node_widgets.on_refresh(  );
+	});
+	tabContainer.appendChild( tab );
+
+	// add camera
+	icon = "https://webglstudio.org/latest/imgs/mini-icon-camera.png";
+	tab = document.createElement('span');
+	tab.title = "camera";
+	tab.className = "side-tab" + (options.tab && options.tab === "camera" ? " selected" : "");
+	tab.innerHTML = "<img src=" + icon + " style='width: 100%;'>"
+	tab.addEventListener('click', function(){
+		$(".side-tab").removeClass("selected")
+		this.classList.add( "selected" );
+		node_widgets.on_refresh( "camera" );
+	});
+	tabContainer.appendChild( tab );
+
+	// add graph
+	icon = "https://webglstudio.org/latest/imgs/mini-icon-fx.png";
+	tab = document.createElement('span');
+	tab.title = "graph";
+	tab.className = "side-tab" + (options.tab && options.tab === "graph" ? " selected" : "");
+	tab.innerHTML = "<img src=" + icon + " style='width: 100%;'>"
+	tab.addEventListener('click', function(){
+		$(".side-tab").removeClass("selected")
+		this.classList.add( "selected" );
+		node_widgets.on_refresh( "graph" );
+	});
+	tabContainer.appendChild( tab );
+
+	for (let c in RM.components)
+	{
+		var component = RM.components[c];
+		if( component.mark && component.create )
+		{
+			var icon = component.constructor.icon;
+			var tab = document.createElement('span');
+			tab.title = c;
+			tab.className = "side-tab" + (options.tab && options.tab === c ? " selected" : "");
+			tab.innerHTML = "<img src=" + icon + " style='width: 100%;'>";
+			tab.addEventListener('click', function(){
+				$(".side-tab").removeClass("selected")
+				this.classList.add( "selected" );
+				node_widgets.on_refresh( c );
+			});
+			tabContainer.appendChild( tab );
+		}
+	}
+
+	// ADD INFO
+
+	node_widgets.on_refresh = (function( name )
+	{
+		node_widgets.clear();
+		that.tab_selected = name;
+
+		if(!name) // show mesh and material
+		{
+			var current_env = CORE._environment_set || {};
+
+			node_widgets.widgets_per_row = 1;
+			node_widgets.addSection("Skybox", {collapsed: skyboxSectionCollapsed, callback: function(no_collapsed){
+					skyboxSectionCollapsed = !no_collapsed;
+				}});
+			
+			node_widgets.addHDRE( "Browse server", CORE._environment );
+			node_widgets.addList("Local files", RM.textures, {/*selected: current_env, */height: "75px", callback: function(v){
+				gui.loading();
+				CORE.set( v );
+			}});
+			node_widgets.widgets_per_row = 1;
+			node_widgets.addSeparator();
+			node_widgets.addTitle("Properties");
+			node_widgets.addNumber("Rotation", renderer._uniforms["u_rotation"], {name_width: "50%", min:-720*DEG2RAD,max:720*DEG2RAD,step:0.05, callback: function(v){ CORE.setUniform("rotation",v);}});
+			node_widgets.addColor("Background color", CORE._background_color, {name_width: "50%", callback: function(color){ 
+				CORE._background_color = color;
+			}});
+			node_widgets.widgets_per_row = 2;
+			node_widgets.addCheckbox("Visible", skybox.flags.visible, {name_width: "55%", callback: function(v) { skybox.flags.visible = v; }});
+			node_widgets.addCheckbox("Blur", this._usePrem0, {name_width: "55%", callback: function(v) { 
+				that._usePrem0 = v; 
+			}});
+			node_widgets.addCheckbox("Flip X", renderer._uniforms["u_flipX"], {name_width: "55%", callback: function(v) { CORE.setUniform("flipX", v)}});
+			node_widgets.widgets_per_row = 1;
+		}
+
+		else if(name === "camera")
+		{
+			node_widgets.widgets_per_row = 1;
+			node_widgets.addSection("Camera", {collapsed: cameraSectionCollapsed, callback: function(no_collapsed){
+				cameraSectionCollapsed = !no_collapsed;
+			}});
+
+			node_widgets.addVector3("Position",  camera.position, {callback: function(v){
+				window.destination_eye = v;
+				//camera.position = v;
+			}});
+			node_widgets.addVector3("Target", camera.target, {callback: function(v){
+				camera.target = v;
+			}});
+			node_widgets.addSeparator();
+			node_widgets.widgets_per_row = 2;
+			node_widgets.addNumber("Near", camera.near, {name_width: "30%", min:0, step: 0.05, callback: function(v){
+				CORE.controller.near = v;
+			}});
+			node_widgets.addNumber("Far", camera.far, {name_width: "30%", min:0, step: 10, callback: function(v){
+				CORE.controller.far = v;
+			}});
+			node_widgets.addSeparator();
+			node_widgets.addButton(null, "Get current", {callback: function() { that.updateSidePanel(that._sidepanel, 'root')}});
+		}
+
+		else if(name === "graph")
+		{
+			node_widgets.widgets_per_row = 1;
+			if(CORE.graph_manager)
+				CORE.graph_manager.onInspect(node_widgets);
+		}
+
+		else
+		{
+			var component = RM.components[name];
+			if( component.mark && component.create )
+				component.create( node_widgets );
+		}
+
+		if(options.callback)
+			options.callback(node_widgets);
+
+	}).bind(this);
+
+	node_widgets.on_refresh( options.tab );
+}
+
+GUI.prototype.addNodeInspector = function(node, widgets)
+{
+	var that = this;
+
+	// update rotations
+	node.rots = node.rots ? node.rots : vec3.create();
+
+	// Put button to add node component
+	var add_component_node = widgets.addButton(null, "&#10010; Add node component", {callback: function(){
+		
+		that.showNodeComponents(node);
+	
+	}});
+	add_component_node.querySelector("button").classList.add("section-button");
+	
+	/*
+		NODE INFO -> testing components in tabs
+	*/
+
+	var tree = document.querySelector("#tree");
+	var pansHeight = innerHeight - tree.offsetHeight - 117;
+
+	var container = widgets.addContainer();
+	container.style.width = "100%";
+	container.style.height = "100%";
+	container.style.display = "flex";
+
+	var tabContainer = document.createElement("div");
+	tabContainer.style.background = "#292929";
+	tabContainer.style.width = "30px";
+	tabContainer.style.height = (pansHeight) + "px";
+
+	var infoContainer = document.createElement("div");
+	infoContainer.className = "data-inspector";
+	infoContainer.style.height = (pansHeight) + "px";
+
+	container.appendChild( tabContainer );
+	container.appendChild( infoContainer );
+
+	var node_widgets = new LiteGUI.Inspector();
+	$(infoContainer).append(node_widgets.root);
+
+	// ADD TABS
+
+	// add mesh/transform tab
+	var icon = "https://webglstudio.org/latest/imgs/mini-icon-mesh.png";
+	var tab = document.createElement('span');
+	tab.className = "side-tab selected";
+	tab.innerHTML = "<img src=" + icon + " style='width: 100%;'>"
+	tab.addEventListener('click', function(){
+		$(".side-tab").removeClass("selected")
+		this.classList.add( "selected" );
+		node_widgets.on_refresh();
+	});
+	tabContainer.appendChild( tab );
+
+	// add mesh material
+	if(node.mesh)
+	{
+		icon = "https://webglstudio.org/latest/imgs/mini-icon-materialres.png";
+		tab = document.createElement('span');
+		tab.className = "side-tab";
+		tab.innerHTML = "<img src=" + icon + " style='width: 100%;'>"
+		tab.addEventListener('click', function(){
+			$(".side-tab").removeClass("selected")
+			this.classList.add( "selected" );
+			node_widgets.on_refresh( "mat" );
+		});
+		tabContainer.appendChild( tab );
+	}
+
+	if(node.components)
+		for (let c in node.components)
+		{
+			var component = node.components[c];
+			if( component.mark && component.create )
+			{
+				var icon = component.constructor.icon;
+				var tab = document.createElement('span');
+				tab.className = "side-tab";
+				tab.innerHTML = "<img src=" + icon + " style='width: 100%;'>";
+				tab.addEventListener('click', function(){
+					$(".side-tab").removeClass("selected")
+					this.classList.add( "selected" );
+					node_widgets.on_refresh( c );
+				});
+				tabContainer.appendChild( tab );
+			}
+				
+		}
+
+	// ADD INFO
+
+	node_widgets.on_refresh = (function( name )
+	{
+		node_widgets.clear();
+
+		if(!name) // show mesh and material
+		{
+			if(node.mesh)
+			{
+				var mesh_path = node.mesh.slice( 0, node.mesh.lastIndexOf("/") + 1 );
+				var mesh_name = node.mesh.slice( node.mesh.lastIndexOf("/") + 1, node.mesh.length );
+	
+				node_widgets.addSection("Geometry");
+				var meshes = [mesh_name, "plane", "cube", "sphere", "circle", "cylinder", "cone", "torus" , "quartertorus", "halftorus"];
+				node_widgets.addCombo("Mesh", mesh_name, {values: meshes, callback: function(v){
+					node.mesh = v;
+					if(v === mesh_name)
+						node.mesh = mesh_path + v;
+				}});
+		
+				var groups = gl.meshes[node.mesh].info.groups;
+				var submesh_ids = ["All"];
+		
+				for(var i in groups)
+					submesh_ids.push( groups[i].name );
+		
+				if(submesh_ids.length)
+				{
+					node_widgets.addCombo("Submesh", node.submesh || "All", {values: submesh_ids, callback: function(v){
+					
+						node.submesh = v;
+						that.updateSidePanel(null, node.name);
+							
+						if(v == "All") node.draw_range = null;
+						else 
+						{
+							var index = submesh_ids.indexOf(v) - 1; // remove "All"
+							node.draw_range = [groups[index].start, groups[index].length];
+						}
+					}});
+				}
+			}
+
+			node_widgets.addSection("Transform");
+			node_widgets.addVector3("Position", node.position, {callback: function(v){ node.position = v;  CORE.gizmo.updateGizmo();}});
+			node_widgets.addVector3("Rotation", node.rots, {callback: function(v){ 
+				
+				var dt = vec3.create();
+				dt = vec3.sub(dt, node.rots, v);
+	
+				node.rots = v;
+	
+				node.rotate(dt[0] * DEG2RAD, RD.LEFT);
+				node.rotate(dt[1] * DEG2RAD, RD.UP);
+				node.rotate(dt[2] * DEG2RAD, RD.FRONT);
+				
+				CORE.gizmo.updateGizmo();
+	
+			}});
+			node_widgets.addVector3("Scale", node.scaling, {callback: function(v){ node.scaling = v; }});
+			node_widgets.addNumber("Uniform scale", node.scaling[0], {step: 0.01, callback: function(v){ node.scaling = v; }});
+			node_widgets.addButton(null, "Focus", {callback: function() {
+	
+				CORE.controller.onNodeLoaded( node );
+			}});
+		}
+
+		else if(name === "mat")
+		{
+			this.addMaterial(node_widgets, node);
+		}
+		else
+		{
+			var component = node.components[name];
+			if( component.mark && component.create )
+				component.create( node_widgets );
+		}
+
+	}).bind(this);
+
+	node_widgets.refresh();
 }
 
 GUI.prototype.addMaterial = function(inspector, node)
@@ -701,20 +907,32 @@ GUI.prototype.addMaterial = function(inspector, node)
     if(node.children.length)
     node = node.children[0];
 
-	if(node.shader.includes("pbr"))
-	{
+	if(node.shader.includes("pbr")) {
+
 		inspector.addSection("Material");
+		inspector.addTitle("Shader");
+		inspector.addShader(null, node.shader, {node: node});
 		inspector.addTitle("Basic properties");
 		inspector.addColor("Base color", node._uniforms["u_albedo"], {callback: function(color){ node._uniforms["u_albedo"] = node._uniforms["u_color"] = color; }});
-		inspector.addSlider("Roughness", node._uniforms['u_roughness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_roughness'] = v }});
+		inspector.addSlider("Roughness", node._uniforms['u_roughness'],{min:0,max:2,step:0.01,callback: function(v){ node._uniforms['u_roughness'] = v }});
 		inspector.addSlider("Metalness", node._uniforms['u_metalness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_metalness'] = v }});
-		inspector.addSlider("Alpha", node._uniforms['u_alpha'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_alpha'] = v }});
-		/*inspector.addSeparator();
-		inspector.addSlider("energy factor", node._uniforms['u_energy'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_energy'] = v }});*/
-		inspector.addSeparator();
 		inspector.addVector3("Reflectance", node._uniforms['u_reflectance'] ,{max: 1.0, min: 0, step: 0.01, callback: function(v){ node._uniforms['u_reflectance'] = v }});
 		inspector.addSeparator();
-		inspector.addButton(null, "Show flags", {callback: function(){
+
+		inspector.addTitle("Blending");
+		inspector.addSlider("Opacity", node._uniforms['u_alpha'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_alpha'] = v }});
+		inspector.addSlider("Clipping", node._uniforms['u_alpha_cutoff'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_alpha_cutoff'] = v }});
+		var blend_values = ["NONE", "ALPHA", "ADD", "MULTIPLY"];
+		inspector.addCombo("Blend mode", blend_values[node.blend_mode],{values: blend_values,callback: function(v){ 
+			node.blend_mode = blend_values.indexOf(v);
+			if(node.blend_mode == RD.BLEND_ALPHA)
+				node.render_priority = RD.PRIORITY_ALPHA;
+			else
+				node.render_priority = RD.PRIORITY_OPAQUE;
+		}});
+
+		inspector.addSeparator();
+		inspector.addButton(null, "Edit flags", {callback: function(){
 			that.showMaterialFlags(node);
 		} })
 		inspector.addTitle("Clear Coat (Multi-Layer materials)");
@@ -728,6 +946,8 @@ GUI.prototype.addMaterial = function(inspector, node)
 	else if(node.shader.includes("phong"))
 	{
 		inspector.addSection("Material");
+		inspector.addTitle("Shader");
+		inspector.addShader(null, node.shader, {node: node});
 		inspector.addTitle("Basic properties");
 		inspector.addColor("Ambient", renderer._uniforms["u_ambient"], {callback: function(color){ renderer._uniforms["u_ambient"] = color; }});
 		inspector.addSlider("Specular", node._uniforms['u_specular_power'],{min:0,max:2,step:0.05,callback: function(v){ node._uniforms['u_specular_power'] = v }});
@@ -736,10 +956,11 @@ GUI.prototype.addMaterial = function(inspector, node)
 	}
 
 	// works for textured and textured_phong
-	if(node.shader.includes("textured"))
+	if(includes(node.shader, ["textured", "mirror"]))
 	{
 		inspector.addSection("Material");
-		inspector.addTitle("Basic properties");
+		inspector.addTitle("Shader");
+		inspector.addShader(null, node.shader, {node: node});
 		addMaterialTexture(inspector, node, this);
 	}
 	
@@ -747,8 +968,9 @@ GUI.prototype.addMaterial = function(inspector, node)
 
 function addMaterialTexture(inspector, node, gui)
 {
-    inspector.addTitle("Textures")
-    inspector.addNumber("Bump scale", node._uniforms['u_bumpScale'],{name_width: "50%", min:0,max:5,step:0.01, callback: function(v){ node._uniforms['u_bumpScale'] = v }});
+	inspector.addTitle("Textures");
+	inspector.addSlider("Normal scale", node._uniforms['u_normalFactor'],{min:-1,max:2,step:0.01, callback: function(v){ node._uniforms['u_normalFactor'] = v }});
+    inspector.addSlider("Bump scale", node._uniforms['u_bumpScale'],{min:0,max:5,step:0.01, callback: function(v){ node._uniforms['u_bumpScale'] = v }});
     inspector.addNumber("Emissive scale", node._uniforms['u_emissiveScale'],{name_width: "50%", min:0,max:100,step:0.05, callback: function(v){ node._uniforms['u_emissiveScale'] = v }});
 
     var that = gui;
@@ -763,9 +985,15 @@ function addMaterialTexture(inspector, node, gui)
 
     inspector.widgets_per_row = 1;
 
+	inspector.addTexture( "albedo" , node.textures["albedo"], {node: node});
+	inspector.addTexture( "normal" , node.textures["normal"], {node: node});
+
     // OJO CON ESTE
     for(let t in filtered) {
 
+		if(t == 'albedo' || t == "normal")
+		continue;
+		
         inspector.addTexture(t == "notfound" ? "" : t, node.textures[t], {node: node});
     }
 
@@ -784,32 +1012,62 @@ GUI.prototype.showMaterialFlags = function(node)
 {
 	var that = this;
 
-    var id = "Node flags";
-    var dialog_id = replaceAll(id, ' ', '').toLowerCase();
-    var w = 250;
-    var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", title: id, close: true, width: w, draggable: true });
+    var w = 400;
+	var id = "Node flags";
+	var title = id + " (" + node.name + ")";
+	var dialog_id = replaceAll(id, ' ', '').toLowerCase();
+	document.querySelectorAll( "#" + dialog_id ).forEach( e => e.remove() )
+    var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", title: title, close: true, width: w, draggable: true });
     dialog.show('fade');
 
-	var widgets = new LiteGUI.Inspector();
-	widgets.widgets_per_row = 1;
-	widgets.addCheckbox( "Diffuse", node._uniforms["u_renderSpecular"], {name_width: "70%", callback: function(v){
-	
-		node._uniforms["u_renderDiffuse"] = v;
-	
-	}} );
-	widgets.addCheckbox( "Specular", node._uniforms["u_renderSpecular"], {name_width: "70%", callback: function(v){
-	
-		node._uniforms["u_renderSpecular"] = v;
-	
-    }} );
-    widgets.addCheckbox( "Metallic-Rough Map", node._uniforms["u_metallicRough"] || false, {name_width: "70%", callback: function(v){
+	var split = new LiteGUI.Split("material-flags-split",[50,50]);
+	dialog.add(split);
+
+	var widgets0 = new LiteGUI.Inspector();
+	widgets0.addCheckbox( "Metallic-Rough Map", node._uniforms["u_metallicRough"] || false, {name_width: "70%", callback: function(v){
 	
 		node._uniforms["u_metallicRough"] = v;
 	
 	}} );
-	widgets.addSeparator();
+	widgets0.addCheckbox( "Two sided", node.flags.two_sided, {name_width: "70%", callback: function(v){
+	
+		node.flags.two_sided = v;
+	
+	}} );
 
-    dialog.add(widgets);  
+	widgets0.addCheckbox( "Depth test", node.flags.depth_test === undefined ? true : node.flags.depth_test, {name_width: "70%", callback: function(v){
+	
+		node.flags.depth_test = v;
+	
+	}} );
+
+	widgets0.addCheckbox( "Depth write", node.flags.depth_write === undefined ? true : node.flags.depth_write, {name_width: "70%", callback: function(v){
+	
+		node.flags.depth_write = v;
+	
+	}} );
+
+	widgets0.addCheckbox( "Flip normals", node.flags.flip_normals, {name_width: "70%", callback: function(v){
+	
+		node.flags.flip_normals = v;
+	
+	}} );
+
+
+	var widgets1 = new LiteGUI.Inspector();
+	widgets1.addCheckbox( "Diffuse", node._uniforms["u_renderSpecular"], {name_width: "70%", callback: function(v){
+	
+		node._uniforms["u_renderDiffuse"] = v;
+	
+	}} );
+	widgets1.addCheckbox( "Specular", node._uniforms["u_renderSpecular"], {name_width: "70%", callback: function(v){
+	
+		node._uniforms["u_renderSpecular"] = v;
+	
+    }} );
+   
+	split.sections[0].add(widgets0);
+	split.sections[1].add(widgets1);
     dialog.setPosition( renderer.canvas.width/2 - w/2, renderer.canvas.height/2 - renderer.canvas.height/4 );          
 }
 
@@ -824,7 +1082,7 @@ GUI.prototype.showNodeComponents = function(node)
     var widgets = new LiteGUI.Inspector();
 
 	var selected = null;
-	var components = RM.node_components;
+	var components = RM.node_components.sort((a, b) => a.short_name.charCodeAt(0) - b.short_name.charCodeAt(0));
 
     widgets.on_refresh = function(){
 
@@ -861,6 +1119,54 @@ GUI.prototype.showNodeComponents = function(node)
 
 				that.updateSidePanel(null, node.name );
 
+			}
+			
+		}});
+    }
+
+    widgets.on_refresh();
+    dialog.add(widgets);  
+    dialog.setPosition( gl.canvas.width/2 - 200, 250 );
+}
+
+GUI.prototype.showRootComponents = function()
+{
+	var that = this;
+	var id = "Components";
+    var dialog_id = id.replace(" ", "-").toLowerCase();
+    var w = 400;
+    var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", close: true, title: id, width: w, draggable: true });
+    dialog.show('fade');
+    var widgets = new LiteGUI.Inspector();
+
+	var selected = null;
+	var components = RM.classes;
+
+    widgets.on_refresh = function(){
+
+        widgets.clear();
+		widgets.widgets_per_row = 1;
+		
+		widgets.addList( null, components, {callback: function(v) { 
+			
+			selected = v;
+		} });
+
+		widgets.addSeparator();
+
+		widgets.addButton(null, "Add", {callback: function(){
+		
+			if(selected) {
+				
+				var base_class = selected;
+
+				// Control that param has necessary items
+				if(!base_class || !base_class.constructor)
+				throw('component class needed');
+
+				RM.registerComponent( base_class, base_class.name); 
+                that.updateSidePanel(null, "root", {tab: base_class.name});
+				dialog.close();
 			}
 			
 		}});
@@ -918,17 +1224,69 @@ GUI.prototype.showRenderSetting = function()
     dialog.setPosition( gl.canvas.width/2 - 200, 250 );
 }
 
+GUI.prototype.showSessionDialog = function()
+{
+	var that = this;
+	var id = "Open session";
+    var dialog_id = id.replace(" ", "-").toLowerCase();
+    var w = 400;
+    var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", close: true, title: id, width: w, draggable: true });
+    dialog.show('fade');
+    var widgets = new LiteGUI.Inspector();
+
+	var user = null;
+	var pass = null;
+	var user_input;
+	var pass_input;
+
+    widgets.on_refresh = function(){
+
+        widgets.clear();
+		widgets.widgets_per_row = 1;
+		
+		user_input = widgets.addString( "User", user || "", {focus: true, callback: function(v) { 
+			
+			user = v;
+		} });
+
+		widgets.addString( "Password", pass || "", {password: true, callback: function(v) { 
+			
+			pass = v;
+		} });
+
+		widgets.addSeparator();
+
+		widgets.addButton(null, "Login", {callback: function(){
+		
+			if(user && pass) {
+				CORE.FS.onReady(user, pass);
+				dialog.close();
+			}
+			
+		}});
+    }
+
+    widgets.on_refresh();
+    dialog.add(widgets);  
+	dialog.setPosition( gl.canvas.width/2 - 200, 250 );
+	
+	$(user_input.content.querySelector("input")).focus();
+}	
+	
+
 GUI.prototype.updateNodeTree = function(root)
 {
-    var mytree = {'id': "root"};
+	var mytree = {'id': "root"};
+	
     var children = [];
 
-    for(var i = 1; i < root.children.length; i++)
+    for(var i = 0; i < root.children.length; i++)
     {
         var node = root.children[i];
         var child = {};
-        if(node.name == "lines" || node.name == "cubemap") continue;
-        child['id'] = node.name;
+        if(node._nogui) continue;
+		child['id'] = node.name;
+		child['node_visible'] = node.visible;
         if(node.children.length)
         {
             var children_ = [];
@@ -936,18 +1294,26 @@ GUI.prototype.updateNodeTree = function(root)
             for(var j = 0; j < node.children.length; j++)
             {
                 var node_ = node.children[j];
-                var child_ = {};
-                child_['id'] = node_.name;
+				var child_ = {};
+
+				if(!node_.name)
+				node_.name = "child" + j;
+
+				child_['id'] = node_.name;
+				child_['node_visible'] = node_.visible;
                 children_.push(child_);
             }
 
-            // child['children'] = children_;
+        	child['children'] = children_;
         }
 
         children.push(child);
     }
 
-    mytree['children'] = children;
+	// mytree['postcontent'] = '<button href="."> test </button>';
+	mytree['children'] = children;
+	mytree['node_visible'] = true;
+
     return mytree;
 }
 
@@ -970,6 +1336,9 @@ GUI.prototype.sectionToCanvas = function(event)
 	var name = event.dataTransfer.getData('component');
 	let component = RM.Get( name );
 
+	if(!component || window.node)
+		component = window.node.components[name];
+	
 	component.mark = false;
 
 	var options = options || {};
@@ -979,8 +1348,7 @@ GUI.prototype.sectionToCanvas = function(event)
 	{
 		dialog.close();
 		component.mark = true;
-		// update side panel
-		that.updateSidePanel(null, "root");
+		that.updateSidePanel(null, window.node ? window.node.name : "root");
 	}
 
     var id = name;
@@ -991,17 +1359,21 @@ GUI.prototype.sectionToCanvas = function(event)
 
 	var widgets = new LiteGUI.Inspector();
 	if(component.create)
-		component.create(widgets);
+		component.create(widgets, true);
 
 	widgets.addButton(null, "Detach window", {callback: function(){
-		dialog.detachWindow();
+		dialog.detachWindow(null, function(){
+
+			component.mark = true;
+			that.updateSidePanel(null, window.node ? window.node.name : "root");
+		});
 	}})
 
 	dialog.add( widgets );
     dialog.setPosition( event.clientX, event.clientY );  
 
 	// update side panel
-	this.updateSidePanel(null, "root");
+	this.updateSidePanel(null, window.node ? window.node.name : "root");
 }
 
 function getImageByName( name ){
@@ -1057,14 +1429,16 @@ GUI.prototype.exportEnvironment = function()
 
     var inner_local = function() {
 
+		alert.close();
+
 		if(bits === "8 bits")
-            HDRTool.getSkybox( CORE._environment, {type: Uint8Array, saveSH: saveSH} );
+            HDRTool.getSkybox( {type: Uint8Array, saveSH: saveSH} );
         if(bits === "16 bits")
-            HDRTool.getSkybox( CORE._environment, {type: Uint16Array, saveSH: saveSH});
+            HDRTool.getSkybox( {type: Uint16Array, saveSH: saveSH});
         if(bits === "32 bits")
-            HDRTool.getSkybox( CORE._environment, {saveSH: saveSH} );
+            HDRTool.getSkybox( {saveSH: saveSH} );
         else
-			HDRTool.getSkybox( CORE._environment, {rgbe: true, saveSH: saveSH} ); // RGBE
+			HDRTool.getSkybox( {rgbe: true, saveSH: saveSH} ); // RGBE
 	};
 	
 	var inner_repo = function() {
@@ -1279,9 +1653,9 @@ GUI.prototype.showChromaTools = function(chromaNode)
 	var options = {
 
 		blur: {
-			iterations: 12,
+			iterations: 2,
 			intensity: 1,
-			offset: 4.5
+			offset: 1
 		},
 		color: {
 			enable: true,
@@ -1289,7 +1663,7 @@ GUI.prototype.showChromaTools = function(chromaNode)
 			blur: false
 		},
 		normal: {
-			strength: 18,
+			strength: 2.5,
 			flipR: false,
 			flipG: false,
 			flipB: false,
@@ -1307,7 +1681,13 @@ GUI.prototype.showChromaTools = function(chromaNode)
 
 			chroma_texture = name;
 			widgets.on_refresh();
-			console.log("chroma texture updated");
+
+			if(node)
+			{
+				node.components["ChromaKey"].setChroma(name);
+				that.updateSidePanel(null, node.name);
+			}
+
 		}});
 
 		widgets.addButton( null, "From current node", {width: "35%", callback: function() { 
@@ -1344,7 +1724,6 @@ GUI.prototype.showChromaTools = function(chromaNode)
 		widgets.widgets_per_row = 3;
 		widgets.addNumber("Strength", options.normal.strength, {name_width: "45%", callback: function(v){ options.normal.strength = v; }});
 		widgets.addCheckbox("Blur", options.normal.blur, {callback: function(v){ options.normal.blur = v; }});
-		widgets.addCheckbox("Force update", options.normal.force_update, {callback: function(v){ options.normal.force_update = v; }});
 		
 		/*widgets.widgets_per_row = 3;
 		widgets.addCheckbox("Flip R", options.normal.flipR, {name_width: "45%", callback: function(v){ options.normal.flipR = v; }});
@@ -1463,40 +1842,40 @@ GUI.prototype.onExport = function()
 			var data = "text/json;charset=utf-8," + encodeURIComponent(boo);
 			var element = document.createElement('a');
 			element.href = 'data:' + data;
-			element.download = 'scene-'+getDate()+'.json';
+			element.download = filename + '.json';
 			element.style.display = 'none';
 			$(document.body).append(element);
 			element.click();
 		}
 		else {
 		
-			LiteGUI.prompt( "", function(v){
-			
-				// upload data
-				CORE.FS.uploadFile("scenes",new File([boo], v + ".json"), []);
+			CORE.FS.uploadFile("scenes",new File([boo], filename + ".json"), []);
 				
-				// upload thb
-				canvas.toBlob(function(e){
-					CORE.FS.uploadFile( "scenes", new File([e], v + ".png"), [] );
-				});
-			
-			}, { title: "Save as" });
+			// upload thb
+			canvas.toBlob(function(e){
+				CORE.FS.uploadFile( "scenes", new File([e], filename + ".png"), [] );
+			});
 			
 		}
 		
     };
 
-	var tex = CORE.texture_albedo;
-	var preview = new Texture(tex.width, tex.height);
-	preview.drawTo( function(){
-		tex.toViewport( gl.shaders["basicFx"] );
-	} );
+	var data;
+	var filename = "export";
 
-	var canvas = preview.toCanvas();
-	var base64 = canvas.toDataURL();
+	gl.canvas.toBlob(function(v){ 
+		
+		data = v;
+		var url =  URL.createObjectURL( data );
+		var choice = LiteGUI.choice("<img src='" + url + "' width='100%'>", ["Local","Server"], inner, {title: "Save scene", width: 400});
 
-	var choice = LiteGUI.choice("<img style='transform: scaleY(-1);' src='" + base64 + "' width='100%'>", ["Local","Server"], inner, {title: "Save scene", width: 300});
-	choice.setPosition( window.innerWidth/2 - 150, window.innerHeight/2 - 150 ); 
+		var widgets = new LiteGUI.Inspector();
+		widgets.addString( null, filename, {callback: function(v){ filename = v; }} );
+
+		choice.add( widgets.root );
+		choice.setPosition( window.innerWidth/2 - 200, window.innerHeight/2 - 200 ); 
+	});
+	
 }
 
 /**
@@ -1838,24 +2217,14 @@ GUI.prototype.onDragFile = function(file, extension)
             reader.readAsArrayBuffer(file);
             return false;
 			break;
-		case 'cr2':
-            var reader = new FileReader();
-            reader.onprogress = function(e){  $("#xhr-load").css("width", parseFloat( (e.loaded)/e.total * 100 ) + "%") };
-            reader.onload = function (e) {
-                
-				var ifds = UTIF.decode(e.target.result);
-				var img = ifds[0];
+		default:
+			var parser = RM.formats[extension];	
+			if(parser)
+				parser.load(file, function( data ){
 
-				UTIF.decodeImage(e.target.result, img)
-				var rgb_data = UTIF.toRGBA8( img );
-				window.img_cr2 = img;
-
-				var tex = new Texture(img.width, img.height, { format: gl.RGB, pixel_data: img.data});
-				gl.textures['cr2'] = tex;
-
-            };
-            reader.readAsArrayBuffer(file);
-            return false;
+					console.log("dae loaded", data);
+				});
+            break;
     }
 }
 
@@ -1954,12 +2323,13 @@ GUI.prototype.onDragEnvironment = function(file)
  */
 GUI.prototype.onDragTexture = function(file, extension, data)
 {
-    var filename = file.name;
+	var filename = file.name;
 
-    var id = 'Texture Drop ' + uidGen.generate();
+    var id = 'Import texture' ;
     var dialog_id = replaceAll(id, ' ', '').toLowerCase();
-    var w = 400, that = this;
-    var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", title: id, close: true, width: w, draggable: true });
+	var w = 400;
+	var that = this;
+    var dialog = new LiteGUI.Dialog( {id: dialog_id + uidGen.generate(), parent: "body", title: id, close: true, width: w, draggable: true });
     dialog.show('fade');
 
     var widgets = new LiteGUI.Inspector();
@@ -1973,29 +2343,52 @@ GUI.prototype.onDragTexture = function(file, extension, data)
     if(includes(filename, ['roughness', 'rough'])) params.texture_type = 'Roughness';
     if(includes(filename, ['metalness', 'metallic'])) params.texture_type = 'Metalness';
     if(includes(filename, ['ao', 'occlusion'])) params.texture_type = 'AO';
-    if(includes(filename, ['emissive'])) params.texture_type = 'Emissive';
-    if(includes(filename, ['height'])) params.texture_type = 'Height';
+    if(includes(filename, ['emissive', 'emission'])) params.texture_type = 'Emissive';
+	if(includes(filename, ['height'])) params.texture_type = 'Height';
+	if(includes(filename, ['alpha', 'opa'])) params.texture_type = 'Opacity';
 
     widgets.on_refresh = function(){
 
+		console.log(file);
+
         widgets.clear();
-        widgets.addString( "File", filename );
-        widgets.addCombo( "Use as", params.texture_type,{width: "60%", name_width: "50%", values: ["Albedo","Normal","Roughness","Metalness", "AO", "Emissive", "Height"],
+		widgets.addString( "File", filename );
+		widgets.addInfo( "Bytes", (file.size/1e6).toFixed(3) + " MBs");
+		widgets.addInfo( "Type", file.type);
+        widgets.addCombo( "Use as", params.texture_type,{width: "60%", name_width: "50%", values: ["Albedo","Normal","Roughness","Metalness", "AO", "Opacity","Emissive", "Height"],
             callback: function(v){ params["texture_type"] = v; }
         });
-        widgets.addSeparator();
-        widgets.addButton( null, "Apply", {width: "100%", name_width: "50%", callback: function(){
+		widgets.addSeparator();
+		widgets.widgets_per_row = 2;
+        		
+		widgets.addButton( null, "Import to memory", {callback: function(){
+            
+			function inner_processed(filename, texture)
+			{
+				gl.textures[ filename ] = texture;
+			}
+
+			if(RM.processImage(filename, extension, data, inner_processed))
+				dialog.close();
+		}});
+		
+		widgets.addButton( null, "Apply to node", {callback: function(){
             
 			function inner_processed(filename, texture, options)
 			{
 				var node = RM.Get('NodePicker').selected;
+
+				if(!node)
+					node = CORE.getByName( that.item_selected )
+
 				var type = params.texture_type.toLowerCase();
 
-				if(!node && CORE.root.children.length == 3)
+				// skip environment and grid
+				if(!node && CORE.root.children.length >= 3)
 					node = CORE.root.children[2];
 
 				if(!node) {
-					LiteGUI.showMessage("select node", {title: "Error"});
+					LiteGUI.showMessage("Add one node first", {title: "Error"});
 					return;
 				}
 
@@ -2007,7 +2400,7 @@ GUI.prototype.onDragTexture = function(file, extension, data)
 
 			if(RM.processImage(filename, extension, data, inner_processed))
 				dialog.close();
-        }});
+		}});
     }
 
     widgets.on_refresh();
@@ -2060,7 +2453,7 @@ GUI.prototype.onDragMesh = function(file, extension)
 					{
 						var mesh_data = RM.formats[extension].parse(e.target.result);
 						var mesh = GL.Mesh.load( mesh_data );
-						CORE.addMesh(mesh, extension);
+						CORE.addMesh(mesh, extension, filename);
 						
 						that.loading(0);	
 					}
@@ -2158,6 +2551,7 @@ GUI.prototype.selectResource = function(options, tex_name)
 	
 		if(options.node) {
 			node.textures[tex_name] = path;
+			node.setTextureProperties();
 			that.updateSidePanel(null, node.name);
 		}
 
@@ -2573,7 +2967,9 @@ LiteGUI.Inspector.prototype.addTexture = function( name, value, options )
 
 	this.values[name] = value;
 
-	var element = this.createWidget(name,"<span class='inputfield button hdre'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+ (value == "notfound" ? "" : value) +"' "+(options.disabled?"disabled":"")+"/></span><button title='show folders' class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>", options);
+	var element = this.createWidget(name,"<span class='inputfield button hdre' style='width: calc(100% - 52px);'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+ (value == "notfound" ? "" : value) +"' "+(options.disabled?"disabled":"")+"/></span>" + 
+	"<button title='select textures' class='micro resources'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>" + 
+	"<button title='delete' class='micro delete' style='color:red;'>"+(options.button || LiteGUI.special_codes.close )+"</button>", options);
 
 	//INPUT
 	var input = element.querySelector(".wcontent input");
@@ -2599,14 +2995,12 @@ LiteGUI.Inspector.prototype.addTexture = function( name, value, options )
 	input.addEventListener( "change", function(e) { 
 		var v = e.target.value;
 
-		if(!v.length && options.node) {
-			
-// 			options.node.textures[name] = "";
+		var node = options.node;
 
-			var to_delete = options.node.textures[name];
-			delete options.node.textures[name];
-			//delete gl.textures[to_delete]; // load texture saves this thing
-			options.node.setTextureProperties();
+		if(!v.length && node) {
+			
+			node.textures[name] = "";
+			node.setTextureProperties();
 			return;
 		}
 
@@ -2614,7 +3008,7 @@ LiteGUI.Inspector.prototype.addTexture = function( name, value, options )
 		{
 			input.style.color = "#EA8";
 			
-			CORE._renderer.loadTexture(v, {}, function(t, n){
+			CORE.renderer.loadTexture(v, {}, function(t, n){
 
 				if(!t) {
 					input.style.color = error_color;
@@ -2623,8 +3017,10 @@ LiteGUI.Inspector.prototype.addTexture = function( name, value, options )
 	
 				input.style.color = "";
                 
-				if(options.node)
-					options.node.textures[name] = n;
+				if(node){
+					node.textures[name] = n;
+					node.setTextureProperties();
+				}
 			});
         }
 
@@ -2650,12 +3046,171 @@ LiteGUI.Inspector.prototype.addTexture = function( name, value, options )
 	if(options.icon)
 		element.setIcon( options.icon );
 	else
-		element.setIcon( "https://webglstudio.org/latest/imgs/mini-icon-texture.png" );
+		element.setIcon( "imgs/mini-icon-texture.png" );
+	
+	//BUTTON select resource
+	element.querySelector(".wcontent button.resources").addEventListener( "click", function(e) { 
+
+		gui.selectResource( options, name );
+	});
+
+	//BUTTON select resource
+	element.querySelector(".wcontent button.delete").addEventListener( "click", function(e) { 
+
+		input.value = "";
+		var node = options.node;
+		if(node) {
+			node.textures[name] = "";
+			node.setTextureProperties();
+		}
+	});
+
+	this.tab_index += 1;
+    this.append(element, options);
+    
+	return element;
+}
+
+LiteGUI.Inspector.prototype.addShader = function( name, value, options )
+{
+	options = options || {};
+	value = value || "";
+	var that = this;
+
+	var error_color = "#F43";
+	var modified_color = "#E4E";
+
+	var resource_classname = "Shader";
+
+	if(value.constructor !== String)
+		value = "@Object";
+
+	this.values[name] = value;
+
+	var element = this.createWidget(name,"<span class='inputfield button shader'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+ (value == "notfound" ? "" : value) +"' "+(options.disabled?"disabled":"")+"/></span><button title='show folders' class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>", options);
+
+	//INPUT
+	var input = element.querySelector(".wcontent input");
+
+	//resource missing
+	if(value && value.constructor === String && value[0] != ":" && value[0] != "@")
+	{
+		var res = gl.shaders[ value ];
+		if( !res )
+			input.style.color = error_color;
+		else if( res._modified )
+			input.style.color = modified_color;
+	}
+
+	if( options.align && options.align == "right" )
+		input.style.direction = "rtl";
+
+	if( options.placeHolder )
+		input.setAttribute( "placeHolder", options.placeHolder );
+	else if(resource_classname)
+		input.setAttribute( "placeHolder", resource_classname );
+
+	input.addEventListener( "change", function(e) { 
+		var v = e.target.value;
+
+		if(!v.length && options.node) {
+			
+			options.node.shader = "";
+			return;
+		}
+
+		if(v && v[0] != "@" && v[0] != ":" && !options.skip_load)
+		{
+			input.style.color = "#EA8";
+			
+			var s = gl.shaders[v];
+
+			if(!s) {
+				input.style.color = error_color;
+				return;
+			}
+
+			input.style.color = "";
+			
+			var node = options.node;
+
+			if(node) {
+				if((v === 'textured' && !node.textures['albedo']) || 
+				(v === 'textured_phong' && !node.textures['albedo']))
+				node.textures['albedo'] = 'white';
+			
+				node.shader = v;
+
+				if(CORE.gui)
+					CORE.gui.updateSidePanel(null, node.name);
+			}
+        }
+
+        if(!v || !gl.shaders[ v ])
+        input.style.color = error_color;
+		
+	});
+
+	//INPUT ICON
+	element.setIcon = function(img)
+	{
+		if(!img)
+		{
+			input.style.background = "";
+			input.style.paddingLeft = "";
+		}
+		else
+		{
+			input.style.background = "transparent url('"+img+"') no-repeat left 4px center";
+			input.style.paddingLeft = "2em";
+		}
+	}
+	if(options.icon)
+		element.setIcon( options.icon );
+	else
+		element.setIcon( "https://webglstudio.org/latest/imgs/mini-icon-teapot.png" );
 	
 	//BUTTON select resource
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
 
-		gui.selectResource( options, name );
+		var dialog = LiteGUI.Dialog.getDialog("dialog_show_shaders");
+		if(dialog)
+			dialog.clear();
+		else
+			dialog = new LiteGUI.Dialog({ id: "dialog_show_shaders", title:"Shaders", close: true, width: 360, scroll: false, draggable: true});
+
+		dialog.show();
+
+		//left side
+		var widgets_left = new LiteGUI.Inspector();
+		dialog.add( widgets_left );
+	
+		var available_shaders = ["textured_phong", "mirror", "textured", "pbr", "pbr_sh"];
+		available_shaders = available_shaders.sort();	
+
+		var selected_available_shader = "";
+		var available_list = widgets_left.addList( null, available_shaders, {callback: function(v) {
+			selected_available_shader = v;
+		}});
+		widgets_left.addButton(null,"Select", { callback: function(){
+			
+			var v = selected_available_shader;
+
+			var node = options.node;
+
+			if((v === 'textured' && !node.textures['albedo']) || 
+			(v === 'textured_phong' && !node.textures['albedo']))
+			node.textures['albedo'] = 'white';
+
+			node.shader = v;
+
+			if(CORE.gui)
+			CORE.gui.updateSidePanel(null, node.name);
+
+			dialog.close();
+		}});
+
+		dialog.adjustSize();
 	});
 
 	this.tab_index += 1;
@@ -2716,12 +3271,17 @@ LiteGUI.Inspector.prototype.addHDRE = function( name, value, options )
 	if(options.icon)
 		element.setIcon( options.icon );
 	else
-		element.setIcon( "https://webglstudio.org/latest/imgs/mini-icon-texture.png" );
+		element.setIcon( "imgs/mini-icon-texture.png" );
 	
 	//BUTTON select resource
 	element.querySelector(".wcontent button").addEventListener( "click", function(e) { 
 
-		CORE.FS.getFiles( "hdre" ).then( function(e) { gui.selectHDRE( e, options ); } )
+		if(CORE.FS.session)
+			CORE.FS.getFiles( "hdre" ).then( function(e) { gui.selectHDRE( e, options ); } )
+		else {
+			if(gui)
+				gui.showSessionDialog();
+		}
 	});
 
 	this.tab_index += 1;
@@ -2730,6 +3290,47 @@ LiteGUI.Inspector.prototype.addHDRE = function( name, value, options )
 	return element;
 }
 
+Inspector.prototype.addDataTree = function(name, value, options)
+{
+	options = this.processOptions(options);
+
+	value = value || "";
+	var element = this.createWidget(name,"<div class='wtree'></div>", options);
+	
+	var node = element.querySelector(".wtree");
+	var current = value;
+
+	inner_recursive(node,value);
+	var k = 0;
+
+	function inner_recursive( root_node, value)
+	{
+		for(var i in value)
+		{
+			if(options.exclude && options.exclude[i])
+			continue;
+
+			var e = document.createElement("div");
+			e.className = "treenode " + (k%2 == 0) ? "even" : "";
+			if( value[i].constructor == Array && value[i].length == 1)
+				e.innerHTML = "<span class='itemname'>" + i + "</span><span class='itemvalue'>" + value[i][0] + "</span>";
+			if( value[i].constructor == Array && value[i].length > 1)
+				continue;
+			else if( typeof( value[i] ) != "object" )
+				e.innerHTML = "<span class='itemname'>" + i + "</span><span class='itemvalue'>" + value[i] + "</span>";
+			else if( value[i].constructor === Object )
+			{
+				e.innerHTML = "<span class='itemname'>" + i + "</span><span class='itemcontent'></span>";
+				inner_recursive( e.querySelector(".itemcontent"), value[i] );
+			}
+			root_node.appendChild(e);
+			k++;
+		}
+	}
+
+	this.append(element,options);
+	return element;
+}
 
 // overwrite method
 Inspector.prototype.addSlider = function(name, value, options)
@@ -2754,7 +3355,7 @@ Inspector.prototype.addSlider = function(name, value, options)
 	this.values[name] = value;
 
 	var element = this.createWidget(name,"<span class='inputfield full'>\
-				<input tabIndex='"+this.tab_index+"' type='number' style='position: absolute; z-index: 1000; margin-left: 10px; margin-top: 1px;' class='slider-text fixed nano' value='"+value+"' /><span class='slider-container'></span></span>", options);
+				<input tabIndex='"+this.tab_index+"' style='color: greenyellow; display: none; position: absolute; z-index: 1000; margin-left: 10px; margin-top: 1px;' class='slider-text fixed' value='"+value+"' /><span class='slider-container'></span></span>", options);
 
 	var slider_container = element.querySelector(".slider-container");
 
@@ -2824,8 +3425,8 @@ function Slider(value, options)
 	var canvas = document.createElement("canvas");
 	canvas.className = "slider " + (options.extraclass ? options.extraclass : "");
 
-	canvas.width = 325;
-	canvas.height = 25;
+	canvas.width = 300;
+	canvas.height = 25; 	
 
 	this.root = canvas;
 	var that = this;
@@ -2855,7 +3456,7 @@ function Slider(value, options)
 		ctx.font = "16px Arial";
 
 		var text = value.toFixed(options.precision);
-		ctx.fillText(text, Math.floor(value/10) < 1 ? 270 : 260, 18);
+		ctx.fillText(text, Math.floor(value/10) < 1 ? 250 : 240, 18);
 
 		if(value != this.value)
 		{
@@ -2986,125 +3587,125 @@ Inspector.prototype.addCounter = function(name, value, options)
 }
 
 LiteGUI.Dialog.prototype._ctor = function( options )
+{
+	options = options || {};
+
+	var that = this;
+	this.width = options.width;
+	this.height = options.height;
+	this.minWidth = options.minWidth || 150;
+	this.minHeight = options.minHeight || 100;
+	this.content = options.content || "";
+
+	var panel = document.createElement("div");
+	if(options.id)
+		panel.id = options.id;
+
+	panel.className = "litedialog " + (options.className || "");
+	panel.data = this;
+	panel.dialog = this;
+
+	var code = "";
+	if(options.title)
 	{
-		options = options || {};
-
-		var that = this;
-		this.width = options.width;
-		this.height = options.height;
-		this.minWidth = options.minWidth || 150;
-		this.minHeight = options.minHeight || 100;
-		this.content = options.content || "";
-
-		var panel = document.createElement("div");
-		if(options.id)
-			panel.id = options.id;
-
-		panel.className = "litedialog " + (options.className || "");
-		panel.data = this;
-		panel.dialog = this;
-
-		var code = "";
-		if(options.title)
-		{
-			code += "<div class='panel-header'>"+options.title+"</div><div class='buttons'>";
-			if(options.minimize){
-				code += "<button class='litebutton mini-button minimize-button'>-</button>";
-				code += "<button class='litebutton mini-button maximize-button' style='display:none'></button>";
-			}
-			if(options.hide)
-				code += "<button class='litebutton mini-button hide-button'></button>";
-			
-			if(options.detachable)
-				code += "<button class='litebutton mini-button detach-button'></button>";
-
-			//
-			else if(options.sided)
-				code += "<button class='litebutton mini-button detach-button'></button>";
-			//
-			
-			if(options.close || options.closable)
-				code += "<button class='litebutton mini-button close-button'>"+ LiteGUI.special_codes.close +"</button>";
-			code += "</div>";
+		code += "<div class='panel-header'>"+options.title+"</div><div class='buttons'>";
+		if(options.minimize){
+			code += "<button class='litebutton mini-button minimize-button'>-</button>";
+			code += "<button class='litebutton mini-button maximize-button' style='display:none'></button>";
 		}
+		if(options.hide)
+			code += "<button class='litebutton mini-button hide-button'></button>";
+		
+		if(options.detachable)
+			code += "<button class='litebutton mini-button detach-button'></button>";
 
-		code += "<div class='content'>"+this.content+"</div>";
-		code += "<div class='panel-footer'></div>";
-		panel.innerHTML = code;
-
-		this.root = panel;
-		this.content = panel.querySelector(".content");
-		this.footer = panel.querySelector(".panel-footer");
-
-		if(options.fullcontent)
-		{
-			this.content.style.width = "100%";		
-			this.content.style.height = options.title ? "calc( 100% - "+Dialog.title_height+" )" : "100%";
-		}
-
-		if(options.buttons)
-		{
-			for(var i in options.buttons)
-				this.addButton(options.buttons[i].name, options.buttons[i]);
-		}
-
-		//if(options.scroll == false)	this.content.style.overflow = "hidden";
-		if(options.scroll == true)
-			this.content.style.overflow = "auto";
-
-		//buttons *********************************
-		var close_button = panel.querySelector(".close-button");
-		if(close_button)
-			close_button.addEventListener("click", this.close.bind(this) );
-
-		var maximize_button = panel.querySelector(".maximize-button");
-		if(maximize_button)
-			maximize_button.addEventListener("click", this.maximize.bind(this) );
-
-		var minimize_button = panel.querySelector(".minimize-button");
-		if(minimize_button)
-			minimize_button.addEventListener("click", this.minimize.bind(this) );
-
-		var hide_button = panel.querySelector(".hide-button");
-		if(hide_button)
-			hide_button.addEventListener("click", this.hide.bind(this) );
-
-		var detach_button = panel.querySelector(".detach-button");
-		if(detach_button && options.sided)
-			detach_button.addEventListener("click", options.sideCallback || function(){  });
-		else if(detach_button)
-			detach_button.addEventListener("click", function() { that.detachWindow(); });
-
-		//size, draggable, resizable, etc
-		this.enableProperties(options);
-
-		this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
-			if( that.on_attached_to_DOM )
-				that.on_attached_to_DOM();
-			if( that.on_resize )
-				that.on_resize();
-		});
-		this.root.addEventListener("DOMNodeRemovedFromDocument", function(){ 
-			if( that.on_detached_from_DOM )
-				that.on_detached_from_DOM();
-		});
-
-
-		//attach
-		if(options.attach || options.parent)
-		{
-			var parent = null;
-			if(options.parent)
-				parent = typeof(options.parent) == "string" ? document.querySelector(options.parent) : options.parent;
-			if(!parent)
-				parent = LiteGUI.root;
-			parent.appendChild( this.root );
-			this.center();
-		}
-
-		//if(options.position) //not docked
-		//	this.setPosition( options.position[0], options.position[1] );
+		//
+		else if(options.sided)
+			code += "<button class='litebutton mini-button detach-button'></button>";
+		//
+		
+		if(options.close || options.closable)
+			code += "<button class='litebutton mini-button close-button'>"+ LiteGUI.special_codes.close +"</button>";
+		code += "</div>";
 	}
+
+	code += "<div class='content'>"+this.content+"</div>";
+	code += "<div class='panel-footer'></div>";
+	panel.innerHTML = code;
+
+	this.root = panel;
+	this.content = panel.querySelector(".content");
+	this.footer = panel.querySelector(".panel-footer");
+
+	if(options.fullcontent)
+	{
+		this.content.style.width = "100%";		
+		this.content.style.height = options.title ? "calc( 100% - "+Dialog.title_height+" )" : "100%";
+	}
+
+	if(options.buttons)
+	{
+		for(var i in options.buttons)
+			this.addButton(options.buttons[i].name, options.buttons[i]);
+	}
+
+	//if(options.scroll == false)	this.content.style.overflow = "hidden";
+	if(options.scroll == true)
+		this.content.style.overflow = "auto";
+
+	//buttons *********************************
+	var close_button = panel.querySelector(".close-button");
+	if(close_button)
+		close_button.addEventListener("click", this.close.bind(this) );
+
+	var maximize_button = panel.querySelector(".maximize-button");
+	if(maximize_button)
+		maximize_button.addEventListener("click", this.maximize.bind(this) );
+
+	var minimize_button = panel.querySelector(".minimize-button");
+	if(minimize_button)
+		minimize_button.addEventListener("click", this.minimize.bind(this) );
+
+	var hide_button = panel.querySelector(".hide-button");
+	if(hide_button)
+		hide_button.addEventListener("click", this.hide.bind(this) );
+
+	var detach_button = panel.querySelector(".detach-button");
+	if(detach_button && options.sided)
+		detach_button.addEventListener("click", options.sideCallback || function(){  });
+	else if(detach_button)
+		detach_button.addEventListener("click", function() { that.detachWindow(); });
+
+	//size, draggable, resizable, etc
+	this.enableProperties(options);
+
+	this.root.addEventListener("DOMNodeInsertedIntoDocument", function(){ 
+		if( that.on_attached_to_DOM )
+			that.on_attached_to_DOM();
+		if( that.on_resize )
+			that.on_resize();
+	});
+	this.root.addEventListener("DOMNodeRemovedFromDocument", function(){ 
+		if( that.on_detached_from_DOM )
+			that.on_detached_from_DOM();
+	});
+
+
+	//attach
+	if(options.attach || options.parent)
+	{
+		var parent = null;
+		if(options.parent)
+			parent = typeof(options.parent) == "string" ? document.querySelector(options.parent) : options.parent;
+		if(!parent)
+			parent = LiteGUI.root;
+		parent.appendChild( this.root );
+		this.center();
+	}
+
+	//if(options.position) //not docked
+	//	this.setPosition( options.position[0], options.position[1] );
+}
 
 
 Inspector.prototype.addSection = function( name, options )
@@ -3212,5 +3813,157 @@ LiteGUI.Inspector.prototype.addVector = function( name, value, options, length )
 		default:
 			console.warn("Only vec2, vec3, vec4");
 			break;
+	}
+}
+
+LS.FXStack.prototype.inspect = function( inspector, component )
+{
+	var that = this;
+
+	var title = inspector.addTitle("Active FX");
+	title.addEventListener("contextmenu", function(e) { 
+        if(e.button != 2) //right button
+            return false;
+		//create the context menu
+		var contextmenu = new LiteGUI.ContextMenu( ["Copy","Paste"], { title: "FX List", event: e, callback: function(v){
+			if(v == "Copy")
+				LiteGUI.toClipboard( JSON.stringify( that.serialize() ) );
+			else //Paste
+			{
+				var data = LiteGUI.getLocalClipboard();
+				if(data)
+					that.configure( data );
+				inspector.refresh();
+			}
+			LS.GlobalScene.refresh();
+		}});
+        e.preventDefault(); 
+        return false;
+    });
+
+	var enabled_fx = this.fx;
+
+	for(var i = 0; i < enabled_fx.length; i++)
+	{
+		var fx = enabled_fx[i];
+		var fx_info = LS.FXStack.available_fx[ fx.name ];
+		if(!fx_info)
+		{
+			console.warn("Unknown FX: " + fx.name);
+			continue;
+		}
+		if(fx_info.uniforms)
+			for(var j in fx_info.uniforms)
+			{
+				var uniform = fx_info.uniforms[j];
+				if(uniform.type == "float")
+					inspector.addNumber( j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: component ? AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ) : "",
+						min: uniform.min,
+						max: uniform.max,
+						step: uniform.step,
+						fx_name: j,
+						fx: fx,
+						callback: function(v){
+							this.options.fx[ this.options.fx_name ] = v;
+						}				
+					});
+				else if(uniform.type == "color3")
+					inspector.addColor( j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: component ? AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ) : "",
+						fx_name: j,
+						fx: fx,
+						callback: function(v){
+							this.options.fx[ this.options.fx_name ] = v;
+						}				
+					});
+				else if(uniform.type == "sampler2D")
+					inspector.addTexture( j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: component ? AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ) : "",
+						fx_name: j,
+						fx: fx,
+						callback: function(v){
+							this.options.fx[ this.options.fx_name ] = v;
+						}				
+					});
+				else //for vec2, vec3, vec4
+					inspector.add( uniform.type, j, fx[j] !== undefined ? fx[j] : uniform.value, {
+						pretitle: component ? AnimationModule.getKeyframeCode( component, "fx/"+i+"/"+j ) : "",
+						fx_name: j,
+						fx: fx,
+						callback: function(v){
+							if( this.options.fx[ this.options.fx_name ] && this.options.fx[ this.options.fx_name ].set )
+								this.options.fx[ this.options.fx_name ].set( v );
+							else
+								this.options.fx[ this.options.fx_name ] = v;
+						}				
+					});
+			}
+	}
+
+	inspector.addButton(null,"Edit FX", { callback: inner });
+	//inspector.addButton(null,"Remove FX", {});
+
+	var selected_enabled_fx = "";
+
+	//show camera fx dialog
+	function inner()
+	{
+		var dialog = LiteGUI.Dialog.getDialog("dialog_show_fx");
+		if(dialog)
+			dialog.clear();
+		else
+			dialog = new LiteGUI.Dialog({ id: "dialog_show_fx", title:"FX Settings", close: true, width: 360, height: 370, scroll: false, draggable: true});
+
+		dialog.show();
+
+		var split = new LiteGUI.Split("load_scene_split",[50,50]);
+		dialog.add(split);
+
+		//left side
+		var widgets_left = new LiteGUI.Inspector();
+		widgets_left.addTitle("Available FX");
+		split.getSection(0).add( widgets_left );
+		var fx = LS.FXStack.available_fx;
+		var available_fx = [];
+		for(var i in fx)
+			available_fx.push(i);
+		available_fx = available_fx.sort();		
+		var selected_available_fx = "";
+		var available_list = widgets_left.addList( null, available_fx, { height: 240, callback: function(v) {
+			selected_available_fx = v;
+		}});
+		widgets_left.addButton(null,"Add FX", { callback: function(){
+			that.addFX( selected_available_fx );
+			inspector.refresh();
+			LS.GlobalScene.refresh();
+			inner();
+		}});
+
+		var widgets_right = new LiteGUI.Inspector();
+		widgets_right.addTitle("Current FX");
+		var enabled_list = widgets_right.addList(null, enabled_fx, { selected: selected_enabled_fx, height: 240, callback: function(v) {
+			selected_enabled_fx = v;
+		}});
+		split.getSection(1).add(widgets_right);
+		widgets_right.addButtons(null,["Up","Down","Delete"], { callback: function(v){
+			if(v == "Delete")
+			{
+				that.removeFX( selected_enabled_fx );
+			}
+			else if(v == "Up")
+			{
+				that.moveFX( selected_enabled_fx );
+			}
+			else if(v == "Down")
+			{
+				that.moveFX( selected_enabled_fx, 1 );
+			}
+			inspector.refresh();
+			LS.GlobalScene.refresh();
+			inner();
+		}});
+
+		dialog.adjustSize();
 	}
 }

@@ -34,8 +34,10 @@ var ResourceManager = RM = {
 
     tonemappers: {},
     components: {},
-    node_components: [],
+    classes: {},
     shaders: {},
+
+    node_components: [],
 
     FORWARD:	00,
     DEFERRED:	01,
@@ -49,13 +51,14 @@ var ResourceManager = RM = {
 
     setup: function()
     {
-        console.log("Running at %c" + this.browser(), "color: red; font-weight: 900;" );
+        console.log("Running at %c" + (isMobile ? "mobile " : "")  + this.browser(), "color: red; font-weight: 900;" );
         
         $(document.body).append(
         '<div id="canvas-tools">' +
         '    <div class="tool-section tool-section-manipulate">' +
 		'        <div class="tool-button tool-showgrid enabled" title="Show grid" style="background-position: 0.16em 0.16em; background-image: url(https://webglstudio.org/latest/imgs/mini-icon-grid.png)"></div>' +
         '        <div class="tool-button tool-deferredtex" title="Show deferred textures" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-depth.png)"></div>' +
+        '        <div class="tool-button tool-forcerender" title="Force render all frames" style="background-image: url(https://webglstudio.org/latest/imgs/mini-icon-film.png)"></div>' +
         '    </div>' +
         '</div>'
         );
@@ -85,6 +88,14 @@ var ResourceManager = RM = {
 
     onInit: function()
     {
+        if(isMobile)
+        {
+            var error = '<div class="script-loaded">Browser not supported<p></p></div>';
+            $("#import-names").append("<div class='script-loaded'><p></p></div>");
+            $("#import-names").append(error);
+            return;
+        }
+
         LiteGUI.request({
             url: "config.json?nocache=" + performance.now(),
             dataType: "json",
@@ -139,7 +150,13 @@ var ResourceManager = RM = {
             $("#import-names").append("<br>");
             
             //console.log($("#import-names")[0].scrollTop);
-            //CORE = new Core();
+            
+            setTimeout(() => {
+                
+                if(!CORE)
+                    CORE = new Core();
+
+            }, 5000);
         }
 
         function onProgress(name, num)
@@ -152,7 +169,7 @@ var ResourceManager = RM = {
 			var parent = parseFloat( $("#import-container").css('width') );
 			var value = factor * parent;
 
-            name = '<div class="script-loaded">' + js_img + '<p>' + name.split('?')[0];
+            name = '<div class="script-loaded">' + js_img + '<p>' + name.split('?')[0].replace("https://", "");
             $("#import-names").append(name+"</p></div>");
             pageScroll();
 
@@ -160,19 +177,16 @@ var ResourceManager = RM = {
 
                 if(CORE)
                 return;
+               
+                var magic = 20.557142857142858;
+                var max = (that.totalImports) * magic;
 
-                if(!maxScrollTop) {
-                    maxScrollTop = 600; // change this number later
-                }
-
-                var scrollValue = ($("#import-names")[0].scrollTop / maxScrollTop) * 100;
+                var scrollValue = ($("#import-names")[0].scrollTop / max) * 100;
                 $("#import-bar").css('width', scrollValue + "%");
 
                 if(scrollValue >= 100)
                     CORE = new Core();
 
-                var magic = 19.357142857142858;
-                var max = (that.totalImports) * magic;
 
                 if($("#import-names")[0].scrollTop < max) {
                     $("#import-names")[0].scrollBy(0,1);
@@ -235,6 +249,11 @@ var ResourceManager = RM = {
         if(!base_class || !base_class.constructor)
         throw('component class needed');
 
+        if( this.components[name] ) {
+            console.error("Component already added");
+            return;
+        }
+
         var instance = new base_class();
 
         if(instance.setup)
@@ -242,6 +261,21 @@ var ResourceManager = RM = {
 
         var name = name || base_class.name;
         this.components[name] = instance;
+    },
+
+    registerClass: function( base_class, name )
+    {
+        // Control that param has necessary items
+        if(!base_class || !base_class.constructor)
+        throw('component class needed');
+
+        if( this.components[name] ) {
+            console.error("Component already added");
+            return;
+        }
+
+        var name = name || base_class.name;
+        this.classes[name] = base_class;
     },
 
 	registerNodeComponent: function( base_class, name )
