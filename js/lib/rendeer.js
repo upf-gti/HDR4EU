@@ -2476,10 +2476,32 @@ Renderer.prototype.renderNode = function(node, camera)
 	}
 	else
 	{
+		var primitive = node.primitive === undefined ? gl.TRIANGLES : node.primitive;
+		if(window.Core && CORE.RMODE == Core.WIREFRAME && primitive !== gl.LINES)
+		primitive = gl.LINE_STRIP;
+
 		if(node.draw_range)
-			shader.drawRange( mesh, node.primitive === undefined ? gl.TRIANGLES : node.primitive, node.draw_range[0], node.draw_range[1] , node.indices );
+			shader.drawRange( mesh, primitive, node.draw_range[0], node.draw_range[1] , node.indices );
 		else
-			shader.draw( mesh, node.primitive === undefined ? gl.TRIANGLES : node.primitive, node.indices );
+			shader.draw( mesh, primitive, node.indices );
+	}
+
+	for(var i in node.textures)
+	{
+		var texture_name = node.textures[i];
+		if(!texture_name)
+			continue;
+		var texture_uniform_name = "u_" + i + "_texture";
+
+		if(shader && !shader.samplers[texture_uniform_name])
+			continue; // has not been binded
+
+		texture = gl.textures[ texture_name ];
+		if(!texture)
+		continue;
+
+		delete node._uniforms[texture_uniform_name];
+		texture.unbind();
 	}
 
 	if(!this.ignore_flags)

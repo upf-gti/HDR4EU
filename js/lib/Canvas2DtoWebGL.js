@@ -45,18 +45,13 @@ function enableWebGLCanvas( canvas, options )
 	ctx.WebGLCanvas = {};
 	var white = vec4.fromValues(1,1,1,1);
 
-	//some generic shaders
-	var	flat_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.SCREEN_FLAT_FRAGMENT_SHADER );
-	var	texture_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.SCREEN_COLORED_FRAGMENT_SHADER );
-	var circle = GL.Mesh.circle({size:1});
-
 	//reusing same buffer
 	var global_index = 0;
 	var global_vertices = new Float32Array( max_points * 3 );
 	var global_mesh = new GL.Mesh();
 	var global_buffer = global_mesh.createVertexBuffer("vertices", null, null, global_vertices, gl.STREAM_DRAW );
 	var quad_mesh = GL.Mesh.getScreenQuad();
-	var is_rect = false;
+	var circle_mesh = GL.Mesh.circle({size:1});
 	var extra_projection = mat4.create();
 	var stencil_enabled = false;
 	var anisotropic = options.anisotropic !== undefined ? options.anisotropic : 2;
@@ -70,94 +65,259 @@ function enableWebGLCanvas( canvas, options )
 		extra_macros.EXTRA_PROJECTION = "";
 
 	//used to store font atlas textures (images are not stored here)
-	var textures = {};
+	var textures = gl.WebGLCanvas.textures_atlas = {};
+	gl.WebGLCanvas.clearAtlas = function()
+	{
+		textures = gl.WebGLCanvas.textures_atlas = {};
+	}
 
-	var vertex_shader = "\n\
+	var vertex_shader = null;
+	var	flat_shader = null;
+	var	texture_shader = null;
+	var flat_primitive_shader = null;
+	var textured_transform_shader = null;
+	var textured_primitive_shader = null;
+	var gradient_primitive_shader = null;
+	var	point_text_shader = null;
+
+	gl.WebGLCanvas.set3DMatrix = function(matrix)
+	{
+		if(!matrix)
+			mat4.identity( extra_projection );
+		else
+			extra_projection.set( matrix );
+		if(extra_macros.EXTRA_PROJECTION == null)
+		{
+			extra_macros.EXTRA_PROJECTION = "";
+			compileShaders();
+			uniforms.u_projection = extra_projection;
+		}
+		uniforms.u_projection_enabled = !!matrix;
+	}
+
+	compileShaders();
+
+	function compileShaders()
+	{
+		vertex_shader = "\n\
+				precision highp float;\n\
+				attribute vec3 a_vertex;\n\
+				uniform vec2 u_viewport;\n\
+				uniform mat3 u_transform;\n\
+				#ifdef EXTRA_PROJECTION\n\
+					uniform bool u_projection_enabled;\n\
+					uniform mat4 u_projection;\n\
+				#endif\n\
+				varying float v_visible;\n\
+				void main() { \n\
+					vec3 pos = a_vertex;\n\
+					v_visible = pos.z;\n\
+					pos = u_transform * vec3(pos.xy,1.0);\n\
+					pos.z = 0.0;\n\
+					#ifdef EXTRA_PROJECTION\n\
+						if(u_projection_enabled)\n\
+						{\n\
+							gl_Position = u_projection * vec4(pos.xy,0.0,1.0);\n\
+							return;\n\
+						}\n\
+					#endif\n\
+					//normalize\n\
+					pos.x = (2.0 * pos.x / u_viewport.x) - 1.0;\n\
+					pos.y = -((2.0 * pos.y / u_viewport.y) - 1.0);\n\
+					gl_Position = vec4(pos, 1.0); \n\
+				}\n\
+				";
+
+		vertex_shader2 = "\n\
 			precision highp float;\n\
 			attribute vec3 a_vertex;\n\
+			attribute vec2 a_coord;\n\
+			varying vec2 v_coord;\n\
+			uniform vec2 u_position;\n\
+			uniform vec2 u_size;\n\
 			uniform vec2 u_viewport;\n\
 			uniform mat3 u_transform;\n\
 			#ifdef EXTRA_PROJECTION\n\
+				uniform bool u_projection_enabled;\n\
 				uniform mat4 u_projection;\n\
 			#endif\n\
-			varying float v_visible;\n\
 			void main() { \n\
-				vec3 pos = a_vertex;\n\
-				v_visible = pos.z;\n\
-				pos = u_transform * vec3(pos.xy,1.0);\n\
+				vec3 pos = vec3(u_position + vec2(a_coord.x,1.0 - a_coord.y)  * u_size, 1.0);\n\
+				v_coord = a_coord; \n\
+				pos = u_transform * pos;\n\
 				pos.z = 0.0;\n\
+				#ifdef EXTRA_PROJECTION\n\
+					if(u_projection_enabled)\n\
+					{\n\
+						gl_Position = u_projection * vec4(pos.xy,0.0,1.0);\n\
+						return;\n\
+					}\n\
+				#endif\n\
 				//normalize\n\
 				pos.x = (2.0 * pos.x / u_viewport.x) - 1.0;\n\
 				pos.y = -((2.0 * pos.y / u_viewport.y) - 1.0);\n\
-				#ifdef EXTRA_PROJECTION\n\
-					pos = (u_projection * mat4(pos,1.0)).xz;\n\
-				#endif\n\
 				gl_Position = vec4(pos, 1.0); \n\
+			}\n\
+		";
+
+		//flat_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.FLAT_FRAGMENT_SHADER );
+		//texture_shader = new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER, GL.Shader.SCREEN_COLORED_FRAGMENT_SHADER );
+
+		flat_shader = new GL.Shader(vertex_shader2,"\n\
+				precision highp float;\n\
+				uniform vec4 u_color;\n\
+				void main() {\n\
+					gl_FragColor = u_color;\n\
+				}\n\
+			", extra_macros );
+
+		texture_shader = new GL.Shader(vertex_shader2,"\n\
+				precision highp float;\n\
+				varying vec2 v_coord;\n\
+				uniform vec4 u_color;\n\
+				uniform sampler2D u_texture;\n\
+				void main() {\n\
+					gl_FragColor = u_color * texture2D( u_texture, v_coord );\n\
+				}\n\
+			", extra_macros );
+
+
+		flat_primitive_shader = new GL.Shader(vertex_shader,"\n\
+				precision highp float;\n\
+				varying float v_visible;\n\
+				uniform vec4 u_color;\n\
+				void main() {\n\
+					if (v_visible == 0.0)\n\
+						discard;\n\
+					gl_FragColor = u_color;\n\
+				}\n\
+			", extra_macros );
+
+		textured_transform_shader = new GL.Shader(GL.Shader.QUAD_VERTEX_SHADER,"\n\
+				precision highp float;\n\
+				uniform sampler2D u_texture;\n\
+				uniform vec4 u_color;\n\
+				uniform vec4 u_texture_transform;\n\
+				varying vec2 v_coord;\n\
+				void main() {\n\
+					vec2 uv = v_coord * u_texture_transform.zw + vec2(u_texture_transform.x,0.0);\n\
+					uv.y = uv.y - u_texture_transform.y + (1.0 - u_texture_transform.w);\n\
+					uv = clamp(uv,vec2(0.0),vec2(1.0));\n\
+					gl_FragColor = u_color * texture2D(u_texture, uv);\n\
+				}\n\
+			", extra_macros );
+
+		textured_primitive_shader = new GL.Shader(vertex_shader,"\n\
+				precision highp float;\n\
+				varying float v_visible;\n\
+				uniform vec4 u_color;\n\
+				uniform sampler2D u_texture;\n\
+				uniform vec4 u_texture_transform;\n\
+				uniform vec2 u_viewport;\n\
+				uniform mat3 u_itransform;\n\
+				void main() {\n\
+					vec2 pos = (u_itransform * vec3( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t,1.0)).xy;\n\
+					pos *= vec2( (u_viewport.x * u_texture_transform.z), (u_viewport.y * u_texture_transform.w) );\n\
+					vec2 uv = fract(pos / u_viewport) + u_texture_transform.xy;\n\
+					uv.y = 1.0 - uv.y;\n\
+					gl_FragColor = u_color * texture2D( u_texture, uv);\n\
+				}\n\
+			", extra_macros );
+
+		gradient_primitive_shader = new GL.Shader(vertex_shader,"\n\
+				precision highp float;\n\
+				varying float v_visible;\n\
+				uniform vec4 u_color;\n\
+				uniform sampler2D u_texture;\n\
+				uniform vec4 u_gradient;\n\
+				uniform vec2 u_viewport;\n\
+				uniform mat3 u_itransform;\n\
+				void main() {\n\
+					vec2 pos = (u_itransform * vec3( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t,1.0)).xy;\n\
+					//vec2 pos = vec2( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t);\n\
+					vec2 AP = pos - u_gradient.xy;\n\
+					vec2 AB = u_gradient.zw - u_gradient.xy;\n\
+					float dotAPAB = dot(AP,AB);\n\
+					float dotABAB = dot(AB,AB);\n\
+					float x = dotAPAB / dotABAB;\n\
+					vec2 uv = vec2( x, 0.0 );\n\
+					gl_FragColor = u_color * texture2D( u_texture, uv );\n\
+				}\n\
+			", extra_macros );
+
+		//used for text
+		var POINT_TEXT_VERTEX_SHADER = "\n\
+			precision highp float;\n\
+			attribute vec3 a_vertex;\n\
+			attribute vec2 a_coord;\n\
+			varying vec2 v_coord;\n\
+			uniform vec2 u_viewport;\n\
+			uniform mat3 u_transform;\n\
+			#ifdef EXTRA_PROJECTION\n\
+				uniform bool u_projection_enabled;\n\
+				uniform mat4 u_projection;\n\
+			#endif\n\
+			uniform float u_pointSize;\n\
+			void main() { \n\
+				vec3 pos = a_vertex;\n\
+				pos = u_transform * pos;\n\
+				pos.z = 0.0;\n\
+				#ifdef EXTRA_PROJECTION\n\
+					if(u_projection_enabled)\n\
+					{\n\
+						gl_Position = u_projection * vec4(pos.xy,0.0,1.0);\n\
+						return;\n\
+					}\n\
+				#endif\n\
+				//normalize\n\
+				pos.x = (2.0 * pos.x / u_viewport.x) - 1.0;\n\
+				pos.y = -((2.0 * pos.y / u_viewport.y) - 1.0);\n\
+				gl_Position = vec4(pos, 1.0); \n\
+				gl_PointSize = ceil(u_pointSize);\n\
+				v_coord = a_coord;\n\
 			}\n\
 			";
 
-	var	flat_primitive_shader = new GL.Shader(vertex_shader,"\n\
+		var POINT_TEXT_FRAGMENT_SHADER = "\n\
 			precision highp float;\n\
-			varying float v_visible;\n\
+			uniform sampler2D u_texture;\n\
+			uniform float u_iCharSize;\n\
 			uniform vec4 u_color;\n\
+			uniform float u_pointSize;\n\
+			uniform vec2 u_viewport;\n\
+			uniform vec2 u_angle_sincos;\n\
+			varying vec2 v_coord;\n\
 			void main() {\n\
-				if (v_visible == 0.0)\n\
-					discard;\n\
-				gl_FragColor = u_color;\n\
+				vec2 uv = vec2(1.0 - gl_PointCoord.s, gl_PointCoord.t);\n\
+				uv = vec2( ((uv.y - 0.5) * u_angle_sincos.y - (uv.x - 0.5) * u_angle_sincos.x) + 0.5, ((uv.x - 0.5) * u_angle_sincos.y + (uv.y - 0.5) * u_angle_sincos.x) + 0.5);\n\
+				uv = v_coord - uv * u_iCharSize + vec2(u_iCharSize*0.5);\n\
+				uv.y = 1.0 - uv.y;\n\
+				gl_FragColor = vec4(u_color.xyz, u_color.a * texture2D(u_texture, uv, -1.0  ).a);\n\
 			}\n\
-		", extra_macros );
+			";
 
-	var	textured_transform_shader = new GL.Shader(GL.Shader.QUAD_VERTEX_SHADER,"\n\
+		point_text_shader = new GL.Shader( POINT_TEXT_VERTEX_SHADER, POINT_TEXT_FRAGMENT_SHADER, extra_macros );
+	};
+
+	ctx.createImageShader = function(code)
+	{
+		return new GL.Shader( GL.Shader.QUAD_VERTEX_SHADER,"\n\
 			precision highp float;\n\
 			uniform sampler2D u_texture;\n\
 			uniform vec4 u_color;\n\
 			uniform vec4 u_texture_transform;\n\
+			uniform vec2 u_viewport;\n\
 			varying vec2 v_coord;\n\
 			void main() {\n\
 				vec2 uv = v_coord * u_texture_transform.zw + vec2(u_texture_transform.x,0.0);\n\
 				uv.y = uv.y - u_texture_transform.y + (1.0 - u_texture_transform.w);\n\
 				uv = clamp(uv,vec2(0.0),vec2(1.0));\n\
-				gl_FragColor = u_color * texture2D(u_texture, uv);\n\
+				vec4 color = u_color * texture2D(u_texture, uv);\n\
+				"+code+";\n\
+				gl_FragColor = color;\n\
 			}\n\
 		", extra_macros );
-
-	var	textured_primitive_shader = new GL.Shader(vertex_shader,"\n\
-			precision highp float;\n\
-			varying float v_visible;\n\
-			uniform vec4 u_color;\n\
-			uniform sampler2D u_texture;\n\
-			uniform vec4 u_texture_transform;\n\
-			uniform vec2 u_viewport;\n\
-			uniform mat3 u_itransform;\n\
-			void main() {\n\
-				vec2 pos = (u_itransform * vec3( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t,1.0)).xy;\n\
-				pos *= vec2( (u_viewport.x * u_texture_transform.z), (u_viewport.y * u_texture_transform.w) );\n\
-				vec2 uv = fract(pos / u_viewport) + u_texture_transform.xy;\n\
-				uv.y = 1.0 - uv.y;\n\
-				gl_FragColor = u_color * texture2D( u_texture, uv);\n\
-			}\n\
-		", extra_macros );
-
-	var	gradient_primitive_shader = new GL.Shader(vertex_shader,"\n\
-			precision highp float;\n\
-			varying float v_visible;\n\
-			uniform vec4 u_color;\n\
-			uniform sampler2D u_texture;\n\
-			uniform vec4 u_gradient;\n\
-			uniform vec2 u_viewport;\n\
-			uniform mat3 u_itransform;\n\
-			void main() {\n\
-				vec2 pos = (u_itransform * vec3( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t,1.0)).xy;\n\
-				//vec2 pos = vec2( gl_FragCoord.s, u_viewport.y - gl_FragCoord.t);\n\
-				vec2 AP = pos - u_gradient.xy;\n\
-				vec2 AB = u_gradient.zw - u_gradient.xy;\n\
-				float dotAPAB = dot(AP,AB);\n\
-				float dotABAB = dot(AB,AB);\n\
-				float x = dotAPAB / dotABAB;\n\
-				vec2 uv = vec2( x, 0.0 );\n\
-				gl_FragColor = u_color * texture2D( u_texture, uv );\n\
-			}\n\
-		", extra_macros );
+	}
 
 
 	//some people may reuse it
@@ -172,7 +332,7 @@ function enableWebGLCanvas( canvas, options )
 	var tmp_vec2b = vec2.create();
 	ctx._stack = [];
 	var global_angle = 0;
-	var viewport = vec2.fromValues(1,1);
+	var viewport = ctx.viewport_data.subarray(2,4);
 
 	ctx.translate = function(x,y)
 	{
@@ -192,6 +352,15 @@ function enableWebGLCanvas( canvas, options )
 		tmp_vec2[0] = x;
 		tmp_vec2[1] = y;
 		mat3.scale( this._matrix, this._matrix, tmp_vec2 );
+	}
+
+	//own method to reset internal stuff
+	ctx.resetTransform = function()
+	{
+		//reset transform
+		gl._stack.length = 0;
+		this._matrix.set([1,0,0, 0,1,0, 0,0,1]);
+		global_angle = 0;
 	}
 
 	ctx.save = function() {
@@ -217,15 +386,9 @@ function enableWebGLCanvas( canvas, options )
 
 	ctx.transform = function(a,b,c,d,e,f) {
 		var m = tmp_mat3;
-		m[0] = a;
-		m[1] = c;
-		m[2] = e;
-		m[3] = b;
-		m[4] = d;
-		m[5] = f;
-		m[6] = 0;
-		m[7] = 0;
-		m[8] = 1;
+
+        m[0] = a; m[1] = b; m[2] = 0; m[3] = c; m[4] = d; m[5] = 0; m[6] = e; m[7] = f; m[8] = 1; //fix
+		//m[0] = a; m[1] = c;	m[2] = e; m[3] = b;	m[4] = d; m[5] = f;	m[6] = 0; m[7] = 0;	m[8] = 1;
 
 		mat3.multiply( this._matrix, this._matrix, m );
 		global_angle = Math.atan2( this._matrix[0], this._matrix[1] );
@@ -233,15 +396,10 @@ function enableWebGLCanvas( canvas, options )
 
 	ctx.setTransform = function(a,b,c,d,e,f) {
 		var m = this._matrix;
-		m[0] = a;
-		m[1] = c;
-		m[2] = e;
-		m[3] = b;
-		m[4] = d;
-		m[5] = f;
-		m[6] = 0;
-		m[7] = 0;
-		m[8] = 1;
+
+		m[0] = a; m[1] = b; m[2] = 0; m[3] = c; m[4] = d; m[5] = 0; m[6] = e; m[7] = f; m[8] = 1; //fix
+		//m[0] = a; m[1] = c;	m[2] = e; m[3] = b;	m[4] = d; m[5] = f;	m[6] = 0; m[7] = 0;	m[8] = 1;
+
 		//this._matrix.set([a,c,e,b,d,f,0,0,1]);
 		global_angle = Math.atan2( this._matrix[0], this._matrix[1] );
 	}
@@ -272,14 +430,28 @@ function enableWebGLCanvas( canvas, options )
 
 				tex = img.gl[ gl.context_id ];
 				if(tex)
+				{
+					if( img.mustUpdate )
+					{
+						tex.uploadData( img );
+						img.mustUpdate = false;
+					}
 					return tex;
+				}
 				return img.gl[ gl.context_id ] = GL.Texture.fromImage(img, { magFilter: gl.LINEAR, minFilter: gl.LINEAR_MIPMAP_LINEAR, wrap: wrap, ignore_pot:true, premultipliedAlpha: true, anisotropic: anisotropic } );
 			}
 			else //probably a canvas
 			{
 				tex = img.gl[ gl.context_id ];
 				if(tex)
+				{
+					if( img.mustUpdate )
+					{
+						tex.uploadData( img );
+						img.mustUpdate = false;
+					}
 					return tex;
+				}
 				return img.gl[ gl.context_id ] = GL.Texture.fromImage(img, { minFilter: gl.LINEAR, magFilter: gl.LINEAR, anisotropic: anisotropic });
 			}
 		}
@@ -287,9 +459,17 @@ function enableWebGLCanvas( canvas, options )
 		return null;
 	}
 
-	ctx.drawImage = function( img, x, y, w, h, shader, shader_uniforms )
+	//it supports all versions of drawImage (3 params, 5 params or 9 params)
+	//it allows to pass a shader, otherwise it uses texture_shader (code is GL.Shader.SCREEN_COLORED_FRAGMENT_SHADER)
+	ctx.drawImage = function( img, x, y, w, h, shader, extra_uniforms )
 	{
-		if(!img || img.width == 0 || img.height == 0) 
+		if(!img)
+			return;
+
+		var img_width = img.videoWidth || img.width;
+		var img_height = img.videoHeight || img.height;
+			
+		if(img_width == 0 || img_height == 0) 
 			return;
 
 		var tex = getTexture(img);
@@ -298,7 +478,7 @@ function enableWebGLCanvas( canvas, options )
 
 		if(arguments.length == 9) //img, sx,sy,sw,sh, x,y,w,h
 		{
-			tmp_vec4b.set([x/img.width,y/img.height,w/img.width,h/img.height]);
+			tmp_vec4b.set([x/img_width,y/img_height,w/img_width,h/img_height]);
 			x = arguments[5];
 			y = arguments[6];
 			w = arguments[7];
@@ -328,12 +508,13 @@ function enableWebGLCanvas( canvas, options )
 		uniforms.u_texture_transform = tmp_vec4b;
 		uniforms.u_viewport = viewport;
 
-		shader_uniforms = shader_uniforms || {};
-		Object.assign(uniforms, shader_uniforms);
+		extra_uniforms = extra_uniforms || {};
+		var shader_uniforms = Object.assign(uniforms, extra_uniforms);
 
 		shader = shader || texture_shader;
 
-		shader.uniforms( uniforms ).draw(quad_mesh);
+		shader.uniforms( shader_uniforms ).draw(quad_mesh);
+		extra_projection[14] -= 0.001;
 	}
 
 	ctx.createPattern = function( img )
@@ -341,7 +522,7 @@ function enableWebGLCanvas( canvas, options )
 		return getTexture( img );
 	}
 
-	//to craete gradients
+	//to create gradients
 	function WebGLCanvasGradient(x,y,x2,y2)
 	{
 		this.id = (ctx._last_gradient_id++) % ctx._max_gradients;
@@ -451,7 +632,6 @@ function enableWebGLCanvas( canvas, options )
 	ctx.beginPath = function()
 	{
 		global_index = 0;
-		is_rect = false;
 	}
 
 	ctx.closePath = function()
@@ -462,7 +642,6 @@ function enableWebGLCanvas( canvas, options )
 		global_vertices[ global_index + 1] = global_vertices[1];
 		global_vertices[ global_index + 2] = 1;
 		global_index += 3;
-		is_rect = false;
 	}
 
 	ctx.moveTo = function(x,y)
@@ -487,7 +666,6 @@ function enableWebGLCanvas( canvas, options )
 			global_index += 3;
 		}
 
-		is_rect = false;
 	}
 
 	ctx.lineTo = function(x,y)
@@ -496,13 +674,12 @@ function enableWebGLCanvas( canvas, options )
 		global_vertices[ global_index + 1] = y;
 		global_vertices[ global_index + 2] = 1;
 		global_index += 3;
-		is_rect = false;
 	}
 
 	ctx.bezierCurveTo = function(m1x,m1y, m2x,m2y, ex,ey)
 	{
-		if(global_index < 3) return;
-		is_rect = false;
+		if(global_index < 3)
+			return;
 
 		var last = [ global_vertices[ global_index - 3 ], global_vertices[ global_index - 2 ] ];
 		cp = [ last, [m1x, m1y], [m2x, m2y], [ex, ey] ];
@@ -537,8 +714,8 @@ function enableWebGLCanvas( canvas, options )
 
 	ctx.quadraticCurveTo = function(mx,my,ex,ey)
 	{
-		if(global_index < 3) return;
-		is_rect = false;
+		if(global_index < 3)
+			return;
 
 		var sx = global_vertices[ global_index - 3 ];
 		var sy = global_vertices[ global_index - 2 ];
@@ -567,11 +744,7 @@ function enableWebGLCanvas( canvas, options )
 		if(global_index < 9)
 			return;
 
-		//if(is_rect)
-		//	return this.fillRect();
-
 		//update buffer
-		//global_buffer.upload( gl.STREAM_DRAW );
 		global_buffer.uploadRange(0, global_index * 4); //4 bytes per float
 		uniforms.u_viewport = viewport;
 		var shader = flat_primitive_shader;
@@ -616,6 +789,7 @@ function enableWebGLCanvas( canvas, options )
 
 		//render
 		shader.uniforms(uniforms).drawRange(global_mesh, gl.TRIANGLE_FAN, 0, global_index / 3);
+		extra_projection[14] -= 0.001;
 	}
 
 	//basic stroke using gl.LINES
@@ -645,7 +819,10 @@ function enableWebGLCanvas( canvas, options )
 		if(global_index < 6)
 			return;
 
-		if( (this.lineWidth * this._matrix[0]) <= 1.0 )
+		tmp_vec2[0] = this._matrix[0];
+		tmp_vec2[1] = this._matrix[1];
+
+		if( (this.lineWidth * vec2.length(tmp_vec2)) <= 1.0 )
 			return this.strokeThin();
 
 		var num_points = global_index / 3;
@@ -772,6 +949,7 @@ function enableWebGLCanvas( canvas, options )
 		//gl.setLineWidth( this.lineWidth );
 		uniforms.u_color = this._strokecolor;
 		flat_primitive_shader.uniforms( uniforms ).drawRange(lines_mesh, gl.TRIANGLE_STRIP, 0, pos / 3 );
+		extra_projection[14] -= 0.001;
 	}
 
 
@@ -798,13 +976,69 @@ function enableWebGLCanvas( canvas, options )
 		global_vertices[ global_index + 14] = 1;
 
 		global_index += 15;
-
-		if(global_index == 15)
-			is_rect = true;
 	}
 
-	//roundRect is a function I use sometimes, but here we dont have it
-	ctx.roundRect = ctx.rect;
+	ctx.roundRect = function (x, y, w, h, radius, radius_low)
+	{
+		if ( radius === undefined )
+			radius = 5;
+		if(radius_low === undefined)
+			radius_low  = radius;
+		var gv = global_vertices;
+		var gi = global_index;
+
+		for(var i = 0; i < 10; ++i)
+		{
+			var ang = (i/10)*Math.PI*0.5;
+			gv[ gi ] = x+radius*(1.0 - Math.cos(ang));
+			gv[ gi + 1] = y+radius*(1.0 - Math.sin(ang));
+			gv[ gi + 2] = 1;
+			gi += 3;
+		}
+
+		gv[ gi + 0] = x+radius; gv[ gi + 1] = y; gv[ gi + 2] = 1;
+		gv[ gi + 3] = x+w-radius; gv[ gi + 4] = y; gv[ gi + 5] = 1;
+		gi += 6;
+
+		for(var i = 0; i < 10; ++i)
+		{
+			var ang = (i/10)*Math.PI*0.5;
+			gv[ gi + 0] = x+w-radius*(1.0 - Math.sin(ang));
+			gv[ gi + 1] = y+radius*(1.0 - Math.cos(ang));
+			gv[ gi + 2] = 1;
+			gi += 3;
+		}
+
+		gv[ gi + 0] = x+w; gv[ gi + 1] = y+radius; gv[ gi + 2] = 1;
+		gv[ gi + 3] = x+w; gv[ gi + 4] = y+h-radius_low; gv[ gi + 5] = 1;
+		gi += 6;
+
+		for(var i = 0; i < 10; ++i)
+		{
+			var ang = (i/10)*Math.PI*0.5;
+			gv[ gi + 0] = x+w-radius_low*(1.0 - Math.cos(ang));
+			gv[ gi + 1] = y+h-radius_low*(1.0 - Math.sin(ang));
+			gv[ gi + 2] = 1;
+			gi += 3;
+		}
+
+		gv[ gi + 0] = x+w-radius_low; gv[ gi + 1] = y+h; gv[ gi + 2] = 1;
+		gv[ gi + 3] = x+radius_low; gv[ gi + 4] = y+h; gv[ gi + 5] = 1;
+		gi += 6;
+
+		for(var i = 0; i < 10; ++i)
+		{
+			var ang = (i/10)*Math.PI*0.5;
+			gv[ gi + 0] = x+radius_low*(1.0 - Math.sin(ang));
+			gv[ gi + 1] = y+h-radius_low*(1.0 - Math.cos(ang));
+			gv[ gi + 2] = 1;
+			gi += 3;
+		}
+
+		gv[ gi + 0] = x; gv[ gi + 1] = y+radius; gv[ gi + 2] = 1;
+		global_index = gi + 3;
+	}
+
 
 	ctx.arc = function(x,y,radius, start_ang, end_ang)
 	{
@@ -822,7 +1056,6 @@ function enableWebGLCanvas( canvas, options )
 			var f = start_ang + i*delta;
 			this.lineTo(x + Math.cos(f) * radius, y + Math.sin(f) * radius);
 		}
-		is_rect = false;
 	}
 
 	ctx.strokeRect = function(x,y,w,h)
@@ -851,9 +1084,9 @@ function enableWebGLCanvas( canvas, options )
 		uniforms.u_position = tmp_vec2;
 		uniforms.u_size = tmp_vec2b;
 		uniforms.u_transform = this._matrix;
-		uniforms.u_viewport = viewport
-
+		uniforms.u_viewport = viewport;
 		flat_shader.uniforms(uniforms).draw(quad_mesh);
+		extra_projection[14] -= 0.001;
 	}
 
 	//other functions
@@ -866,6 +1099,30 @@ function enableWebGLCanvas( canvas, options )
 		gl.clear( gl.COLOR_BUFFER_BIT );
 		var v = gl.viewport_data;
 		gl.scissor(v[0],v[1],v[2],v[3]);
+	}
+
+	ctx.fillCircle = function(x,y,r)
+	{
+		global_index = 0;
+
+		//fill using a gradient or pattern
+		if( this._fillStyle.constructor == GL.Texture || this._fillStyle.constructor === WebGLCanvasGradient )
+		{
+			this.beginPath();
+			this.arc(x,y,r,0,Math.PI*2);
+			this.fill();
+			return;
+		}
+
+		uniforms.u_color = this._fillcolor;
+		tmp_vec2[0] = x; tmp_vec2[1] = y;
+		tmp_vec2b[0] = r; tmp_vec2b[1] = r;
+		uniforms.u_position = tmp_vec2;
+		uniforms.u_size = tmp_vec2b;
+		uniforms.u_transform = this._matrix;
+		uniforms.u_viewport = viewport
+		flat_shader.uniforms(uniforms).draw(circle_mesh);
+		extra_projection[14] -= 0.001;
 	}
 	
 	ctx.clip = function()
@@ -893,8 +1150,8 @@ function enableWebGLCanvas( canvas, options )
 		window.gl = this;
 		var gl = this;
 
-		viewport[0] = gl.viewport_data[2];
-		viewport[1] = gl.viewport_data[3];
+		//viewport[0] = gl.viewport_data[2];
+		//viewport[1] = gl.viewport_data[3];
 		gl.disable( gl.CULL_FACE );
 		gl.disable( gl.DEPTH_TEST );
 		gl.disable( gl.STENCIL_TEST );
@@ -902,7 +1159,7 @@ function enableWebGLCanvas( canvas, options )
 		gl.blendFunc( gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA );
 		gl.lineWidth = 1;
 		global_index = 0;
-		is_rect = false;
+		mat4.identity( extra_projection );
 	}
 
 	ctx.finish2D = function()
@@ -911,54 +1168,7 @@ function enableWebGLCanvas( canvas, options )
 		gl.lineWidth = 1;
 		window.gl = prev_gl;
 		gl.disable( gl.STENCIL_TEST );
-		gl.disable( gl.BLEND );
 	}
-
-	//extra
-	var POINT_TEXT_VERTEX_SHADER = "\n\
-			precision highp float;\n\
-			attribute vec3 a_vertex;\n\
-			attribute vec2 a_coord;\n\
-			varying vec2 v_coord;\n\
-			uniform vec2 u_viewport;\n\
-			uniform mat3 u_transform;\n\
-			#ifdef EXTRA_PROJECTION\n\
-				uniform mat4 u_projection;\n\
-			#endif\n\
-			uniform float u_pointSize;\n\
-			void main() { \n\
-				vec3 pos = a_vertex;\n\
-				pos = u_transform * pos;\n\
-				pos.z = 0.0;\n\
-				//normalize\n\
-				pos.x = (2.0 * pos.x / u_viewport.x) - 1.0;\n\
-				pos.y = -((2.0 * pos.y / u_viewport.y) - 1.0);\n\
-				#ifdef EXTRA_PROJECTION\n\
-					pos = (u_projection * mat4(pos,1.0)).xz;\n\
-				#endif\n\
-				gl_Position = vec4(pos, 1.0); \n\
-				gl_PointSize = ceil(u_pointSize);\n\
-				v_coord = a_coord;\n\
-			}\n\
-			";
-
-	var POINT_TEXT_FRAGMENT_SHADER = "\n\
-			precision highp float;\n\
-			uniform sampler2D u_texture;\n\
-			uniform float u_iCharSize;\n\
-			uniform vec4 u_color;\n\
-			uniform float u_pointSize;\n\
-			uniform vec2 u_viewport;\n\
-			uniform vec2 u_angle_sincos;\n\
-			varying vec2 v_coord;\n\
-			void main() {\n\
-				vec2 uv = vec2(1.0 - gl_PointCoord.s, gl_PointCoord.t);\n\
-				uv = vec2( ((uv.y - 0.5) * u_angle_sincos.y - (uv.x - 0.5) * u_angle_sincos.x) + 0.5, ((uv.x - 0.5) * u_angle_sincos.y + (uv.y - 0.5) * u_angle_sincos.x) + 0.5);\n\
-				uv = v_coord - uv * u_iCharSize + vec2(u_iCharSize*0.5);\n\
-				uv.y = 1.0 - uv.y;\n\
-				gl_FragColor = vec4(u_color.xyz, u_color.a * texture2D(u_texture, uv, -1.0  ).a);\n\
-			}\n\
-			";
 
 	/*
 	var max_triangle_characters = 64;
@@ -1017,7 +1227,6 @@ function enableWebGLCanvas( canvas, options )
 	*/
 
 	//text rendering
-	var	point_text_shader = new GL.Shader( POINT_TEXT_VERTEX_SHADER, POINT_TEXT_FRAGMENT_SHADER, extra_macros );
 	var point_text_vertices = new Float32Array( max_characters * 3 );
 	var point_text_coords = new Float32Array( max_characters * 2 );
 	var point_text_mesh = new GL.Mesh();
@@ -1126,7 +1335,7 @@ function enableWebGLCanvas( canvas, options )
 	{
 		var atlas = createFontAtlas.call( this, this._font_family, this._font_mode );
 		var info = atlas.info;
-		var point_size = this._font_size * 1.1;
+		var point_size = Math.ceil( this._font_size * 1.1 );
 		var spacing = point_size * atlas.info.spacing / atlas.info.char_size - 1 ;
 		return { width: text.length * spacing, height: point_size };
 	}
@@ -1152,6 +1361,10 @@ function enableWebGLCanvas( canvas, options )
 		var max_ascii_code = 200;
 		var chars_per_row = 10;
 
+		//check if font is being loaded
+		//if( document.fonts && !document.fonts.check( fontname + " " + fontmode ) )
+		//	return null;
+
 		if(useInternationalFont) //more characters
 		{
 			max_ascii_code = 400;
@@ -1161,7 +1374,8 @@ function enableWebGLCanvas( canvas, options )
 		var char_size = (canvas_size / chars_per_row)|0;
 		var font_size = (char_size * 0.95)|0;
 
-		var canvas = createCanvas(canvas_size,canvas_size);//document.body.appendChild(canvas);
+		var canvas = createCanvas(canvas_size,canvas_size);
+		//document.body.appendChild(canvas); //debug
 		var ctx = canvas.getContext("2d");
 		ctx.fillStyle = "white";
 		ctx.imageSmoothingEnabled = this.imageSmoothingEnabled;
@@ -1178,6 +1392,8 @@ function enableWebGLCanvas( canvas, options )
 			spacing: char_size * 0.6, //in pixels
 			space: (ctx.measureText(" ").width / font_size)
 		};
+		
+		yoffset += enableWebGLCanvas.fontOffsetY * char_size;
 
 		//compute individual char width (WARNING: measureText is very slow)
 		var kernings = info.kernings = {};
@@ -1188,6 +1404,8 @@ function enableWebGLCanvas( canvas, options )
 			var char_info = { width: char_width, nwidth: char_width / font_size };
 			kernings[character] = char_info;
 		}
+		
+		var clip = true; //clip every character: debug
 
 		//paint characters in atlas
 		for(var i = 33; i < max_ascii_code; ++i)//valid characters from 33 to max_ascii_code
@@ -1197,12 +1415,17 @@ function enableWebGLCanvas( canvas, options )
 			if( kerning && kerning.width ) //has some visual info
 			{
 				info[i] = [character, (x + char_size*0.5)/canvas.width, (y + char_size*0.5) / canvas.height];
-				ctx.save();
-				ctx.beginPath();
-				ctx.rect( Math.floor(x)+0.5,Math.floor(y)+0.5, char_size-2, char_size-2 );
-				ctx.clip();
-				ctx.fillText(character,Math.floor(x+char_size*xoffset),Math.floor(y+char_size+yoffset),char_size);
-				ctx.restore();
+				if(clip)
+				{
+					ctx.save();
+					ctx.beginPath();
+					ctx.rect( Math.floor(x)+0.5, Math.floor(y)+0.5, char_size-2, char_size-2 );
+					ctx.clip();
+					ctx.fillText( character, Math.floor(x+char_size*xoffset), Math.floor(y+char_size+yoffset), char_size );
+					ctx.restore();
+				}
+				else
+					ctx.fillText( character, Math.floor(x+char_size*xoffset), Math.floor(y+char_size+yoffset), char_size );
 				x += char_size; //cannot pack chars closer because rendering points, no quads
 				if((x + char_size) > canvas.width)
 				{
@@ -1234,9 +1457,7 @@ function enableWebGLCanvas( canvas, options )
 			}
 		}
 
-		//console.log("Font Atlas Generated:", ((getTime() - now)*0.001).toFixed(2),"s");
-
-		texture = GL.Texture.fromImage( canvas, {magFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, minFilter: imageSmoothingEnabled ? gl.LINEAR_MIPMAP_LINEAR : gl.NEAREST, premultiply_alpha: false} );
+		texture = GL.Texture.fromImage( canvas, { format: gl.ALPHA, magFilter: imageSmoothingEnabled ? gl.LINEAR : gl.NEAREST, minFilter: imageSmoothingEnabled ? gl.NEAREST_MIPMAP_LINEAR : gl.NEAREST, premultiply_alpha: false, anisotropic: 8 } );
 		texture.info = info; //font generation info
 
 		return textures[texture_name] = texture;
@@ -1377,348 +1598,4 @@ function enableWebGLCanvas( canvas, options )
 };
 
 enableWebGLCanvas.useInternationalFont = false; //render as much characters as possible in the texture atlas
-
-//Scale and Offset
-function DragAndScale( element )
-{
-	this.offset = new Float32Array([0,0]);
-	this.scale = 1;
-	this.min_scale = 0.2;
-	this.max_scale = 8;
-	this.onredraw = null;
-	this._keys = {};
-
-	this.last_mouse = new Float32Array(2);
-        
-	if(gl)
-	{
-		this.element = gl.canvas;
-	}
-}
-
-DragAndScale.prototype.bindEvents = function()
-{
-    var ctx = gl;
-    if(!ctx)
-        throw('no WebGLRenderingContext');
-
-	var keys = this._keys;
-	var canvas = gl.canvas;
-	var rect = canvas.getBoundingClientRect();
-	var that = this;
-
-    ctx.captureKeys(true);
-    ctx.onkeydown = function(e)
-    {
-		keys[e.keyCode] = true;
-
-        if(e.keyCode === 82) // R
-            CORE.reloadShaders(); 
-		if(e.keyCode === 49)
-			$("#maintab").click();
-		if(e.keyCode === 50)
-			$("#assemblytab").click();
-		if(e.keyCode === 27)
-			HDRI.resetCrop();
-    }
-	ctx.onkeyup = function(e)
-    {
-		keys[e.keyCode] = false;
-    }
-    ctx.captureMouse(true);
-
-    ctx.onmousemove = function(e)
-    {
-		if(!HDRI.texture)
-			return;
-
-		var x = e.clientX - rect.left;
-		var y = e.clientY - rect.top;
-		e.canvasx = x;
-		e.canvasy = y;
-
-        if(e.shiftKey)
-				HDRI.shifting = true;
-			else
-				HDRI.shifting = false;
-
-		var deltax = x - that.last_mouse[0];
-		var deltay = y - that.last_mouse[1];
-
-		if( that.dragging ){
-
-			var pos = HDRI.toOffset(x, y);
-			var spot = HDRI.toOffset(x, y, true);
-
-			if(e.shiftKey){
-
-				if(!HDRI.originCaptured) {
-					HDRI.cropOrigin = pos;
-					HDRI.originCaptured = true;
-				}
-
-				HDRI.cropSize = numeric.sub(pos, HDRI.cropOrigin);
-			}
-			else{
-
-				var pixelx = pos[0];
-				var pixely = pos[1];
-
-				/*var limit = pixelx >= 0 && pixelx < HDRI.texture.width && pixely >= 0 && pixely < HDRI.texture.height;
-				if(!limit && HDRI.resizing)
-					return;*/
-				
-				if(HDRI.currentSpot > 0)
-				{
-					HDRI.resizeSection(HDRI.currentSpot, deltax / that.scale, deltay / that.scale);
-				}
-				else
-				{
-					var whichSpot = HDRI.inSpot(pos[0], pos[1], spot);
-					HDRI.currentSpot = whichSpot;
-
-					if(whichSpot < 0)
-						that.mouseDrag( deltax, deltay );
-					else
-						HDRI.resizeSection(whichSpot, deltax / that.scale, deltay / that.scale);
-				}
-				
-			}
-				
-		}
-
-		that.last_mouse[0] = x;
-		that.last_mouse[1] = y;
-
-		e.preventDefault();
-		e.stopPropagation();
-		return false;
-    }
-
-    ctx.captureTouch(true);
-
-    ctx.onmousewheel = function(e)
-    {
-		e.eventType = "mousewheel";
-		if(e.type == "wheel")
-			e.wheel = -e.deltaY;
-		else
-			e.wheel = (e.wheelDeltaY != null ? e.wheelDeltaY : e.detail * -60);
-
-		//from stack overflow
-		e.delta = e.wheelDelta ? e.wheelDelta/40 : e.deltaY ? -e.deltaY/3 : 0;
-		
-		that.changeDeltaScale(1.0 + e.delta * 0.05);
-
-		var x = e.clientX - rect.left;
-		var y = e.clientY - rect.top;
-		e.canvasx = x;
-		e.canvasy = y;
-
-		that.last_mouse[0] = x;
-		that.last_mouse[1] = y;
-
-		e.preventDefault();
-		e.stopPropagation();
-		return false;
-    }
-
-    ctx.onmousedown = function(e){
-    
-        that.dragging = true;
-
-		var x = e.clientX - rect.left;
-		var y = e.clientY - rect.top;
-		e.canvasx = x;
-		e.canvasy = y;
-
-		that.last_mouse[0] = x;
-		that.last_mouse[1] = y;
-
-		e.preventDefault();
-		e.stopPropagation();
-		return false;
-    }
-
-	ctx.onmouseup = function(e){
-	
-		that.dragging = false;
-
-		HDRI.onmouseup();
-
-		var x = e.clientX - rect.left;
-		var y = e.clientY - rect.top;
-		e.canvasx = x;
-		e.canvasy = y;
-
-		that.last_mouse[0] = x;
-		that.last_mouse[1] = y;
-
-		e.preventDefault();
-		e.stopPropagation();
-		return false;
-
-	}
-}
-
-/*DragAndScale.prototype.bindEvents = function( element )
-{
-	this.element = element;
-
-	this._binded_mouse_callback = this.onMouse.bind(this);
-
-	element.addEventListener("mousedown", this._binded_mouse_callback );
-	element.addEventListener("mousemove", this._binded_mouse_callback );
-
-	element.addEventListener("mousewheel", this._binded_mouse_callback, false);
-	element.addEventListener("wheel", this._binded_mouse_callback, false);
-}
-
-DragAndScale.prototype.onMouse = function(e)
-{
-	var canvas = this.element;
-	var rect = canvas.getBoundingClientRect();
-	var x = e.clientX - rect.left;
-	var y = e.clientY - rect.top;
-	e.canvasx = x;
-	e.canvasy = y;
-	e.dragging = this.dragging;
-
-	var ignore = false;
-	if(this.onmouse)
-		ignore = this.onmouse(e);
-
-	if(e.type == "mousedown")
-	{
-		this.dragging = true;
-		canvas.removeEventListener("mousemove", this._binded_mouse_callback );
-		document.body.addEventListener("mousemove", this._binded_mouse_callback  );
-		document.body.addEventListener("mouseup", this._binded_mouse_callback );
-	}
-	else if(e.type == "mousemove")
-	{
-		if(!ignore)
-		{
-			if(e.shiftKey)
-				HDRI.shifting = true;
-			else
-				HDRI.shifting = false;
-
-			var deltax = x - this.last_mouse[0];
-			var deltay = y - this.last_mouse[1];
-
-			if( this.dragging ){
-
-				if(e.shiftKey){
-
-					var pos = HDRI.toOffset();
-
-					if(!HDRI.originCaptured) {
-						HDRI.cropOrigin = pos;
-						HDRI.originCaptured = true;
-					}
-
-					HDRI.cropSize[0] = pos[0] - HDRI.cropOrigin[0];
-					HDRI.cropSize[1] = pos[1] - HDRI.cropOrigin[1];
-				}
-				else
-					this.mouseDrag( deltax, deltay );
-			}
-		}
-	}
-	else if(e.type == "mouseup")
-	{
-		this.dragging = false;
-		
-		if(HDRI.originCaptured)
-			HDRI.updateArea(true);
-
-		HDRI.originCaptured = false;
-
-		document.body.removeEventListener("mousemove", this._binded_mouse_callback );
-		document.body.removeEventListener("mouseup", this._binded_mouse_callback );
-		canvas.addEventListener("mousemove", this._binded_mouse_callback  );
-	}
-	else if(e.type == "mousewheel" || e.type == "wheel" || e.type == "DOMMouseScroll")
-	{ 
-		e.eventType = "mousewheel";
-		if(e.type == "wheel")
-			e.wheel = -e.deltaY;
-		else
-			e.wheel = (e.wheelDeltaY != null ? e.wheelDeltaY : e.detail * -60);
-
-		//from stack overflow
-		e.delta = e.wheelDelta ? e.wheelDelta/40 : e.deltaY ? -e.deltaY/3 : 0;
-		this.changeDeltaScale(1.0 + e.delta * 0.05);
-	}
-
-	this.last_mouse[0] = x;
-	this.last_mouse[1] = y;
-
-	e.preventDefault();
-	e.stopPropagation();
-	return false;
-}*/
-
-DragAndScale.prototype.toCanvasContext = function( ctx )
-{
-	ctx.scale( this.scale, this.scale );
-	ctx.translate( this.offset[0], this.offset[1] );
-}
-
-DragAndScale.prototype.convertOffsetToCanvas = function(pos)
-{
-	//return [pos[0] / this.scale - this.offset[0], pos[1] / this.scale - this.offset[1]];
-	return [ (pos[0] + this.offset[0]) * this.scale, (pos[1] + this.offset[1]) * this.scale ];
-}
-
-DragAndScale.prototype.convertCanvasToOffset = function(pos)
-{
-	return [pos[0] / this.scale - this.offset[0] , 
-		pos[1] / this.scale - this.offset[1]  ];
-}
-
-DragAndScale.prototype.mouseDrag = function(x,y)
-{
-	this.offset[0] += x / this.scale;
-	this.offset[1] += y / this.scale;
-
-	if(	this.onredraw )
-		this.onredraw( this );
-}
-
-DragAndScale.prototype.changeScale = function( value, zooming_center )
-{
-	if(value < this.min_scale)
-		value = this.min_scale;
-	else if(value > this.max_scale)
-		value = this.max_scale;
-
-	if(value == this.scale)
-		return;
-
-	if(!this.element)
-		return;
-
-	var rect = this.element.getBoundingClientRect();
-	if(!rect)
-		return;
-
-	zooming_center = zooming_center || [rect.width * 0.5,rect.height * 0.5];
-	var center = this.convertCanvasToOffset( zooming_center );
-	this.scale = value;
-
-	var new_center = this.convertCanvasToOffset( zooming_center );
-	var delta_offset = [new_center[0] - center[0], new_center[1] - center[1]];
-
-	this.offset[0] += delta_offset[0];
-	this.offset[1] += delta_offset[1];
-
-	if(	this.onredraw )
-		this.onredraw( this );
-}
-
-DragAndScale.prototype.changeDeltaScale = function( value, zooming_center )
-{
-	this.changeScale( this.scale * value, zooming_center );
-}
+enableWebGLCanvas.fontOffsetY = 0; //hack, some fonts need extra offsets, dont know why

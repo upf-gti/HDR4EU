@@ -102,10 +102,6 @@ Object.assign( NodePicker.prototype, {
         for(var n = 0; n < nodes.length; ++n)
         {
             var n = nodes[n];
-
-            if(n.components && n.components["Light"])
-            n.components["Light"].remove();
-
             n.destroy();
             n = null;
         }

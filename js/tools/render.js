@@ -27,10 +27,9 @@ RC.QUALITY_HIGH         = 1;
 
 RC.COLOR_BUFFER     = 0;
 RC.NORMAL_BUFFER    = 1;
-RC.POSITION_BUFFER  = 2;
-RC.DEPTH_BUFFER     = 3;
+RC.DEPTH_BUFFER     = 2;
 
-RC.FBO_INFO = [ "u_color_texture", "u_normal_texture", "u_position_texture", "u_depth_texture" ];
+RC.FBO_INFO = [ "u_color_texture", "u_normal_texture", "u_depth_texture" ];
 
 RenderComposer.prototype._ctor = function(renderer, camera)
 {
@@ -42,10 +41,22 @@ RenderComposer.prototype._ctor = function(renderer, camera)
     this._info = {};
 }
 
-RenderComposer.prototype.preRender = function( fbo )
+RenderComposer.prototype.render = function( fbo, uniforms )
+{
+    this.preRender( fbo, uniforms );
+
+    for( var i in this.render_passes )
+        if(this.render_passes[i].enabled)
+            this.render_passes[i].render( fbo );
+}
+
+RenderComposer.prototype.preRender = function( fbo, uniforms )
 {
     var renderer = this.renderer;
-    this.updateUniforms();
+    Object.assign(renderer._uniforms, this.getCameraUniforms());
+
+    if(uniforms)
+        Object.assign(renderer._uniforms, uniforms);
 
     // Fill Geometry buffers of the FBO
     fbo.bind(true);
@@ -53,6 +64,8 @@ RenderComposer.prototype.preRender = function( fbo )
     // Enable/disable WebGl flags
     gl.enable( gl.DEPTH_TEST );
     gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
+
+    renderer.clear(CORE._background_color);
 
     // render geometry and capture info
     var nodes = CORE.getRenderableNodes();
@@ -89,15 +102,6 @@ RenderComposer.prototype.preRender = function( fbo )
     fbo.unbind();
 }
 
-RenderComposer.prototype.render = function( fbo )
-{
-    this.preRender( fbo );
-
-    for( var i in this.render_passes )
-    if(this.render_passes[i].enabled)
-        this.render_passes[i].render( fbo );
-}
-
 RenderComposer.prototype.add = function( o )
 {
     if( o.constructor !== RenderPass )
@@ -116,21 +120,27 @@ RenderComposer.prototype.add = function( o )
     }
 }
 
-RenderComposer.prototype.updateUniforms = function()
+RenderComposer.prototype.getCameraUniforms = function()
 {
     let inv_p = mat4.create(),
     inv_v = mat4.create(),
     inv_vp = mat4.create();
 
-    mat4.invert(inv_p, this.camera._projection_matrix);
-    mat4.invert(inv_v, this.camera._view_matrix);
-    mat4.invert(inv_vp, this.camera._viewprojection_matrix);
+    this.camera.updateMatrices();
+
+    mat4.invert(inv_p, this.camera.projection_matrix);
+    mat4.invert(inv_v, this.camera.view_matrix);
+    mat4.invert(inv_vp, this.camera.viewprojection_matrix);
     
-    this.renderer._uniforms["u_invv"] = inv_v;
-    this.renderer._uniforms['u_invp'] = inv_p;
-    this.renderer._uniforms['u_invvp'] = inv_vp;
-    this.renderer._uniforms['u_projection'] = this.camera._projection_matrix;
-    this.renderer._uniforms['u_view'] = this.camera._view_matrix;
+    var uniforms = {};
+
+    uniforms["u_invv"] = inv_v;
+    uniforms['u_invp'] = inv_p;
+    uniforms['u_invvp'] = inv_vp;
+    uniforms['u_projection'] = this.camera.projection_matrix;
+    uniforms['u_view'] = this.camera.view_matrix;
+
+    return uniforms;
 }
 
 /**
@@ -184,7 +194,7 @@ RenderPass.prototype._ctor = function( name, shader, textures, options )
     this.uniforms = options.uniforms || {};
     this.onShaderPass = options.onShaderPass;
     this.type = options.type || RC.DEFAULT;
-    this._qlt = RC.QUALITY_DOWNSAMPLE;
+    this._qlt = RC.QUALITY_HIGH;
 
     if(this._qlt == RC.QUALITY_DOWNSAMPLE)
     {
@@ -216,11 +226,14 @@ RenderPass.prototype.render = function( fbo )
     if(this.shader.constructor === String)
     this.shader = gl.shaders[ this.shader ];
 
-    var fbo_textures = fbo.color_textures.concat( fbo.depth_texture ); // Color, normal, pos, depth
+    var fbo_textures = fbo.color_textures.slice(0, 2).concat( fbo.depth_texture ); // Color, normal, pos, depth
     var extra_textures = this.extra_textures; // Noise in case of SSAO
     var renderer = this.composer.renderer;
+
     var uniforms = Object.assign( {}, renderer._uniforms );
-    Object.assign( uniforms, this.uniforms );
+
+    if(this.uniforms)
+        Object.assign( uniforms, this.uniforms );
 
     // Bind G buffer textures
     var i = 0;

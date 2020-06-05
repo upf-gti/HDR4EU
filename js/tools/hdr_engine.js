@@ -108,6 +108,13 @@
                 gl.textures[ tex_name ] = result;
             }
 
+            else if(isRadiance(tex_name))
+            {
+                var data = that.parseRadianceHDR( buffer );
+                result = HDRTool.toTexture(data, options.size);
+                gl.textures[ tex_name ] = result;
+            }
+
             else
                 throw("file format not accepted");
 
@@ -169,8 +176,10 @@
                 this.core.setUniform("is_rgbe", true);
         }
 
+        console.log(header);
+
         var options = {
-            format: gl.RGBA,
+            format: header.nChannels === 4 ? gl.RGBA : gl.RGB,
             type: type,
             minFilter: gl.LINEAR_MIPMAP_LINEAR,
             texture_type: GL.TEXTURE_CUBE_MAP,
@@ -211,9 +220,8 @@
     * Parse the input data and get all the EXR info 
     * @method parseExr
     * @param {ArrayBuffer} buffer 
-    * @param {Number} cubemap_size 
     */
-    HDRTool.parseEXR = function( buffer, cubemap_size )
+    HDRTool.parseEXR = function( buffer )
     {
 		if(!Module.EXRLoader)
 			console.log('smartphone version');
@@ -291,6 +299,29 @@
     }
 
     /**
+    * Parse the input data and get all the HDR (radiance file) info 
+    * @method parseRadianceHDR
+    * @param {ArrayBuffer} buffer 
+    */
+    HDRTool.parseRadianceHDR = function( buffer )
+    {
+        if(!parseHdr)
+            console.log('cannot parse hdr file');
+        
+        var img = parseHdr(buffer);
+
+        var data = {
+            header: null,
+            width: img.shape[0],
+            height: img.shape[1],
+            rgba: img.data,
+            numChannels: img.data.length/(img.shape[0]*img.shape[1])
+        };
+
+        return data;
+    }
+
+    /**
     * Create a texture based in data received as input 
     * @method toTexture
     * @param {Object} data 
@@ -310,7 +341,7 @@
 
 		var channels = data.numChannels;
 		var pixelData = data.rgba;
-		var pixelFormat = gl.RGBA;
+		var pixelFormat = channels === 4 ? gl.RGBA : gl.RGB; // EXR and HDR files are written in 4 
 
         if(!width || !height)
         throw( 'No width or height to generate Texture' );
@@ -544,6 +575,8 @@
         var that = this;
 
         var shader = options.shader || "defblur";
+        //shader = "CMFT";
+
         if(shader.constructor !== GL.Shader)
             shader = gl.shaders[ shader ];
 		
@@ -902,11 +935,11 @@
         
         var environment = CORE._environment;
 
-        if(environment.includes(".hdre"))
-        {
-            // is already an hdre, no need to write it again
-            return;
-        }
+        // is already an hdre, no need to write it again
+        // but i'm letting export by now to rewrite rgba to rgb
+
+        // if(environment.includes(".hdre")) 
+        // return;
         
         var texture = gl.textures[ environment ];
         var temp = null;
@@ -987,7 +1020,8 @@
 
 		var write_options = {
 			type: array, 
-			rgbe: isRGBE
+            rgbe: isRGBE,
+            channels: options.channels || 3
 		}
 
 		if(options.saveSH && RM.Get("IrradianceCache")){
@@ -1048,7 +1082,7 @@
     * @method download
     * @param {string} name
     */
-    HDRTool.downloadTexture = function(name)
+    HDRTool.downloadTexture = function(name, new_tab)
     {
         var tex = name.constructor === GL.Texture ? name : gl.textures[name];
         if(!tex) {
@@ -1060,12 +1094,18 @@
         var a = document.createElement("a");
         a.download = name + ".png";
         a.href = canvas.toDataURL();
-        a.title = "Texture image";
-        a.appendChild(canvas);
-        var new_window = window.open();
-        new_window.document.title.innerHTML = "Texture image";
-        new_window.document.body.appendChild(a);
-        new_window.focus();
+        
+        if(!new_tab)
+            a.click();
+        else
+        {
+            a.title = "Texture image";
+            a.appendChild(canvas);
+            var new_window = window.open();
+            new_window.document.title.innerHTML = "Texture image";
+            new_window.document.body.appendChild(a);
+            new_window.focus();
+        }
     }
 
     /**
@@ -1182,7 +1222,7 @@
 
 		// output texture
 		var hdr = new GL.Texture( width, height, { type: GL.FLOAT, format: GL.RGBA} );
-		// var hdr = new GL.Texture( nearestPowerOfTwo(width), nearestPowerOfTwo(height), { type: GL.FLOAT, format: GL.RGBA, minFilter: GL.LINEAR_MIPMAP_LINEAR} );
+		var mipmaps_assembled = new GL.Texture( nearestPowerOfTwo(width), nearestPowerOfTwo(height), { type: GL.FLOAT, format: GL.RGBA, minFilter: GL.LINEAR_MIPMAP_LINEAR} );
 
         var stack           = [];
         var ExposureTimes   = [];
@@ -1214,20 +1254,18 @@
 
 			shader.uniforms(uniforms).draw(Mesh.getScreenQuad(), gl.TRIANGLES);
 
+        });
+        
+        mipmaps_assembled.drawTo(function(){
+
+			shader.uniforms(uniforms).draw(Mesh.getScreenQuad(), gl.TRIANGLES);
+
 		});
 
 		for(var i = 0; i < numImages; i++)
             images[i].texture.unbind(); 
 
-		//HDRI.changeScale( 855 / width );
-
-		var mipmaps_assembled = new GL.Texture( nearestPowerOfTwo(width), nearestPowerOfTwo(height), { type: GL.FLOAT, format: GL.RGBA, minFilter: GL.LINEAR_MIPMAP_LINEAR} );
-
-		mipmaps_assembled.drawTo( function() {
-			renderer.clear( that.core._background_color );
-			Object.assign( renderer._uniforms, HDRTool.getUniforms() );
-			hdr.toViewport();
-		});
+	    HDRI.changeScale( 855 / width );
 
 		mipmaps_assembled.bind(0);
 		gl.generateMipmap(gl.TEXTURE_2D);
@@ -2033,6 +2071,11 @@
     function isEXR( texture_name )
     {
         return texture_name.toLowerCase().includes(".exr");
+    }
+
+    function isRadiance( texture_name )
+    {
+        return texture_name.toLowerCase().includes(".hdr");
     }
 
     function parseFaces( size, width, height, pixelData )

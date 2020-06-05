@@ -270,6 +270,7 @@ var parserDAE = {
 
 		var that = this;
 		var scene = Collada.parse(data);
+		scene.metadata.file = filename;
 
 		if(callback)
 			callback( this.onParsed( scene, clean_filename ) );
@@ -379,6 +380,14 @@ var parserDAE = {
 		var parent = new RD.SceneNode();
 		CORE.root.addChild(parent);
 		parent.name = filename;
+
+		var metadata = {};
+
+		for(var i in scene.metadata)
+		if(scene.metadata[i])
+		metadata[i] = scene.metadata[i];
+
+		parent.metadata = metadata;
 
 		if(scene.root.model)
 		mat4.multiply(parent._local_matrix, parent._local_matrix, scene.root.model);

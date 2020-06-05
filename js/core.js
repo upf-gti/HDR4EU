@@ -13,6 +13,14 @@
 
 global.Core = Core;
 
+// Shading Modes
+Core.MATERIAL   = 0;
+Core.WIREFRAME  = 1;
+Core.SOLID      = 2;
+Core.ROUGHNESS  = 3;
+Core.METALLIC   = 4;
+Core.NORMALS    = 5;
+
 function Core( o )
 {
     if(this.constructor !== Core)
@@ -73,12 +81,12 @@ Core.prototype._ctor = function()
     // deferred rendering (G buffers)
     this.texture_color          = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
     this.texture_normal         = new GL.Texture(w,h, { type: type, filter: gl.LINEAR });
-    this.texture_position       = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+    this.texture_lighting       = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
     this.texture_depth          = new GL.Texture(w,h, { format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT}); 
     
     this.fx_color_buffer           = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
 
-    this.fbo_textures   = [ this.texture_color, this.texture_normal, this.texture_position ];
+    this.fbo_textures   = [ this.texture_color, this.texture_normal, this.texture_lighting ];
     this.fbo            = null;
 
     if(!isMobile) // mobile browser does not support FBO
@@ -96,6 +104,7 @@ Core.prototype._ctor = function()
     this.graph_manager  = null;
 
     this.renderComposer = new RenderComposer( this.renderer, this.controller.camera );
+    this.RMODE = Core.MATERIAL;
 }
 
 Core.prototype.resizeViewportTextures = function(w, h)
@@ -104,12 +113,12 @@ Core.prototype.resizeViewportTextures = function(w, h)
 
     this.texture_color         = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
     this.texture_normal         = new GL.Texture(w,h, { type: type, filter: gl.LINEAR });
-	this.texture_position       = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
+    this.texture_lighting       = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
     this.texture_depth          = new GL.Texture(w,h, { format: gl.DEPTH_COMPONENT, type: gl.UNSIGNED_INT}); 
     
     this.fx_color_buffer           = new GL.Texture(w,h, { type: type, minFilter: gl.LINEAR, magFilter: gl.LINEAR });
 
-    this.fbo_textures   = [ this.texture_color, this.texture_normal, this.texture_position ];
+    this.fbo_textures   = [ this.texture_color, this.texture_normal, this.texture_lighting  ];
     
     if(this.fbo)
     {
@@ -202,7 +211,7 @@ Core.prototype.setup = function()
 		"u_offset": 0.0,
         "u_GammaCorrection": true,
 		"u_middleGray": 0.18,
-		"u_ibl_intensity": 1.0,
+		"u_ibl_scale": 1.0,
 		"u_albedo": vec3.fromValues( 1, 1, 1),
 		"u_viewport": gl.viewport_data,
 		"u_show_layers": false,
@@ -214,7 +223,14 @@ Core.prototype.setup = function()
 		"u_MieDirection": 0.76,
 		'u_originOffset': 0.0,
 		'u_MieCoeff': 21
-	});
+    });
+    
+    // Compile shaders from scripts
+	for(var shader in RM.shaders) {
+        if(isMobile)
+            continue;
+        gl.shaders[shader] = new GL.Shader(RM.shaders[shader].vs_code, RM.shaders[shader].fs_code);
+    }
 
     renderer.context.ondraw = function(){ that.render() };
     renderer.context.onupdate = function(dt){ that.update(dt) };
@@ -471,10 +487,12 @@ Core.prototype.renderScene = function()
     var renderer = this.renderer;
     var that = this;
 
+    this.setUniform("u_render_mode", this.RMODE);
+
     gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
 
     // save work
-    if(!this.renderingToViewport)
+    if(!this.renderingToViewport || this.RMODE > 1) // no fx on these modes
     {
         renderer.clear(this._background_color);
         renderer.render( this.scene, this.controller.camera );
@@ -487,7 +505,15 @@ Core.prototype.renderScene = function()
     }
     else
     {
-        this.renderComposer.render(this.fbo);
+
+        var renderer = this.renderer;
+        var uniforms = {};
+        if(this.GlobalLight)
+        {
+            this.GlobalLight.generateShadowMap();
+            uniforms = this.GlobalLight.getUniforms();
+        }
+        this.renderComposer.render(this.fbo, uniforms);
 
         try
         {
@@ -514,7 +540,7 @@ Core.prototype.onRenderFX = function( final_frame )
     if(isMobile)
     return;
 
-    this.fbo_fx.bind(true);
+    this.fbo_fx.bind();
 
     gl.clearColor( 0, 0, 0, 0 );
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -522,9 +548,9 @@ Core.prototype.onRenderFX = function( final_frame )
     // render grid
     renderer.render( this.scene, this.controller.camera, [this.scene.root.children[0]] );
 
-    // var bbox_nodes = this.scene.root.children.filter( e=> e.name === "lines" );
-    // if(bbox_nodes.length)
-    //     renderer.render( this.scene, this.controller.camera, bbox_nodes );
+    /*var bbox_nodes = this.scene.root.children.filter( e=> e.name === "lines" );
+    if(bbox_nodes.length)
+        renderer.render( this.scene, this.controller.camera, bbox_nodes );*/
 
     // Render editor
     for(var i in RM.components)
@@ -544,6 +570,26 @@ Core.prototype.onRenderFX = function( final_frame )
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         that.fx_color_buffer.toViewport();
     });
+}
+
+Core.prototype.convertCamera = function( ls_camera, type )
+{
+    var cam = new RD.Camera();
+    
+    cam.lookAt( ls_camera.eye, ls_camera.center, ls_camera.up );
+
+    if(type == LS.Light.DIRECTIONAL)
+    {
+        // changes between LS Camera and RD Camera
+        cam.orthographic( ls_camera.frustum_size * 0.5, ls_camera.near, ls_camera.far, ls_camera.aspect * 0.5);
+        cam.near = ls_camera.near;
+        cam.far = ls_camera.far;
+    }
+    else
+        cam.perspective( ls_camera.fov, ls_camera.aspect, ls_camera.near, ls_camera.far);
+
+    cam.updateMatrices();
+    return cam;
 }
 
 /**
@@ -679,7 +725,7 @@ Core.prototype.display = function( no_free_memory )
 * @method parse
 * @param {string} name
 */
-Core.prototype.parse = function(name)
+Core.prototype.parse = function(name, callback)
 {
     var toParse = RM.scenes[name];
 
@@ -712,7 +758,7 @@ Core.prototype.parse = function(name)
 			mesh[t] = mesh[t].slice(1);
 	toParse.meshes = mesh;
 
-    this.loadResources( toParse, name );
+    this.loadResources( toParse, name, callback );
 }
 
 /**
@@ -720,7 +766,7 @@ Core.prototype.parse = function(name)
 * @method loadResources
 * @param {Object} toParse
 */
-Core.prototype.loadResources = async function( toParse, name )
+Core.prototype.loadResources = async function( toParse, name, callback )
 {
     var that = this;
 
@@ -768,7 +814,11 @@ Core.prototype.loadResources = async function( toParse, name )
                     if(toParse.camera && toParse.camera.eye)
                         newEye = toParse.camera.eye;
 
-                    that.controller.onNodeLoaded( node, newEye );
+                    // Importing dae
+                    if(callback)
+                        callback();
+                    else
+                        that.controller.onNodeLoaded( node, newEye );
 
 				}).bind(this));
             continue;  
@@ -777,7 +827,7 @@ Core.prototype.loadResources = async function( toParse, name )
         var node = new RD.SceneNode();
         node.mesh = resource;
         node.name = "node-" + uidGen.generate();
-        node.render_priority = RD.PRIORITY_ALPHA;
+        
 
         if(toParse.properties && toParse.properties.scale)
         node.scaling = toParse.properties.scale;
@@ -785,7 +835,8 @@ Core.prototype.loadResources = async function( toParse, name )
         var shader = "pbr";
         node.shader = shader;
 
-        node.blend_mode = RD.BLEND_ALPHA;
+        // node.blend_mode = RD.BLEND_ALPHA;
+        // node.render_priority = RD.PRIORITY_ALPHA;
         this.root.addChild( node );
         this.setRenderUniforms(node);
         this.setEnvironmentTextures( node );  // FIRST TEXTURES TO SET!!!
@@ -828,11 +879,15 @@ Core.prototype.setRenderUniforms = function(node)
     node._uniforms["u_alpha"] = 1.0;
     node._uniforms["u_alpha_cutoff"] = 0.1;
 
+    node._uniforms["u_isAnisotropic"] = false;
+    node._uniforms["u_anisotropy"] = 0;
+    node._uniforms["u_anisotropy_direction"] = vec3.fromValues(0.5, 1, 0.0);
+
     node._uniforms["u_clearCoat"] = 0.0;
 	node._uniforms["u_clearCoatRoughness"] = 0.0;
 	node._uniforms["u_tintColor"] = vec3.fromValues(1,1,1);
 
-	node._uniforms["u_reflectance"] = vec3.fromValues(0.5,0.5,0.5);
+	node._uniforms["u_reflectance"] = 0.5;
 	
 	node._uniforms["u_renderDiffuse"] = true;
 	node._uniforms["u_renderSpecular"] = true;
@@ -841,8 +896,9 @@ Core.prototype.setRenderUniforms = function(node)
 
     node._uniforms["u_Skinning"] = false;
 
-	node._uniforms['u_specular_power'] = 1.0;
-	node._uniforms['u_specular_gloss'] = 1.0;
+    node._uniforms['u_diffuse_power'] = 0.2;
+	node._uniforms['u_specular_power'] = 0.65;
+	node._uniforms['u_specular_gloss'] = 0.8;
     node._uniforms['u_reflectivity'] = 0.0;
     
     // remove color_texture binding
@@ -1013,8 +1069,11 @@ Core.prototype.reloadShaders = async function(macros, callback)
 
 				var shader = gl.shaders[i];
 	
-				if(!shader) 
-					continue;
+                if(!shader) 
+                {
+                    shader = new Shader(RM.shaders[i].vs_code, RM.shaders[i].fs_code);
+                    continue;
+                }
 
 				shader.updateShader(RM.shaders[i].vs_code, RM.shaders[i].fs_code);
 			}
@@ -1336,17 +1395,24 @@ Core.prototype.createMatrix = function(visible, noUpdateCamera)
         mn.shader = "pbr";
         mn.position = [j * 2.0, 0, i * 2.0];
 
-		this.setRenderUniforms( mn );
+        this.setEnvironmentTextures( mn );
+
+        // mn.textures["albedo"] = "white";
+    
+        node.addChild(mn)
+    
+        this.setRenderUniforms( mn );
+        mn.setTextureProperties();
+
 		// overwrite this params
 		mn._uniforms["u_roughness"] = values[i];
         mn._uniforms["u_metalness"] = 1.0 - values[j];
-        node.addChild(mn);
 
         if(i == 3 && j == 3 && !noUpdateCamera)
         this.controller.onNodeLoaded(mn, [-6, 6, 15]);
     }
 
-    this.updateNodes();
+    //this.updateNodes();
     this.selected_radius = 1;
 }
 
@@ -1478,32 +1544,31 @@ Core.prototype.addPrimitive = function(mesh, shader, show_prem)
     var node = new RD.SceneNode({
             mesh: mesh,
             shader: shader,
-			color: [1, 1, 1, 1]
+            color: [1, 1, 1, 1]
         });
+    
+    this.setEnvironmentTextures( node );
 
-	node.blend_mode = RD.BLEND;
+	node.textures["albedo"] = "white";
+    node.name = show_prem ? 'show_prem' : "node-" + uidGen.generate();
+
+    /*if(mesh == "plane")
+    node.rotate(-90*DEG2RAD, RD.RIGHT);*/
 
     this.controller.onNodeLoaded( node );
-
-    node.name = show_prem ? 'show_prem' : "node-" + uidGen.generate();
+    this.root.addChild( node );
 
     if(!show_prem) {
         this.setRenderUniforms(node);
         node.setTextureProperties();
     }
     
-    if(mesh == "plane") 
-        node.flags.two_sided = true;
-    
-    this.root.addChild( node );
-    this.updateNodes();
-
-
     if(this.gui._sidepanel)
         this.gui.updateSidePanel(null, node.name);
 
 	if(RM.Get("NodePicker"))
-		RM.Get("NodePicker").select(node);
+        RM.Get("NodePicker").select(node);
+        
     return node;
 }
 
@@ -1602,10 +1667,10 @@ Core.prototype.toJSON = function()
 */
 Core.prototype.fromJSON = function( o, only_settings )
 {
+    var o = o || {};
     var gui = this.gui;
 	var that = this;
 	gui.loading();
-    var o = o || {};
     
 	this.reset();
 	this.configure(o);
@@ -1613,20 +1678,6 @@ Core.prototype.fromJSON = function( o, only_settings )
 	// special cases
 	if(o.uniforms )
 	    this.renderer.setGlobalUniforms( o.uniforms );
-
-	// set controller
-	if(o.controller) {
-		var camera_props = JSON.parse( o.controller.camera );
-
-		this.controller.configure( {
-			eye: camera_props._position,
-			target: camera_props._target,
-			up: camera_props._up,
-			near: camera_props.near,
-			far: camera_props.far,
-			fov: camera_props.fov
-		});
-	}
     
 	var components = o.components;
 
@@ -1637,32 +1688,35 @@ Core.prototype.fromJSON = function( o, only_settings )
 			var copy = components[key];
 			var component = RM.Get( key );
 
-			if(!component) {
-                RM.registerComponent( RM.classes[key], key);
-                component = RM.Get( key );
-                
-                if(component.onImport)
-                component.onImport( copy );
-			}
+			if(!component)
+                component = RM.registerComponent( RM.classes[key], key);
 
-			//copy to attributes
-			for(var i in copy)
-			{
-				var v = component[i];
-				if(v === undefined)
-					continue;
-
-				if( v && v.constructor === Float32Array )
-					v.set( copy[i] );
-				else 
-					component[i] = copy[i];
-			}
-		}
+            component.fromJSON( copy );
+        }
 	}
 
 	// set scene
 	if ( o._environment_set )
 		this.set( o._environment_set, {onImport: onLoadEnvironment } );
+
+    function onSetScene()
+    {
+        // set controller
+        if(o.controller) {
+            var camera_props = JSON.parse( o.controller.camera );
+
+            that.controller.configure( {
+                eye: camera_props._position,
+                target: camera_props._target,
+                up: camera_props._up,
+                near: camera_props.near,
+                far: camera_props.far,
+                fov: camera_props.fov
+            });
+        }
+    }
+
+    onSetScene();
 
 	function onLoadEnvironment() {
 		
@@ -1671,13 +1725,23 @@ Core.prototype.fromJSON = function( o, only_settings )
 		{
 			that.gui.updateSidePanel(null, 'root');
 			return;
-		}
-		  // load nodes info
+        }
+        
+        var dae_list = [];
+
+		// load nodes info
 		for(var i in o.nodes)    
 		{
 			var node_properties = JSON.parse(o.nodes[i]);
-			
-			switch(node_properties.name)
+            var node_name = node_properties.name;
+            
+            if(node_name.includes(".dae"))
+            {
+                dae_list.push( node_properties );
+                continue;
+            }
+
+			switch(node_name)
 			{
 				case 'lines':
 				case 'light':
@@ -1692,11 +1756,14 @@ Core.prototype.fromJSON = function( o, only_settings )
 					break;
 				default:
 
-                    // TO DO: import daes
-
 					// create node and apply properties
 					var new_node = new RD.SceneNode();
-					new_node.name = "tmp";
+                    new_node.name = "tmp";
+                    
+                    // fix import scale
+                    delete node_properties.scaling;
+                    delete node_properties.scale;
+
 					new_node.configure(node_properties);
 					new_node.setTextureProperties();
                     that.root.addChild(new_node);
@@ -1706,15 +1773,52 @@ Core.prototype.fromJSON = function( o, only_settings )
                         var child_properties = JSON.parse(node_properties.children[child]);
                         var new_child = new RD.SceneNode();
                         new_child.name = "tmp";
+                        // fix import scale
+                        delete child_properties.scaling;
+                        delete child_properties.scale;
                         new_child.configure(child_properties);
                         new_child.setTextureProperties();
                         new_node.addChild(new_child);
                     }
 
 					break;
-			}
-		}
-			
+            }
+        }
+        
+        // configure daes
+        var parser = RM.formats["dae"];	
+
+        if(dae_list.length && !parser)
+        throw("cant parse DAE file");
+
+        for(var i in dae_list)
+        {
+            var dae = dae_list[i];
+
+            console.log(dae);
+
+            if(!dae.name)
+            throw("cant parse DAE file");
+
+            var clean_name = dae.name.substring(0, dae.name.length - 4);
+            that.parse( clean_name, function()
+            {
+                // set export options here
+                // node info, camera, etc
+                for(var child in dae.children)
+                {
+                    var child_properties = JSON.parse(dae.children[child]);
+                    var node = CORE.getByName( child_properties.name );
+                    node.configure(child_properties);
+                }
+
+                // set controller
+                onSetScene();
+            });
+
+           
+        }
+            
 		gui.updateSidePanel(null, 'root');
 		resize();
 		

@@ -1208,6 +1208,11 @@
 			return;
 		}
 
+		// no fx on these modes
+		if(CORE && CORE.RMODE > 1)
+		return;
+		
+
 		if(this.onRenderFX)
 			this.onRenderFX( tex );
 

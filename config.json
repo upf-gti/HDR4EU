@@ -10,6 +10,7 @@
         "js/lib/UTIF.js",
         "js/lib/dcraw.js",
         "js/lib/UPNG.js",
+        "js/lib/hdr-parser.js",
         "js/lib/jpg.js",
         "js/lib/gl-matrix-min.js",
         "js/lib/gl-matrix-extra.js",
@@ -50,8 +51,6 @@
         "js/graph_nodes/scene.js",
         "js/graph_nodes/atmos.js",
 
-        "js/shaders/chroma.js",
-
         "js/components/irradiance.js",
         "js/components/light.js",
         "js/components/ssao.js",
@@ -60,11 +59,33 @@
         "js/components/webcam.js",
         "js/components/target.js",
 
+        "js/shaders/chroma.js",
+
         "js/gui.js",
         "js/core.js"
     ],
 
     "scenes" : {
+
+        "Wild Bike": {
+            "name": "Wild Bike",
+            "mesh": "WildWestBike/WildWestBike.obj",
+            "textures": {
+                "albedo": "WildWestBike/albedo.jpg",
+                "ao": "WildWestBike/ao.jpg",
+                "emissive": "WildWestBike/emissive.jpg",
+                "roughness": "WildWestBike/roughness.jpg",
+                "metalness": "WildWestBike/metallic.jpg",
+                "normal": "WildWestBike/normal.jpg"
+            },
+            "size": "2,6 MB",
+            "camera": {
+                "eye": [-3,1,4]
+            },
+            "uniforms": {
+                "u_emissiveScale": 30
+            }
+        },
 
         "Damaged Helmet": {
             "name": "Damaged Helmet",
@@ -93,9 +114,6 @@
             "size": "0 MB",
             "camera": {
                 "eye": [-1.5,0.5,2.5]
-            },
-            "uniforms": {
-                "u_metallicRough": "true"
             }
         },
         "Woman": {
@@ -160,36 +178,36 @@
             }
         },
         "Radio": {
-                "name": "Radio",
-                "mesh": "Radio/radio.obj",
-                "textures": {
-                    "roughness": "Radio/roughness.png",
-                    "albedo": "Radio/albedo.png",
-                    "ao": "Radio/ao.png",
-                    "normal": "Radio/normal.png",
-            "metalness": "Radio/metalness.png"
-            },
-                "size": "168 KB",
-                "camera": {
-                    "eye": [-0.5,0.25,1]
-                }
-            },
-            "Bean Bot": {
-                "name": "Bean Bot",
-                "mesh": "Bot/bot.obj",
-                "textures": {
-                    "roughness": "Bot/roughness.jpg",
-                    "albedo": "Bot/albedo.jpg",
-                    "ao": "Bot/ao.jpg",
-                    "normal": "Bot/normal.png",
-                    "emissive": "Bot/emissive.jpg",
-                    "metalness": "Bot/metalness.jpg"
-            },
-                "size": "13 MB",
-                "camera": {
-                    "eye": [-1.2,1.3,-3.8]
-                }
-            },
+            "name": "Radio",
+            "mesh": "Radio/radio.obj",
+            "textures": {
+                "roughness": "Radio/roughness.png",
+                "albedo": "Radio/albedo.png",
+                "ao": "Radio/ao.png",
+                "normal": "Radio/normal.png",
+        "metalness": "Radio/metalness.png"
+        },
+            "size": "168 KB",
+            "camera": {
+                "eye": [-0.5,0.25,1]
+            }
+        },
+        "Bean Bot": {
+            "name": "Bean Bot",
+            "mesh": "Bot/bot.obj",
+            "textures": {
+                "roughness": "Bot/roughness.jpg",
+                "albedo": "Bot/albedo.jpg",
+                "ao": "Bot/ao.jpg",
+                "normal": "Bot/normal.png",
+                "emissive": "Bot/emissive.jpg",
+                "metalness": "Bot/metalness.jpg"
+        },
+            "size": "13 MB",
+            "camera": {
+                "eye": [-1.2,1.3,-3.8]
+            }
+        },
         "Substance Mesh": {
             "name": "Substance Mesh",
             "mesh": "Pbr/pbr.wbin",
@@ -238,18 +256,6 @@
             "camera": {
                 "eye": [-10,3.6,-8]
             }
-        },
-        "Golden ball": {
-            "name": "Golden ball",
-            "mesh": "Golden/golden.obj",
-            "textures": {
-                "roughness": "Golden/roughness.png",
-                "metalness": "Golden/metalness.png",
-                "albedo": "Golden/albedo.png",
-                "normal": "Golden/normal.png",
-                "ao": "Golden/ao.png"
-            },
-            "size": "0,8 MB"
         },
         "JetPrince 1967": {
             "name": "JetPrince 1967",
@@ -343,14 +349,6 @@
             "camera": {
                 "eye": [0,10,25],
                 "target": [7,0,7]
-            }
-        },
-        "Roughness scale": {
-            "name": "Roughness scale",
-            "node_name": "roughness_scale_node",
-            "camera": {
-                "eye": [13.81, 0.24,8.38],
-                "target": [0,0,8]
             }
         }
     }

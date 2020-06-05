@@ -24,43 +24,60 @@ class GraphManager {
         // default render pipeline
 
         var frame_node = LiteGraph.createNode("texture/frame");
-        frame_node.pos = [150,150];
+        frame_node.pos = [75,150];
         this.graph.add(frame_node);
 
         var glow_node = LiteGraph.createNode("texture/glow");
         glow_node.properties.threshold = 20;
-        glow_node.pos = [650, 70];
+        glow_node.pos = [750, 70];
         this.graph.add(glow_node);
 
         var tm_node = LiteGraph.createNode("texture/tonemapping");
-        tm_node.pos = [1000, 70];
+        tm_node.pos = [1085, 70];
         this.graph.add(tm_node);
 
         var viewport_node = LiteGraph.createNode("texture/toviewport");
         viewport_node.onRenderFX = CORE.onRenderFX.bind(CORE);
-        viewport_node.pos = [1325,180];
+        viewport_node.pos = [1375,180];
         this.graph.add(viewport_node);
 
         var uniforms_node = LiteGraph.createNode("scene/uniforms");
-        uniforms_node.pos = [800,140];
+        uniforms_node.pos = [920,150];
         this.graph.add(uniforms_node);
+        uniforms_node.collapse(true);
 
         frame_node.connect(0, glow_node, 0 );
         glow_node.connect(0, tm_node, 0 );
         uniforms_node.connect(0, tm_node, 1 );
-        
+
         var ssao_node = LiteGraph.createNode("fx/ssao");
-        ssao_node.pos = [430, 70];
+       
         this.graph.add(ssao_node);
+        ssao_node.collapse(true);
+        ssao_node.pos = [420, 100];
+        frame_node.connect(0, ssao_node, 0 );
+        frame_node.connect(1, ssao_node, 1 );
+        frame_node.connect(2, ssao_node, 2 );
+        frame_node.connect(4, ssao_node, 3 );
+
+        var light_node = LiteGraph.createNode("fx/lighting");
+        light_node.pos = [560, 235];
+        this.graph.add(light_node);
+        light_node.collapse(true);
         
-        frame_node.connect(4, ssao_node, 0 );
-        frame_node.connect(5, ssao_node, 1 );
-        ssao_node.connect(0, glow_node, 0 );
+        ssao_node.connect(0, light_node, 0 );
+        frame_node.connect(1, light_node, 1 );
+        frame_node.connect(2, light_node, 2 );
+        frame_node.connect(3, light_node, 3 );
+        frame_node.connect(4, light_node, 4 );
+
+        light_node.connect(0, glow_node, 0 );
         tm_node.connect(0, viewport_node, 0 );
 
-        var vfx_group = new LiteGraph.LGraphGroup("VFX");
+        var vfx_group = new LiteGraph.LGraphGroup("FX");
+        vfx_group.color = "#b06634";
         vfx_group.pos = [345, 10];
-        vfx_group.size = [880, 180];
+        vfx_group.size = [925, 160];
         this.graph.add(vfx_group);
 
         this.viewport_node = viewport_node;
@@ -163,6 +180,10 @@ class GraphManager {
         widgets.widgets_per_row = 1;
         widgets.addVector2("Size", node.size, {callback: function(v){
             node.size = v;
+        }});
+
+        widgets.addVector2("Position", node.pos, {callback: function(v){
+            node.pos = v;
         }});
 
         var modes = ["Always", "On Event", "On Trigger", "Never"];

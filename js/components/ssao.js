@@ -180,12 +180,7 @@ Object.assign( SSAO.prototype, {
 			"u_max_dist": 5,
 			"u_min_dist": 0.025
 		}
-	},
-
-	onImport( o )
-	{
-		this.ssaoPass.uniforms = o.uniforms;
 	}
 });
 
-RM.registerClass( SSAO, 'SSAO');
+// RM.registerClass( SSAO, 'SSAO');

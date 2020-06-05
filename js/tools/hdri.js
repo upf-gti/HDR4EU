@@ -75,6 +75,8 @@ var HDRI = {
 
 		this.assemble_mode = HDRI.HDR_GPU;
 		this.sort_type = "NORMAL";
+		this.shader = gl.shaders["PTR_HDRI"];
+		this.shader_name = "PTR_";
 
 		this._channel_shader = new GL.Shader('\
 			precision mediump float;\n\
@@ -606,10 +608,10 @@ var HDRI = {
 			var SFX = RM.Get("ScreenFX");
 			var values = ["None", "Test", "Exponential", "PTR_"];
 
-			widgets.addCombo(null, SFX.tonemapping, {values: values, callback: function(v){
+			widgets.addCombo(null, that.shader_name, {values: values, callback: function(v){
 				
-				that.shader = gl.shaders[v + "HDRI"];
-				SFX.tonemapping = v;
+				that.shader_name = v;
+				that.shader = gl.shaders[ that.shader_name  + "HDRI"];
 				that.updateArea();
 			}});
 
@@ -1018,7 +1020,7 @@ var HDRI = {
 				u_Ywhite: this.TM.Ywhite,
 				u_Key: this.TM.Key,
 			};
-	
+
 			for(var i = 0; i < numImages; i++)
 				if(HDRTool.files_loaded[i].verbose)
 				uniforms["u_WhiteBalance"].push( new Float32Array( HDRTool.files_loaded[i].verbose.multipliers ) );

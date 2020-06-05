@@ -23,7 +23,7 @@ function ChromaKey(node)
 	this._despill_threshold = 0;
 	this._enable_despill = true;
 	this._applyShading = false;
-	this._chroma_ibl_intensity = 2;
+	this._chroma_ibl_intensity = 1;
 }
 
 ChromaKey.icon = "https://webglstudio.org/users/arodriguez/imgs/mini-chroma.png";
@@ -37,6 +37,9 @@ Object.assign( ChromaKey.prototype, {
 		this.node.old_shader = this.node.shader;
 		this.node.shader = "chroma";
 
+		this.node.blend_mode = RD.BLEND_ALPHA;
+
+		delete this.node.textures["albedo"];
 		this.node.textures["chroma"] = "white";
 		this.node.textures["normal"] = "white";
 
@@ -127,6 +130,8 @@ Object.assign( ChromaKey.prototype, {
 
 			delete that.node.components["ChromaKey"];
 			gui.updateSidePanel(null, that.node.name);
+
+			that.node.blend_mode = RD.BLEND_NONE;
 
 		}});
 		add_component_node.querySelector("button").classList.add("section-button");

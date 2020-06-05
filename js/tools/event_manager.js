@@ -8,13 +8,6 @@
 * @class 
 */
 
-TRANSLATE_COLOR_VECTORS = {
-    0: [1, 1, 0, 1],
-    1: [1,  0.1, 0.1, 1.],
-    2: [0.1, 1., 0.1, 1.],
-    3: [0.1, 0.1, 1., 1.]
-}
-
 class EventManager {
 
     constructor(webGLcontext, controller) {
@@ -79,7 +72,7 @@ class EventManager {
             valid_extensions = [ 
                 'exr', 'hdre', 'png', 'jpg', 'obj', 
                 'wbin', 'json', 'hdrec', "cr2", "jpeg", 
-                "hdr", "nef", "dae"
+                "hdr", "nef", "dae", "hdr"
             ];
             
             if(valid_extensions.lastIndexOf(extension) < 0)
@@ -261,6 +254,8 @@ class EventManager {
         
             if(e.keyCode === 27) // ESC
             {
+                e.preventDefault();
+
                 if(RM.Get("NodePicker"))
                     RM.Get("NodePicker").unSelect();
                 gui.updateSidePanel(null, "root");
@@ -287,10 +282,11 @@ class EventManager {
 
             if (e.leftButton && that.is_mouse_down) {
 
-                controller.orbit(e.deltax * _dt * s, -e.deltay * _dt * s);
+                var AltKey = that.keys[71];
+                controller.orbit(e.deltax * _dt * s, -e.deltay * _dt * s, AltKey);
             }
             
-            if (e.which == 2) {
+            else if (e.which == 2) {
                 var speed = vec3.length( vec3.subtract( vec3.create(), camera.target, camera.position )) * 0.1;
                 controller.camera.move([-e.deltax * speed * _dt, e.deltay * speed * _dt, 0]);
             }
@@ -303,46 +299,7 @@ class EventManager {
 
             that.is_mouse_down = true;
 
-            if(e.button == GL.LEFT_MOUSE_BUTTON )
-            {
-                var result = vec3.create();
-                var ray = controller.camera.getRay( e.canvasx, e.canvasy );
-                var collide_node = CORE.scene.testRay( ray, result, undefined, 0x1, true );
-                
-                if(collide_node) 
-                {
-                    // falta saber si está repetido el uid de entre los multiples
-                    if(window.node && window.node._uid === collide_node._uid)
-                    return;
-
-                    if(!collide_node.visible)
-                    return;
-
-                    // select another node?
-                    if(that.keys[16])
-                    {
-                        if(RM.Get('NodePicker'))
-                            RM.Get('NodePicker').select(collide_node, true);
-                        return;
-                    }
-                    else
-                    {
-                        if(RM.Get('NodePicker'))
-                            RM.Get('NodePicker').select(collide_node);
-
-                        // no array of nodes
-                        window.nodes = undefined;
-
-                        // parent is not the scene root
-                        var name = collide_node.name;
-                        if(!name)
-                            name = collide_node.parentNode.name;
-                        gui.updateSidePanel(null, name);
-                    }
-                }
-            }
-
-            else if(e.button == GL.RIGHT_MOUSE_BUTTON)
+            if(e.button == GL.RIGHT_MOUSE_BUTTON)
             {
                 if(CORE.browser === "edge")
                     return;
@@ -351,6 +308,8 @@ class EventManager {
                     window.context_menu.close();
                 window.context_menu = new LiteGUI.ContextMenu( getContextMenuActions(), { event: e });
             }
+
+            that.last_mouse_down = getTime();
         }
        
         ctx.onmousewheel = function(e)
@@ -369,12 +328,57 @@ class EventManager {
         
             that.is_mouse_down = false;
 
-            if(window.node)
+            if(getTime() -  that.last_mouse_down < 150)
+            {
+                if(e.button == GL.LEFT_MOUSE_BUTTON)
+                {
+                    var result = vec3.create();
+                    var ray = controller.camera.getRay( e.canvasx, e.canvasy );
+                    var collide_node = CORE.scene.testRay( ray, result, undefined, 0x1, true );
+                    
+                    var light_selected = false;
+
+                    if(CORE.GlobalLight)
+                        light_selected = CORE.GlobalLight.checkRayCollision( e.canvasx, e.canvasy );
+
+                    if(collide_node && !light_selected) 
+                    {
+                        // falta saber si está repetido el uid de entre los multiples
+                        if(window.node && window.node._uid === collide_node._uid)
+                        return;
+
+                        if(!collide_node.visible)
+                        return;
+
+                        // select another node?
+                        if(that.keys[16])
+                        {
+                            if(RM.Get('NodePicker'))
+                                RM.Get('NodePicker').select(collide_node, true);
+                            return;
+                        }
+                        else
+                        {
+                            if(RM.Get('NodePicker'))
+                                RM.Get('NodePicker').select(collide_node);
+
+                            // no array of nodes
+                            window.nodes = undefined;
+
+                            // parent is not the scene root
+                            var name = collide_node.name;
+                            if(!name)
+                                name = collide_node.parentNode.name;
+                            gui.updateSidePanel(null, name);
+                        }
+                    }
+                }
+            }
+
+            if(CORE.gizmo.targets && CORE.gizmo.targets.length > 0)
             {
                 if(CORE.gizmo)
                 CORE.gizmo.onMouse(e);
-                
-                // gui.updateSidePanel( null, window.node.name );
             }
         }
 
@@ -400,12 +404,15 @@ class EventManager {
 
         var camera = CORE.controller.camera;
 
-        if(window.destination_eye) {
-
+        if(CORE.controller.smooth && window.destination_eye) {
             vec3.lerp(camera.position, camera.position, window.destination_eye, 0.3);
             if(camera.position.nearEq(window.destination_eye))
                 window.destination_eye = undefined;
         }
+
+        // update light position
+        /*if(RM.components.Light)
+            RM.components.Light.root.position.set( CORE.LightNode.position );*/
     }
 }
 
@@ -424,7 +431,9 @@ function getContextMenuActions()
 		shaded_models.push( {title: scenes[s].name, callback: function(v) {
 			CORE.parse( v.title );
 			gui.updateSidePanel(null, v.title );
-		}});
+        }});
+        
+    var shadings = ["MATERIAL" , "WIREFRAME", "SOLID", "ROUGHNESS", "METALLIC" , "NORMALS"];
 
 	var actions = [
         {
@@ -452,28 +461,57 @@ function getContextMenuActions()
             }
             
         },
-        // {
-        //     title: "Component", //text to show
-        //     has_submenu: true,
-        //     submenu: {
-        //         options: 
-        //         [{
-        //             title: "Irradiance Cache",
-        //             callback: function() { 
-        //                 RM.registerComponent( IrradianceCache, 'IrradianceCache'); 
-        //                 gui.updateSidePanel(null, "root", {tab: "IrradianceCache"});
-        //             }
-        //         },
-        //         {
-        //             title: "SSAO",
-        //             callback: function() { 
-        //                 RM.registerComponent( SSAO, 'SSAO'); 
-        //                 gui.updateSidePanel(null, "root", {tab: "SSAO"}); 
-        //             }
-        //         }
-        //     ]
-        //     }
-        // }
+        {
+            title: "Shading", //text to show
+            has_submenu: true,
+            submenu: {
+                options: 
+                [
+                {
+                    title: "Current: " + shadings[CORE.RMODE],
+                    disabled: true
+                },
+                null,
+                {
+                    title: "MATERIAL",
+                    callback: function() { 
+                        CORE.RMODE = Core.MATERIAL; 
+                    }
+                },
+                {
+                    title: "WIREFRAME",
+                    callback: function() { 
+                        CORE.RMODE = Core.WIREFRAME; 
+                    }
+                },
+                {
+                    title: "SOLID",
+                    callback: function() { 
+                        CORE.RMODE = Core.SOLID;
+                    }
+                },
+                {
+                    title: "ROUGHNESS",
+                    callback: function() { 
+                        CORE.RMODE = Core.ROUGHNESS;
+                    }
+                },
+                {
+                    title: "METALLIC",
+                    callback: function() { 
+                        CORE.RMODE = Core.METALLIC;
+                    }
+                },
+                {
+                    title: "NORMALS",
+                    callback: function() { 
+                        CORE.RMODE = Core.NORMALS;
+                    }
+                }
+                
+            ]
+            }
+        }
 	];
 
 	return actions;

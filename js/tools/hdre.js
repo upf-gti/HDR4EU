@@ -23,9 +23,10 @@
 
     var HDRE = global.HDRE = {
 
-        version: 2.5,	// v1.5 adds spherical harmonics coeffs for the skybox
+        version: 2.75,	// v1.5 adds spherical harmonics coeffs for the skybox
                         // v2.0 adds byte padding for C++ uses				
                         // v2.5 allows mip levels to be smaller than 8x8
+                        // v2.75 RGB format supported
         maxFileSize: 60e6 // bytes
     };
 
@@ -90,7 +91,7 @@
 
         // File format information
         var numFaces = 6;
-        var numChannels = 4;
+        var numChannels = options.channels || 4;
         var headerSize = 256; // Bytes (256 in v2.0)
         var contentSize = size * numFaces * numChannels * array_type.BYTES_PER_ELEMENT; // Bytes
         var fileSize = headerSize + contentSize; // Bytes
@@ -143,6 +144,11 @@
 
             for(var f = 0; f < numFaces; f++) {
                 var subdata = _env.pixelData[f];
+
+                // remove alpha channel to save storage
+                if(numChannels === 3)
+                    subdata = _removeAlphaChannel( subdata );
+
                 data.set( subdata, offset + suboff);
                 suboff += subdata.length;
             }
@@ -163,8 +169,6 @@
 		if(RGBE)
 			type = U_BYTE_RGBE;
             
-		console.log(type);
-
 		// set write array type 
 		view.setUint16(28, type, LE); 
 
@@ -211,6 +215,20 @@
 	function _getMax(data) {
 	  return data.reduce((max, p) => p > max ? p : max, data[0]);
 	}
+
+    function _removeAlphaChannel(data) {
+        var tmp_data = new Float32Array(data.length * 0.75);
+        var index = k = 0;
+        data.forEach( function(a, b){  
+            if(index < 3) {
+                tmp_data[k++] = a;  
+                index++;
+            } else {
+                index = 0;
+            }
+        });
+        return tmp_data;
+    }
 
 	window.getMaxOfArray = _getMax;
 

@@ -18,6 +18,8 @@ function CameraController(context, o)
         this.configure(o);
 }
 
+RD.Camera._Types = ["PERSPECTIVE", "ORTHOGRAPHIC"];
+
 CameraController.prototype._ctor = function()
 {
     this._fov = 45;
@@ -33,6 +35,7 @@ CameraController.prototype._ctor = function()
     this.camera.perspective( this._fov, this._aspect, this._near, this._far);
     this.camera.lookAt( this._eye, this._target, this._up );
 
+    this.smooth = true;
     this.collapsed = false;
 }
 
@@ -116,6 +119,7 @@ CameraController.prototype.onNodeLoaded = function(node, newEye)
 
     // update near depending on the BB radius
     // this.camera.near = radius * 0.45;
+    this.camera.far = 100 + radius * 50;
 }
 
 // editor.js at webglstudio @javiagenjo
@@ -127,7 +131,7 @@ CameraController.prototype.changeDistance = function(dt)
         window.destination_eye = vec3.fromValues(camera.position[0], camera.position[1], camera.position[2]);
 
     var center = camera.target;
-    var dist = vec3.sub( vec3.create(), window.destination_eye, center );
+    var dist = vec3.sub( vec3.create(), this.smooth ? window.destination_eye : camera.position, center );
     vec3.scale( dist, dist, dt );
 
     if(camera.type == RD.Camera.ORTHOGRAPHIC)
@@ -135,10 +139,13 @@ CameraController.prototype.changeDistance = function(dt)
 
     var new_eye = vec3.create();
 
-    vec3.add( window.destination_eye, dist, center );
+    if(this.smooth)
+        vec3.add(window.destination_eye, dist, center);
+    else
+        vec3.add(camera.position, dist, center);
 }
 
-CameraController.prototype.orbit = function(yaw, pitch)
+CameraController.prototype.orbit = function(yaw, pitch, guided)
 {
     var camera = this.camera;
     var problem_angle = vec3.dot( camera.getFront(), camera.up );
@@ -150,17 +157,31 @@ CameraController.prototype.orbit = function(yaw, pitch)
     if(window.destination_eye === undefined)
     window.destination_eye = vec3.fromValues(camera.position[0], camera.position[1], camera.position[2]);
 
-    var dist = vec3.sub( vec3.create(), window.destination_eye, center );
-    //yaw
-    var R = quat.fromAxisAngle( up, -yaw );
-    vec3.transformQuat( dist, dist, R );
+    var dist = vec3.sub( vec3.create(), this.smooth ? window.destination_eye : camera.position, center );
 
-    if( !(problem_angle > 0.99 && pitch > 0 || problem_angle < -0.99 && pitch < 0)) 
-    quat.setAxisAngle( R, right, pitch );
-    vec3.transformQuat(dist, dist, R );
+    if(guided)
+    {
+       
+    }
 
-    vec3.add(window.destination_eye, dist, center);
-    //window.destination_eye = eye;
+    else
+    {
+        //yaw
+        var R = quat.fromAxisAngle( up, -yaw );
+        vec3.transformQuat( dist, dist, R );
+    
+        if( !(problem_angle > 0.99 && pitch > 0 || problem_angle < -0.99 && pitch < 0)) 
+            quat.setAxisAngle( R, right, pitch );
+    
+        vec3.transformQuat(dist, dist, R );
+
+        if(this.smooth)
+            vec3.add(window.destination_eye, dist, center);
+        else
+            vec3.add(camera.position, dist, center);
+    }
+
+    //vec3.add(window.destination_eye, dist, center);
     camera._must_update_matrix = true;
 }
 

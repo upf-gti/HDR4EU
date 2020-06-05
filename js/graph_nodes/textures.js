@@ -11,8 +11,7 @@ function LGraphFrame()
     this.addOutput("Color","Texture");
     this.addOutput("Normal","Texture");
     this.addOutput("Depth","Texture");
-    this.addOutput("Position","Texture");
-    this.addOutput("Frame","Array");
+    this.addOutput("Material","Texture");
     this.addOutput("Camera","Camera");
     
     this.properties = {};
@@ -46,21 +45,32 @@ LGraphFrame.prototype.onExecute = function()
 
     this.setOutputData(0, CORE.texture_color );
     this.setOutputData(1, CORE.texture_normal);
-    this.setOutputData(2, CORE.texture_depth);
-    this.setOutputData(3, CORE.texture_position);
+
+    // linearize shadowmap in case of spot 
+    // (z in directional is linear due to orthographic projection)
+
+    if ( !this.tmp ) {
+        this.tmp = new Texture(CORE.texture_depth.width, CORE.texture_depth.height, {type: GL.FLOAT, filter: GL.LINEAR});
+    }
+    
+    var shader = gl.shaders["toLinear"];
+    var camera = CORE.controller.camera;
+    this.tmp.drawTo( function()
+    {
+        CORE.texture_depth.toViewport( shader, {
+            u_near:  camera.near,
+            u_far:  camera.far,
+            u_linearize: false
+        } );
+    });
+
+    this.setOutputData(2, this.tmp );
+    //this.setOutputData(2, CORE.texture_depth );
+    this.setOutputData(3, CORE.texture_lighting);
 
     var cam_slot = this.findOutputSlot( "Camera" );
     if( cam_slot > -1 )
-        this.setOutputData(cam_slot, CORE.controller.camera );
-
-    var frame_slot = this.findOutputSlot( "Frame" );
-    if( frame_slot > -1 )
-        this.setOutputData(frame_slot, [
-            CORE.texture_color,
-            CORE.texture_normal,
-            CORE.texture_depth,
-            CORE.texture_position
-        ] );
+        this.setOutputData(cam_slot, camera );
 }
 
 LGraphFrame.prototype.onGetInputs = function()
@@ -89,7 +99,6 @@ LGraphFrame.prototype.onGetOutputs = function()
 {   
     var outputs = [
         ["Camera", "Camera"],
-        ["Frame", "Array"]
     ];
 
     var filtered_outputs = [];

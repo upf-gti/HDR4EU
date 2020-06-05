@@ -254,6 +254,25 @@ var ResourceManager = RM = {
             return;
         }
 
+        base_class.prototype.fromJSON = function( copy )
+        {
+            //copy to attributes
+            for(var i in copy)
+            {
+                var v = this[i];
+                if(v === undefined)
+                    continue;
+
+                if( v && v.constructor === Float32Array )
+                    v.set( copy[i] );
+                else 
+                    this[i] = copy[i];
+            }
+
+            if(this.onImport)
+                this.onImport();
+        }
+
         var instance = new base_class();
 
         if(instance.setup)
@@ -261,6 +280,8 @@ var ResourceManager = RM = {
 
         var name = name || base_class.name;
         this.components[name] = instance;
+
+        return instance;
     },
 
     registerClass: function( base_class, name )
