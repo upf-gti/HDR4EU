@@ -2,7 +2,7 @@
 
 HDR4EU is a EU project related to HDR data. This repository contains a set of web-tools, libraries and fileformat descriptions developed by the GTI group from Universitat Pompeu Fabra to tackle existing problems of using HDR images on the web.
 
-More specifically, in this repository you will find a web-tool renderer which can achieve photorealistic results and match real lighting conditions taking advantage of the use of image-based HDR lighting. For this purpose, we have determined the environment file format used, called **hdre**. It is a binary representation of an **OpenEXR** light-probe file along its prefiltered levels of roughness. The HDR engine of the renderer itself is responsible of parsing and generating HDRE files for later public consumption. To display images in the screen range we work with different web-implemented tone-mapping algorithms.
+More specifically, in this repository you will find a web-tool renderer which can achieve photorealistic results and match real lighting conditions taking advantage of the use of image-based HDR lighting. For this purpose, we have determined the environment file format used, called **hdre**. It is a binary representation of an **HDR** light-probe file along its prefiltered levels of roughness. The HDR engine of the renderer itself is responsible of parsing and generating HDRE files for later public consumption. To display images in the screen range we work with different web-implemented tone-mapping algorithms.
 
 ![alt text](https://webglstudio.org/users/arodriguez/screenshots/damaged_helmet.png)
 
@@ -31,7 +31,7 @@ There's no installation needed!
 
 - Create HDRE file:
 
-Drag and OpenEXR file to the canvas and select the cubemap's face size. When the generation completes, you will find the section `Actions` - `Export` - `Environment` in the menu bar.
+Drag and OpenEXR `exr` or Radiance `hdr` file to the canvas and select the cubemap's face size. When the generation completes, you will find the section `Actions` - `Export` - `Environment` in the menu bar.
 
 - Add 3D objects to the scene:
 
