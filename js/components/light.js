@@ -47,7 +47,10 @@ function Light()
     node.blend_mode = RD.BLEND_ALPHA;
     node.position = root.position;
     CORE.LightNode = node;
-   // CORE.root.addChild(node);
+
+    node.onApplyTransform = function() {
+        root.position = this.position;
+    }
 
 }
 
@@ -57,7 +60,7 @@ Object.assign( Light.prototype, {
     
     setup() {
 		
-        console.log(RM);
+        // console.log(RM);
         
         if(!LS.Draw.camera)
             LS.Draw.camera = new LS.Camera();
@@ -151,9 +154,9 @@ Object.assign( Light.prototype, {
 
         widgets.addVector3("Position", root.position, {step: 0.5, callback: function(v){
             root.position = v;
-            /*CORE.LightNode.position = v;
+            CORE.LightNode.position = v;
 
-            if(CORE.gizmo)
+            /*if(CORE.gizmo)
                 CORE.gizmo.updateGizmo();*/
         }});
         

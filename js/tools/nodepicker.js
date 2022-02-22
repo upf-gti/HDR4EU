@@ -75,20 +75,24 @@ Object.assign( NodePicker.prototype, {
 
     unSelect( node_id )
     {
+        // check if node exists
         if(node_id && CORE)
         {
             if(!CORE.getByName(node_id))
                 return;
         }
 
-        // CORE.gizmo.mode = 0;
+        this.unSelectAll();
+    },
+
+    unSelectAll()
+    {
         CORE.gizmo.setTargets( [] );
         this.selected = null;
         window.node = undefined;
         window.nodes = undefined;
         delete gl.meshes['lines'];
     },
-
 
     delete( node ) {
 
@@ -122,7 +126,7 @@ Object.assign( NodePicker.prototype, {
 
         // dont render lines
         return;
-
+/*
         var nodes = [].concat(this.selected); // always an array 
         var root = CORE.root;
         var vertices = [];
@@ -202,6 +206,8 @@ Object.assign( NodePicker.prototype, {
                 mesh.getBuffer("vertices").upload( GL.STREAM_DRAW );    
             }
         }
+    
+        */
     }
 } );
 

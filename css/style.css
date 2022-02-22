@@ -480,3 +480,12 @@ body{
   max-height: 200px;
   overflow-y: scroll;
 }
+
+/* Shader editor */
+
+.console-text textarea{
+  font-family: 'Inconsolata', monospace !important;
+  font-size: 1.25em;
+  background-color: #252525 !important;
+  resize: none;
+}

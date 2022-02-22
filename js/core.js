@@ -140,6 +140,8 @@ Core.prototype.setInitScene = function()
     cubemap.scaling = 100;
     cubemap._nogui = true;
 
+    window.cmap = cubemap;
+
 	grid = new RD.SceneNode();
     grid.name = "grid";
     grid.mesh = "grid";
@@ -505,7 +507,6 @@ Core.prototype.renderScene = function()
     }
     else
     {
-
         var renderer = this.renderer;
         var uniforms = {};
         if(this.GlobalLight)
@@ -536,6 +537,11 @@ Core.prototype.renderScene = function()
 Core.prototype.onRenderFX = function( final_frame )
 {
     var that = this;
+
+    // no fx on these modes
+    if (!final_frame || window.show_texture || (CORE && CORE.RMODE > 1)) {
+        return;
+    }
 
     if(isMobile)
     return;
@@ -569,7 +575,25 @@ Core.prototype.onRenderFX = function( final_frame )
         gl.enable( gl.BLEND );
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         that.fx_color_buffer.toViewport();
+
+        gl.disable( gl.BLEND );
+        gl.disable( gl.DEPTH_TEST );
+
+        // Render deferred textures 
+        if(that.gui._show_deferred_textures) {
+
+            var textures = that.fbo_textures;
+            var woffset = 0.0;
+    
+            for(t of textures)
+            {
+                gl.drawTexture(t, gl.canvas.width * woffset,0, gl.canvas.width * 0.3333, gl.canvas.height * 0.3333);
+                woffset += 0.3333;
+            }
+        }
     });
+
+    return true;
 }
 
 Core.prototype.convertCamera = function( ls_camera, type )
@@ -646,7 +670,9 @@ Core.prototype.set = async function(env_set, options)
     var tex_name = HDRTool.getName( env_path );
     var options = options || {};
 
-    if(this._environment == tex_name && tex_name != ":atmos") {
+    if(this._environment == tex_name 
+        && tex_name != ":atmos"
+        && !options.force_prefilter) {
         this.gui.loading(0);
 		if(options.onImport)
 			options.onImport();
@@ -666,7 +692,9 @@ Core.prototype.set = async function(env_set, options)
 	};
     var params = Object.assign(options, {oncomplete: oncomplete});
 
-    if(gl.textures[this._environment ] && tex_name != ":atmos")
+    if(gl.textures[this._environment] 
+        && tex_name != ":atmos"
+        && !options.force_prefilter)
     {
         this.cubemap.shader = "skybox";
         this.display();
@@ -674,7 +702,7 @@ Core.prototype.set = async function(env_set, options)
     else
     {
         // Load hdre pre-processed files
-        if( env_path.includes(".hdre") )
+        if( env_path.includes(".hdre") && !options.force_prefilter )
             HDRTool.load( env_path, params);
         else // Load and prefilter exr files
 		{
@@ -710,7 +738,7 @@ Core.prototype.display = function( no_free_memory )
         that.gui.updateSidePanel(null, 'root');
         that.gui.loading(0);
         $("#import-loader").hide();            
-        console.log("Using environment lighting from %c" + that._environment, "color: red; font-weight: 900;" );
+        console.log("Image Based Lighting from %c" + that._environment, "color: red; font-weight: 900;" );
 
          // delete previous em (free memory)
         if( !no_free_memory )
@@ -802,8 +830,7 @@ Core.prototype.loadResources = async function( toParse, name, callback )
 
                         node.setTextureProperties();
 
-                        if(toParse.properties && toParse.properties.scale)
-                            node.scaling = toParse.properties.scale;
+                        this.parseSceneProperties(toParse.properties, node);
 
                         if( toParse.uniforms ) // update model uniforms
                             node._uniforms = Object.assign(node._uniforms, toParse.uniforms[i]);
@@ -828,9 +855,7 @@ Core.prototype.loadResources = async function( toParse, name, callback )
         node.mesh = resource;
         node.name = "node-" + uidGen.generate();
         
-
-        if(toParse.properties && toParse.properties.scale)
-        node.scaling = toParse.properties.scale;
+        this.parseSceneProperties(toParse.properties, node);
 
         var shader = "pbr";
         node.shader = shader;
@@ -867,6 +892,18 @@ Core.prototype.loadResources = async function( toParse, name, callback )
     }
 }
 
+Core.prototype.parseSceneProperties = function(properties, node)
+{
+    if(!properties)
+    return;
+
+    if(properties.scale)
+        node.scaling = properties.scale;
+    
+    if(properties.flags)
+        this.parseSceneFlags(properties.flags, node);
+}
+
 /**
 * Set node uniforms for render
 * @method setRenderUniforms
@@ -875,7 +912,8 @@ Core.prototype.setRenderUniforms = function(node)
 {   
     node._uniforms["u_albedo"] = vec3.fromValues(1, 1, 1);
 	node._uniforms["u_roughness"] = 1.0;
-	node._uniforms["u_metalness"] = 1.0;
+    node._uniforms["u_metalness"] = 0.0;
+    node._uniforms["u_SpecScale"] = 1.0;
     node._uniforms["u_alpha"] = 1.0;
     node._uniforms["u_alpha_cutoff"] = 0.1;
 
@@ -887,7 +925,7 @@ Core.prototype.setRenderUniforms = function(node)
 	node._uniforms["u_clearCoatRoughness"] = 0.0;
 	node._uniforms["u_tintColor"] = vec3.fromValues(1,1,1);
 
-	node._uniforms["u_reflectance"] = 0.5;
+	node._uniforms["u_reflectance"] = 1;
 	
 	node._uniforms["u_renderDiffuse"] = true;
 	node._uniforms["u_renderSpecular"] = true;
@@ -1513,6 +1551,16 @@ Core.prototype.addMesh = function(mesh, extension, filename, options)
 
     node.name = filename ? filename : "node-" + uidGen.generate();
     
+    var scale = options.custom_scale || "m";
+
+    if(scale == "cm")
+    {
+        // scale all
+        camera.far = 10000
+        grid.scaling = 100;
+        CORE.cubemap.scaling = 10000;
+    }
+
     if(options.parent)
     {
         options.parent.addChild( node );
@@ -1521,7 +1569,7 @@ Core.prototype.addMesh = function(mesh, extension, filename, options)
         this.root.addChild( node );
     }
 
-    this.controller.onNodeLoaded( node );
+    this.controller.onNodeLoaded( node, null, scale == "cm" ? 100 : 1 );
 
     this.setRenderUniforms(node);
     this.updateNodes();
@@ -1674,6 +1722,8 @@ Core.prototype.fromJSON = function( o, only_settings )
     
 	this.reset();
 	this.configure(o);
+
+    this.current_file = o.file_selected;
     
 	// special cases
 	if(o.uniforms )
@@ -1816,14 +1866,11 @@ Core.prototype.fromJSON = function( o, only_settings )
                 onSetScene();
             });
 
-           
         }
             
 		gui.updateSidePanel(null, 'root');
 		resize();
-		
 	}
-	
 }
 
 RD.SceneNode.prototype.setTextureProperties = async function()

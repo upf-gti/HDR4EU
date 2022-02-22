@@ -250,8 +250,8 @@ var ResourceManager = RM = {
         throw('component class needed');
 
         if( this.components[name] ) {
-            console.error("Component already added");
-            return;
+            console.warn("replacing component");
+            // return;
         }
 
         base_class.prototype.fromJSON = function( copy )

@@ -1204,17 +1204,11 @@
 	LGraphTextureToViewport._prev_viewport = new Float32Array(4);
 	LGraphTextureToViewport.prototype.onExecute = function() {
 		var tex = this.getInputData(0);
-		if (!tex || window.show_texture) {
-			return;
-		}
-
-		// no fx on these modes
-		if(CORE && CORE.RMODE > 1)
-		return;
 		
+		var is_ok = this.onRenderFX && this.onRenderFX( tex );
 
-		if(this.onRenderFX)
-			this.onRenderFX( tex );
+		if(!is_ok)
+		return;
 
 		if (this.properties.disable_alpha) {
 			gl.disable(gl.BLEND);

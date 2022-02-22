@@ -222,10 +222,6 @@ pbr_sh SH.vs SH.fs
 		gl_Position = u_mvp * vec4(a_vertex,1.0);
 	}
 
-//
-// Default fragment shader 
-//
-
 \default.fs
 
 	#extension GL_EXT_draw_buffers : require
@@ -828,9 +824,8 @@ pbr_sh SH.vs SH.fs
 
 		vec3 V = normalize(u_camera_position - v_wPosition);
 		vec3 N = normalize(v_wNormal);
-		vec3 R = reflect(V, N);
-
-		gl_FragData[0] = textureCubeLodEXT(u_SpecularEnvSampler_texture, R, 0.0);
+		vec3 R = reflect(-V, N);
+		gl_FragData[0] = pow(textureCubeLodEXT(u_SpecularEnvSampler_texture, R, 0.0), vec4(1.0/2.2));
 	}
 
 \diffCubemap.fs
@@ -867,6 +862,7 @@ pbr_sh SH.vs SH.fs
 
 	#extension GL_EXT_shader_texture_lod : enable
 	#extension GL_EXT_draw_buffers : require
+
 	precision highp float;
 	varying vec3 v_wPosition;
 	varying vec3 v_wNormal;
@@ -880,6 +876,7 @@ pbr_sh SH.vs SH.fs
 	uniform samplerCube u_color_texture;
 	uniform bool u_flipX;
 	uniform bool u_is_rgbe;
+	uniform float u_render_mode;
 
 	mat4 rotationMatrix(vec3 a, float angle) {
 
@@ -896,8 +893,8 @@ pbr_sh SH.vs SH.fs
 
 	void main() {
 
-		vec3 E = normalize(u_camera_position - v_wPosition);
-		
+		vec3 E = normalize(v_wPosition - u_camera_position );
+
 		if(u_flipX)
 			E.x = -E.x;
 		
@@ -905,11 +902,17 @@ pbr_sh SH.vs SH.fs
 
 		vec4 color = textureCubeLodEXT(u_color_texture, E, u_blur ? 1.0 : 0.0);
 
+		// color = pow(color, vec4(2.2));
+
 		if(u_is_rgbe)
 			color = vec4(color.rgb * pow(2.0, color.a * 255.0 - 128.0), 1.0);
 		
+		if(u_render_mode > 1.0)
+		{
+			color = pow(color, vec4(1.0/2.2));
+		}
+
 		gl_FragData[0] = color;
-		// gl_FragData[1] = vec4((normalize(v_wNormal) * 0.5 + vec3(0.5) ), 0.0); 
 	}
 
 //
@@ -1077,8 +1080,6 @@ pbr_sh SH.vs SH.fs
 		const float size = float(EM_SIZE);
 	#endif
 
-	#import "brdf.inc"
-
 	void main() {
 
 		vec3 N = normalize( u_rotation * v_dir );
@@ -1090,7 +1091,7 @@ pbr_sh SH.vs SH.fs
 		float lod = clamp(roughness * u_mipCount, 0.0, u_mipCount);
 
 		// (gl_FragCoord.xy) / vec2(size, size) = v_coord
-		const float step = 4.0;
+		const float step = 2.0;
 		float cfs = size / pow(2.0, lod);
 	
 		for(float i = 0.5; i < size; i+=step)
@@ -1110,13 +1111,13 @@ pbr_sh SH.vs SH.fs
 				vec3 pixel_normal = normalize( _camera_rotation * dir );
 
 				float dotProduct = max(0.0, dot(N, pixel_normal));
-				float glossScale = 32.0;
+				float glossScale = 8.0;
 				float glossFactor = (1.0 - roughness );
 				float cmfs = size/pow(2.0, lod);
 				float weight = pow(dotProduct, cmfs * glossFactor * glossScale );
 
 				if(weight > 0.0 ) {
-					color.rgb += textureCubeLodEXT(u_color_texture, pixel_normal, lod).rgb * weight;
+					color.rgb += textureCube(u_color_texture, pixel_normal).rgb * weight;
 					color.a += weight;
 				}
 			}
@@ -1856,7 +1857,6 @@ pbr_sh SH.vs SH.fs
 	uniform vec3 u_camera_position;
 	uniform vec3 u_background_color;
 	uniform vec4 u_viewport;
-	uniform bool u_show_layers;
 	uniform float u_ibl_scale;
 	uniform int u_render_mode;
 
@@ -1871,6 +1871,7 @@ pbr_sh SH.vs SH.fs
 	uniform float u_normalFactor;
 	uniform bool u_metallicRough;
 	uniform float u_reflectance;
+	uniform float u_SpecScale;
 
 	uniform float u_clearCoat;
 	uniform float u_clearCoatRoughness;
@@ -1890,9 +1891,11 @@ pbr_sh SH.vs SH.fs
 	uniform sampler2D u_height_texture;
 	uniform sampler2D u_emissive_texture;
 	uniform sampler2D u_ao_texture;
+	
 
 	// Environment textures
 	uniform samplerCube u_SpecularEnvSampler_texture;
+	uniform vec3 u_sh_coeffs[9];
 
 	uniform vec4 u_properties_array0;
 	uniform vec4 u_properties_array1;
@@ -1901,11 +1904,16 @@ pbr_sh SH.vs SH.fs
 	uniform bool u_flipX;
 	uniform bool u_renderDiffuse;
 	uniform bool u_renderSpecular;
+	uniform bool u_useDiffuseSH;
 	uniform bool u_enable_ao;
 	uniform bool u_gamma_albedo;
-
+	
+	#import "sh.inc"
 	#import "bump.inc"
 	#import "pbr_brdf.inc"
+	#import "matrixOp.inc"
+
+	SH9Color coeffs;
 
 	vec3 getReflectedVector(PBRMat material) {
 		
@@ -1931,11 +1939,7 @@ pbr_sh SH.vs SH.fs
 			n = normalize(mix(n, n2, u_normalFactor));
 		}
 
-		// Not using light vector L
-		// in this render
-		//vec3 l = normalize(u_light_position - v_wPosition);
-
-		material.reflection = normalize(reflect(v, n));
+		material.reflection = normalize(reflect(-v, n));
 
 		material.N = n;
 		material.V = v;
@@ -1967,7 +1971,7 @@ pbr_sh SH.vs SH.fs
 
 	void createMaterial (inout PBRMat material) {
 		
-		float metallic = max(0.01, u_metalness);
+		float metallic = max(0.004, u_metalness);
 		
 		if(u_properties_array0.z != 0.)
 			metallic *= texture2D(u_metalness_texture, v_coord).r;
@@ -1981,8 +1985,22 @@ pbr_sh SH.vs SH.fs
 
 		vec3 reflectance = vec3(u_reflectance);
 
-		// GET COMMON MATERIAL PARAMS
-		reflectance = computeDielectricF0(reflectance);
+		// GET ROUGHNESS PARAMS
+		float roughness = u_roughness;
+		if(u_properties_array0.y != 0.){
+				
+			vec3 sampler_info = texture2D(u_roughness_texture, v_coord).rgb;
+
+			if(u_metallicRough) {
+				roughness *= sampler_info.g; // roughness stored in g
+				metallic = max(0.01, u_metalness) * sampler_info.b; // recompute metallness using metallic-rough texture
+			}
+			else
+				roughness *= sampler_info.r;
+		}
+
+		roughness = clamp(roughness, MIN_ROUGHNESS, 1.0);	
+
 		vec3 diffuseColor = computeDiffuseColor(baseColor, metallic);
 		vec3 f0 = computeF0(baseColor, metallic, reflectance);
 
@@ -1996,27 +2014,6 @@ pbr_sh SH.vs SH.fs
 		// recompute f0 by computing its IOR
 		f0 = mix(f0, f0ClearCoatToSurface(f0, 1.5), clearCoat);
 
-		// GET ROUGHNESS PARAMS
-		float roughness = 1.0;
-		if(u_properties_array0.y != 0.){
-				
-			vec4 sampler = texture2D(u_roughness_texture, v_coord);
-
-			if(u_metallicRough) {
-				roughness *= sampler.g; // roughness stored in g
-				metallic = max(0.01, u_metalness) * sampler.b; // recompute metallness using metallic-rough texture
-				diffuseColor = computeDiffuseColor(baseColor, metallic); // recompute diffuse color
-			}
-			else
-				roughness *= sampler.r;
-		}
-
-		roughness *= u_roughness;
-
-		if(false)
-			roughness = rand(v_wPosition.xz);
-
-		roughness = clamp(roughness, MIN_ROUGHNESS, 1.0);	
 		float linearRoughness = roughness * roughness;
 
 		// remap roughness: the base layer must be at least as rough as the clear coat layer
@@ -2053,42 +2050,40 @@ pbr_sh SH.vs SH.fs
 	}
 
 	vec3 prem(vec3 R, float roughness, float rotation) {
-
 		float 	f = roughness * u_mipCount;
 		vec3 	r = rotateVector(R, rotation);
+		return textureCubeLodEXT(u_SpecularEnvSampler_texture, r, f).rgb;
+	}
 
-		vec4 color;
-
-		if(f < 1.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 0.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 1.0), f );
-		else if(f < 2.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 1.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 2.0), f - 1.0 );
-		else if(f < 3.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 2.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 3.0), f - 2.0 );
-		else if(f < 4.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 3.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 4.0), f - 3.0 );
-		else if(f < 5.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 4.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 5.0), f - 4.0 );
-		else color = textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 5.0);
-
-		return color.rgb;
+	vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+	{
+		return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 	}
 
 	void getIBLContribution (PBRMat material, inout vec3 Fd, inout vec3 Fr)
 	{
 		float NdotV = material.NoV;
 
-		vec2 brdfSamplePoint = vec2(NdotV, material.roughness);
+		vec2 brdfSamplePoint = vec2(NdotV, clamp(material.roughness, 0.01, 0.99));
 		vec2 brdf = texture2D(u_brdf_texture, brdfSamplePoint).rg;
 
-		vec3 normal = -material.N;
+		vec3 normal = material.N;
 		if(u_flipX)
-			normal.x *= -1.;
+			normal.x *= -1.0;
 
 		vec3 diffuseSample = prem(normal, 1.0, u_rotation); // diffuse part uses normal vector (no reflection)
-		vec3 specularSample = prem(material.reflection, material.roughness, u_rotation);
 
-		vec3 specularColor = mix(material.f0, material.baseColor.rgb, material.metallic);
+		if(u_useDiffuseSH)
+			diffuseSample = ComputeSHDiffuse( normal, coeffs );
+
+		vec3 specularSample = prem(material.reflection, material.roughness * 1.25, u_rotation);
+
+		vec3 F = FresnelSchlickRoughness(NdotV, material.f0, material.roughness);
 
 		if(u_renderDiffuse)
 			Fd += diffuseSample * material.diffuseColor;
 		if(u_renderSpecular)
-			Fr += specularSample * (specularColor * brdf.x + brdf.y);
+			Fr += specularSample * (F * brdf.x + brdf.y) * u_SpecScale;
 	}
 
 	void applyIndirectLighting(inout PBRMat material, inout vec3 color)
@@ -2102,7 +2097,6 @@ pbr_sh SH.vs SH.fs
 		// CLEAT COAT LOBE ************************
 		if(material.clearCoat > 0.0)
 		{
-
 			vec3 Fd_clearCoat = vec3(0.0);
 			vec3 Fr_clearCoat = vec3(0.0);
 
@@ -2149,6 +2143,17 @@ pbr_sh SH.vs SH.fs
 		vec3 color;
 		float alpha = u_alpha;
 
+		// fill sh color
+		coeffs.c[0] = u_sh_coeffs[0];
+		coeffs.c[1] = u_sh_coeffs[1];
+		coeffs.c[2] = u_sh_coeffs[2];
+		coeffs.c[3] = u_sh_coeffs[3];
+		coeffs.c[4] = u_sh_coeffs[4];
+		coeffs.c[5] = u_sh_coeffs[5];
+		coeffs.c[6] = u_sh_coeffs[6];
+		coeffs.c[7] = u_sh_coeffs[7];
+		coeffs.c[8] = u_sh_coeffs[8];
+
 		PBRMat material;
 		createMaterial( material );
 
@@ -2173,8 +2178,10 @@ pbr_sh SH.vs SH.fs
 
 			applyIndirectLighting( material, color);
 
+			vec3 emissiveColor = texture2D(u_emissive_texture, v_coord).rgb;
+
 			if(u_properties_array1.x != 0.)
-				color += texture2D(u_emissive_texture, v_coord).rgb * u_emissiveScale;
+				color += pow(emissiveColor, vec3(2.2)) * u_emissiveScale;
 		}
 
 		else if(u_render_mode == 2)
@@ -2186,11 +2193,14 @@ pbr_sh SH.vs SH.fs
 		else if(u_render_mode == 5)
 			color = vec3(material.N);
 
+		// Save space in g-buffers
+		vec2 ViewNormal = (u_view * vec4(material.N, 0.0)).xy;
+
 		// Pbr color
 		gl_FragData[0] = vec4( vec3(color), alpha);
-		gl_FragData[1] = vec4( normalize(v_wNormal) * 0.5 + vec3(0.5), material.roughness); 
-		gl_FragData[2] = vec4( material.baseColor, material.metallic);
-		// gl_FragData[3] = vec4( material.clearCoat, material.clearCoatRoughness, material.anisotropy, 1.0);
+		gl_FragData[1] = vec4( ViewNormal * 0.5 + vec2(0.5), material.metallic, material.roughness); 
+		gl_FragData[2] = vec4( material.baseColor, material.clearCoat);
+		//gl_FragData[3] = vec4( clearCoatRoughness, anisotropy ...);
 	}
 
 \toLinear.fs
@@ -2223,8 +2233,10 @@ pbr_sh SH.vs SH.fs
     uniform vec2 u_resolution;
     uniform mat4 u_projection;
     uniform vec3 u_camera_position;
-    uniform mat4 u_invvp;
     uniform mat4 u_view;
+	uniform mat4 u_invv;
+	uniform mat4 u_invp;
+    uniform mat4 u_invvp;
 	uniform float u_near;
     uniform float u_far;
     
@@ -2257,6 +2269,7 @@ pbr_sh SH.vs SH.fs
 	float NO_SHADOW 	= 1.0;
 
 	#import "lightShadows.inc"
+	#import "matrixOp.inc"
 
 	float readDepth(sampler2D depthMap, vec2 coord) {
 		float z_b = texture2D(depthMap, coord).r;
@@ -2299,26 +2312,20 @@ pbr_sh SH.vs SH.fs
 
     // Normal Distribution Function (NDC) using GGX Distribution
 	float D_GGX (const in float NoH, const in float linearRoughness ) {
-		
-		float a = linearRoughness;
-
-		float a2 = a * a;
-		float f = (NoH * NoH) * (a2 - 1.0) + 1.0;
-		
+		float a2 = linearRoughness * linearRoughness;
+		float f = (NoH * a2 - NoH) * NoH + 1.0;
 		return a2 / (PI * f * f);
-		
-    }
+	}
     
     // Geometry Term : Geometry masking / shadowing due to microfacets
 	float GGX(float NdotV, float k){
 		return NdotV / (NdotV * (1.0 - k) + k);
 	}
 	
-	float G_Smith(float NdotV, float NdotL, float roughness){
-		
-		float k = pow(roughness + 1.0, 2.0) / 8.0;
+	float G_Smith(float NdotV, float NdotL, float linearRoughness){
+		float k = linearRoughness / 2.0;
 		return GGX(NdotL, k) * GGX(NdotV, k);
-    }
+	}
     
     // Fresnel term with scalar optimization(f90=1)
 	vec3 F_Schlick (const in float VoH, const in vec3 f0) {
@@ -2342,15 +2349,13 @@ pbr_sh SH.vs SH.fs
 		return (D * V) * F;
 	}
 
-    vec3 specularBRDF( float roughness, float NoH, float NoV, float NoL, float LoH, vec3 f0 ) {
-
-        float a = roughness * roughness;
+    vec3 specularBRDF( float a, float NoH, float NoV, float NoL, float LoH, vec3 f0 ) {
 
 		// Normal Distribution Function
 		float D = D_GGX( NoH, a );
 
 		// Visibility Function (shadowing/masking)
-		float V = G_Smith( NoV, NoL, roughness );
+		float V = G_Smith( NoV, NoL, a );
 		
 		// Fresnel
 		vec3 F = F_Schlick( LoH, f0 );
@@ -2469,14 +2474,19 @@ pbr_sh SH.vs SH.fs
         // Properties
 		float depth = texture2D( u_depth_texture, v_coord ).x;
 		bool FarAway = false;
-		if(depth == 1.0)
-		FarAway = true;
+
+		// Reconstruct normal from view space
+		vec2 ViewNormal = normalMap.xy * 2.0 - vec2(1.0);
+		vec3 reconstructedNormal;
+		reconstructedNormal.xy = ViewNormal;
+		reconstructedNormal.z = sqrt(1.0 + dot(ViewNormal, -ViewNormal));
+		vec3 WorldNormal = (vec4(reconstructedNormal, 0.0) * u_view ).xyz;
 
 		float fallOf = 1.0;
 
         // Vectors
         vec3 p = getPositionFromDepth(depth);
-		vec3 n = normalize(normalMap.xyz * 2. - 1.);
+		vec3 n = normalize(WorldNormal);
 		vec3 v = normalize(u_camera_position - p);
 		vec3 l = normalize(u_light_position - p);
 
@@ -2488,29 +2498,29 @@ pbr_sh SH.vs SH.fs
 
         vec3 h = normalize(v + l);
 
-        float NoV = clamp(dot(n, v), 0.01, 0.99) + 1e-6;
-		float NoL = clamp(dot(n, l), 0.01, 0.99) + 1e-6;
-		float NoH = clamp(dot(n, h), 0.1, 0.99) + 1e-6;
-		float LoH = clamp(dot(l, h), 0.01, 0.99) + 1e-6;
-		float VoH = clamp(dot(v, h), 0.01, 0.99) + 1e-6;
+        float NoV = clamp(dot(n, v), 0.0, 0.9999) + 1e-6;
+		float NoL = clamp(dot(n, l), 0.0, 0.9999) + 1e-6;
+		float NoH = clamp(dot(n, h), 0.0, 0.9999) + 1e-6;
+		float LoH = clamp(dot(l, h), 0.0, 0.9999) + 1e-6;
+		float VoH = clamp(dot(v, h), 0.0, 0.9999) + 1e-6;
         
         // Mat
+		float metallic = normalMap.b;
         float roughness = normalMap.a;
 		float linearRoughness = roughness * roughness;
-		float metallic = matInfoMap.a;
 		vec3 baseColor = matInfoMap.rgb;
 		vec3 f0 = baseColor * metallic + (vec3(0.5) * (1.0 - metallic));
         vec3 diffuseColor = (1.0 - metallic) * baseColor;
         
         // Compose
 		vec3 Fd_d = diffuseColor * RECIPROCAL_PI;//* Fd_Burley (NoV, NoL, LoH, linearRoughness);
-        vec3 Fr_d = specularBRDF( roughness, NoH, NoV, NoL, LoH, f0 );
+        vec3 Fr_d = specularBRDF( linearRoughness, NoH, NoV, NoL, LoH, f0 );
 
 		// Clear coat lobe
-		/*float cc = 1.0;
+		float cc = matInfoMap.a;
 		float cc_r = 0.2;
 		vec3 Frc = specularBRDF( cc_r, NoH, NoV, NoL, LoH, f0 );
-		Fr_d = mix(Fr_d, Frc, cc);*/
+		Fr_d = mix(Fr_d, Frc, cc);
 
 		vec3 direct = (Fd_d + Fr_d) * NoL;
 
@@ -2895,6 +2905,33 @@ pbr_sh SH.vs SH.fs
 	uniform vec3 u_sh_coeffs[9];
 	uniform bool u_flipX;
 
+	#import "sh.inc"
+
+	void main()
+	{
+		vec3 normal = -normalize( v_normal );
+
+		SH9Color coeffs;
+		coeffs.c[0] = u_sh_coeffs[0];
+		coeffs.c[1] = u_sh_coeffs[1];
+		coeffs.c[2] = u_sh_coeffs[2];
+		coeffs.c[3] = u_sh_coeffs[3];
+		coeffs.c[4] = u_sh_coeffs[4];
+		coeffs.c[5] = u_sh_coeffs[5];
+		coeffs.c[6] = u_sh_coeffs[6];
+		coeffs.c[7] = u_sh_coeffs[7];
+		coeffs.c[8] = u_sh_coeffs[8];
+
+		if(u_flipX)
+			normal.x = -normal.x;
+
+		vec3 irradiance = ComputeSHDiffuse( normal, coeffs );
+
+		gl_FragData[0] =  vec4(max( vec3(0.001), irradiance ), 1.0 );
+	}
+
+\sh.inc
+
 	const float Pi = 3.141592654;
 	const float CosineA0 = Pi;
 	const float CosineA1 = (2.0 * Pi) / 3.0;
@@ -2910,9 +2947,13 @@ pbr_sh SH.vs SH.fs
 		vec3 c[9];
 	};
 
+	/*void fillSH9Color(out SH9 sh, vec3 coeffs[])
+	{
+
+	}*/
+
 	void SHCosineLobe(in vec3 dir, out SH9 sh)
 	{
-		
 		// Band 0
 		sh.c[0] = 0.282095 * CosineA0;
 		
@@ -2933,11 +2974,8 @@ pbr_sh SH.vs SH.fs
 		
 	}
 
-	vec3 ComputeSHIrradiance(in vec3 normal, in SH9Color radiance)
+	vec3 ComputeSHDiffuse(in vec3 normal, in SH9Color radiance)
 	{
-		if(u_flipX)
-			normal.x = -normal.x;
-
 		// Compute the cosine lobe in SH, oriented about the normal direction
 		SH9 shCosine;
 		SHCosineLobe(normal, shCosine);
@@ -2953,34 +2991,11 @@ pbr_sh SH.vs SH.fs
 		for(int i = 0; i < num; ++i)
 			irradiance += radiance.c[i] * shCosine.c[i];
 		
+		vec3 shDiffuse = irradiance * (1.0 / Pi);
+
 		return irradiance;
 	}
 
-	vec3 ComputeSHDiffuse(in vec3 normal, in SH9Color radiance)
-	{
-		// Diffuse BRDF is albedo / Pi
-		return ComputeSHIrradiance( normal, radiance ) * (1.0 / Pi);
-	}
-
-	void main()
-	{
-		vec3 normal = normalize( v_normal );
-		SH9Color coeffs;
-		coeffs.c[0] = u_sh_coeffs[0];
-		coeffs.c[1] = u_sh_coeffs[1];
-		coeffs.c[2] = u_sh_coeffs[2];
-		coeffs.c[3] = u_sh_coeffs[3];
-		coeffs.c[4] = u_sh_coeffs[4];
-		coeffs.c[5] = u_sh_coeffs[5];
-		coeffs.c[6] = u_sh_coeffs[6];
-		coeffs.c[7] = u_sh_coeffs[7];
-		coeffs.c[8] = u_sh_coeffs[8];
-
-		vec3 irradiance = ComputeSHDiffuse( -normal, coeffs );
-
-		gl_FragData[0] =  vec4(max( vec3(0.001), irradiance ), 1.0 );
-	}
-	
 \matrixOp.inc
 
 	vec3 world2view( vec3 a ){ return  (u_view * vec4(a,1.0)).xyz; }
@@ -3160,7 +3175,8 @@ pbr_sh SH.vs SH.fs
 	}
 
 	vec3 computeF0(const vec3 baseColor, float metallic, vec3 reflectance) {
-	    return baseColor * metallic + (reflectance * (1.0 - metallic));
+	    // return baseColor * metallic + (reflectance * (1.0 - metallic));
+		return mix(vec3(0.04) * reflectance, baseColor, metallic);
 	}
 
 	float rand(vec2 co)  {
@@ -3336,3 +3352,69 @@ pbr_sh SH.vs SH.fs
 		uv.y = (uv.y + offsetY) / 6.0;
 		return uv;
 	}
+
+\inverse.inc
+
+	mat2 inverse(mat2 m) {
+	return mat2(m[1][1],-m[0][1],
+				-m[1][0], m[0][0]) / (m[0][0]*m[1][1] - m[0][1]*m[1][0]);
+	}
+
+	mat3 inverse(mat3 m) {
+	float a00 = m[0][0], a01 = m[0][1], a02 = m[0][2];
+	float a10 = m[1][0], a11 = m[1][1], a12 = m[1][2];
+	float a20 = m[2][0], a21 = m[2][1], a22 = m[2][2];
+
+	float b01 = a22 * a11 - a12 * a21;
+	float b11 = -a22 * a10 + a12 * a20;
+	float b21 = a21 * a10 - a11 * a20;
+
+	float det = a00 * b01 + a01 * b11 + a02 * b21;
+
+	return mat3(b01, (-a22 * a01 + a02 * a21), (a12 * a01 - a02 * a11),
+				b11, (a22 * a00 - a02 * a20), (-a12 * a00 + a02 * a10),
+				b21, (-a21 * a00 + a01 * a20), (a11 * a00 - a01 * a10)) / det;
+	}     
+
+	mat4 inverse( mat4 A ) {
+
+	float s0 = A[0][0] * A[1][1] - A[1][0] * A[0][1];
+	float s1 = A[0][0] * A[1][2] - A[1][0] * A[0][2];
+	float s2 = A[0][0] * A[1][3] - A[1][0] * A[0][3];
+	float s3 = A[0][1] * A[1][2] - A[1][1] * A[0][2];
+	float s4 = A[0][1] * A[1][3] - A[1][1] * A[0][3];
+	float s5 = A[0][2] * A[1][3] - A[1][2] * A[0][3];
+
+	float c5 = A[2][2] * A[3][3] - A[3][2] * A[2][3];
+	float c4 = A[2][1] * A[3][3] - A[3][1] * A[2][3];
+	float c3 = A[2][1] * A[3][2] - A[3][1] * A[2][2];
+	float c2 = A[2][0] * A[3][3] - A[3][0] * A[2][3];
+	float c1 = A[2][0] * A[3][2] - A[3][0] * A[2][2];
+	float c0 = A[2][0] * A[3][1] - A[3][0] * A[2][1];
+
+	float invdet = 1.0 / (s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0);
+
+	mat4 B;
+
+	B[0][0] = ( A[1][1] * c5 - A[1][2] * c4 + A[1][3] * c3) * invdet;
+	B[0][1] = (-A[0][1] * c5 + A[0][2] * c4 - A[0][3] * c3) * invdet;
+	B[0][2] = ( A[3][1] * s5 - A[3][2] * s4 + A[3][3] * s3) * invdet;
+	B[0][3] = (-A[2][1] * s5 + A[2][2] * s4 - A[2][3] * s3) * invdet;
+
+	B[1][0] = (-A[1][0] * c5 + A[1][2] * c2 - A[1][3] * c1) * invdet;
+	B[1][1] = ( A[0][0] * c5 - A[0][2] * c2 + A[0][3] * c1) * invdet;
+	B[1][2] = (-A[3][0] * s5 + A[3][2] * s2 - A[3][3] * s1) * invdet;
+	B[1][3] = ( A[2][0] * s5 - A[2][2] * s2 + A[2][3] * s1) * invdet;
+
+	B[2][0] = ( A[1][0] * c4 - A[1][1] * c2 + A[1][3] * c0) * invdet;
+	B[2][1] = (-A[0][0] * c4 + A[0][1] * c2 - A[0][3] * c0) * invdet;
+	B[2][2] = ( A[3][0] * s4 - A[3][1] * s2 + A[3][3] * s0) * invdet;
+	B[2][3] = (-A[2][0] * s4 + A[2][1] * s2 - A[2][3] * s0) * invdet;
+
+	B[3][0] = (-A[1][0] * c3 + A[1][1] * c1 - A[1][2] * c0) * invdet;
+	B[3][1] = ( A[0][0] * c3 - A[0][1] * c1 + A[0][2] * c0) * invdet;
+	B[3][2] = (-A[3][0] * s3 + A[3][1] * s1 - A[3][2] * s0) * invdet;
+	B[3][3] = ( A[2][0] * s3 - A[2][1] * s1 + A[2][2] * s0) * invdet;
+
+	return B;
+	}    

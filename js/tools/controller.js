@@ -23,7 +23,7 @@ RD.Camera._Types = ["PERSPECTIVE", "ORTHOGRAPHIC"];
 CameraController.prototype._ctor = function()
 {
     this._fov = 45;
-    this._near = 1;
+    this._near = 0.1;
     this._far = 100;
     this._aspect = gl.canvas.width / gl.canvas.height;
 
@@ -97,8 +97,9 @@ CameraController.prototype.getCameraPosition = function()
     return this.camera.position;
 }
 
-CameraController.prototype.onNodeLoaded = function(node, newEye)
+CameraController.prototype.onNodeLoaded = function(node, newEye, custom_scale)
 {
+    custom_scale = custom_scale || 100;
     var bb = gl.meshes[node.mesh].getBoundingBox();
     var center = BBox.getCenter(bb);
     var scale = node.scaling[0];
@@ -106,6 +107,7 @@ CameraController.prototype.onNodeLoaded = function(node, newEye)
     if(node.parentNode)
         scale *= node.parentNode.scaling[0]; 
     var radius = BBox.getRadius(bb) * scale;
+    radius = radius || 1;
     
     if(CORE)
         CORE.selected_radius = radius;
@@ -119,7 +121,7 @@ CameraController.prototype.onNodeLoaded = function(node, newEye)
 
     // update near depending on the BB radius
     // this.camera.near = radius * 0.45;
-    this.camera.far = 100 + radius * 50;
+    this.camera.far = radius * custom_scale;
 }
 
 // editor.js at webglstudio @javiagenjo

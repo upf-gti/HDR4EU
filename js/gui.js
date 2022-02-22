@@ -77,9 +77,9 @@ GUI.prototype.setup = function()
 	
 	$(document.querySelector(".tool-deferredtex")).on('click', function(){
 
-        that.show_deferred_textures = !that.show_deferred_textures;
+        that._show_deferred_textures = !that._show_deferred_textures;
         
-        if(that.show_deferred_textures)
+        if(that._show_deferred_textures)
             $(this).addClass("enabled");
         else 
             $(this).removeClass("enabled");
@@ -216,7 +216,7 @@ GUI.prototype.fillMenubar = function( mainmenu )
         if(!node)
         return;
         var mesh = gl.meshes[ node.mesh ];
-        downloadBinary( mesh, "wbin" );
+        Tools.downloadBinary( mesh, "wbin" );
 	} });
 	
 	mainmenu.add("Tools/Chroma Key Tools", { callback: function() { gui.showChromaTools(); }});
@@ -507,8 +507,10 @@ GUI.prototype.updateSidePanel = function( root, item_selected, options )
 			{
 				if(value.length > 3)
 					continue;
-				else
+				else if(value.length == 3)
 					value = "[" + value[0].toFixed(2) + ", " + value[1].toFixed(2) + ", " + value[2].toFixed(2) + "]";
+				else
+					value = "[" + value[0].toFixed(2) + ", " + value[1].toFixed(2) + "]";
 			}else if(value.constructor == Number)
 				value = value.toFixed(3);
 
@@ -674,6 +676,7 @@ GUI.prototype.addRootInspector = function(widgets, options)
 			node_widgets.addCheckbox("Blur", this._usePrem0, {name_width: "55%", callback: function(v) { 
 				that._usePrem0 = v; 
 			}});
+			node_widgets.addCheckbox("Diffuse SH", renderer._uniforms["u_useDiffuseSH"], {name_width: "55%", callback: function(v) { CORE.setUniform("useDiffuseSH", v)}});
 			node_widgets.addCheckbox("Flip X", renderer._uniforms["u_flipX"], {name_width: "55%", callback: function(v) { CORE.setUniform("flipX", v)}});
 			node_widgets.widgets_per_row = 1;
 		}
@@ -945,6 +948,7 @@ GUI.prototype.addMaterial = function(inspector, node)
 		inspector.addColor("Base color", node._uniforms["u_albedo"], {callback: function(color){ node._uniforms["u_albedo"] = node._uniforms["u_color"] = color; }});
 		inspector.addSlider("Roughness", node._uniforms['u_roughness'],{min:0,max:2,step:0.01,callback: function(v){ node._uniforms['u_roughness'] = v }});
 		inspector.addSlider("Metalness", node._uniforms['u_metalness'],{min:0,max:1,step:0.01,callback: function(v){ node._uniforms['u_metalness'] = v }});
+		inspector.addSlider("Spec Scale", node._uniforms['u_SpecScale'] ,{max: 1.0, min: 0, step: 0.01, callback: function(v){ node._uniforms['u_SpecScale'] = v }});
 		inspector.addNumber("Reflectance", node._uniforms['u_reflectance'] ,{max: 1.0, min: 0, step: 0.01, callback: function(v){ node._uniforms['u_reflectance'] = v }});
 		inspector.addSeparator();
 
@@ -1460,7 +1464,7 @@ GUI.prototype._generateLDRIThumb = function( img )
 GUI.prototype.exportEnvironment = function()
 {
 	var that 			= this;
-	var saveSH 			= false;
+	var saveSH 			= true;
 	var bits 			= "32 bits";
 	var format	 		= "RGB";
 	var upload_to_repo 	= false;
@@ -1471,21 +1475,34 @@ GUI.prototype.exportEnvironment = function()
 
 		alert.close();
 
+		if(saveSH)
+		{
+			RM.registerComponent( IrradianceCache, "IrradianceCache"); 
+            that.updateSidePanel(null, "root", {tab: "IrradianceCache"});
+		}
+
 		var n_channels = format.length;
+		var filename = new_filename || CORE._environment.replace(".hdr", ".hdre").replace(".exr", ".hdre");
 
 		if(bits === "8 bits")
-            HDRTool.getSkybox( {type: Uint8Array, saveSH: saveSH, channels: n_channels} );
+            HDRTool.getSkybox( filename, {type: Uint8Array, saveSH: saveSH, channels: n_channels} );
         if(bits === "16 bits")
-            HDRTool.getSkybox( {type: Uint16Array, saveSH: saveSH, channels: n_channels});
+            HDRTool.getSkybox( filename, {type: Uint16Array, saveSH: saveSH, channels: n_channels});
         if(bits === "32 bits")
-            HDRTool.getSkybox( {saveSH: saveSH, channels: n_channels} );
+            HDRTool.getSkybox( filename, {saveSH: saveSH, channels: n_channels} );
         else
-			HDRTool.getSkybox( {rgbe: true, saveSH: saveSH, channels: n_channels} ); // RGBE
+			HDRTool.getSkybox( filename, {rgbe: true, saveSH: saveSH, channels: n_channels} ); // RGBE
 	};
 	
 	var inner_repo = function() {
 
 		alert.close();
+
+		if(saveSH)
+		{
+			RM.registerComponent( IrradianceCache, "IrradianceCache"); 
+            that.updateSidePanel(null, "root", {tab: "IrradianceCache"});
+		}
 
 		var buffer = HDRTool.getSkybox( {upload: true, saveSH: saveSH} );
 		var metadata = {
@@ -1493,11 +1510,11 @@ GUI.prototype.exportEnvironment = function()
 			size: buffer.byteLength / 1e6
 		}
 
-		var filename = new_filename || CORE._environment.replace(".exr", ".hdre");
+		var filename = new_filename || CORE._environment.replace(".hdr", ".hdre").replace(".exr", ".hdre");
 
 		CORE.FS.uploadData("hdre", buffer, filename, metadata).then(function(){
 
-			gui.createPreview( CORE._environment, filename )
+			gui.createPreview( CORE._environment, filename );
 
 		});
 		
@@ -1508,7 +1525,9 @@ GUI.prototype.exportEnvironment = function()
 	var alert = LiteGUI.alert("", {title: "Export environment", width: 400, height: 350, noclose: true});
 
 	var widgets = new LiteGUI.Inspector();
-	widgets.addString("Filename", CORE._environment.replace(".exr", ".hdre"), {callback: function(v){
+	var final_name = CORE._environment.replace(".hdr", ".hdre").replace(".exr", ".hdre");
+
+	widgets.addString("Filename", final_name, {callback: function(v){
 
 		new_filename = v;
 
@@ -1521,16 +1540,17 @@ GUI.prototype.exportEnvironment = function()
 	widgets.addCombo("Format", format, {name_width: "60%", values: format_values, callback: function(v){
 		format = v;
 	}});
-	widgets.addCombo("Bits per channel", bits, {name_width: "60%", values: ["8 bits","16 bits", "32 bits", "RGBE"], callback: function(v){
+	widgets.addCombo("Bits per channel", bits, {name_width: "60%", values: values, callback: function(v){
 		bits = v;
 	}});
 
 	widgets.addTitle("PBR info");
-	widgets.addCheckbox("Save spherical harmonics", saveSH, {name_width: "75%", callback: function(v){ saveSH = v; }})
+	widgets.addString("Save spherical harmonics", "yes", {name_width: "75%", disabled: true, callback: function(v){ saveSH = v; }})
 
 	widgets.addSeparator();
 
-	widgets.addTags( "Tags","empty", {values: ["empty","outdoor","indoor","nature","urban","night","skies"], callback: function(v){
+	var _tags = ["empty","outdoor","indoor","nature","urban","rural","natural-light","artificial-light","night","skies","high-contrast","low-contrast"];
+	widgets.addTags( "Tags","empty", {values: _tags, callback: function(v){
 		
 		selected_tags = {};
 		Object.assign(selected_tags, v);
@@ -1574,7 +1594,13 @@ GUI.prototype.showCubemapTools = function()
 		widgets.clear();
 		
 		widgets.addSection("HDRE");
-		widgets.addButton( "Convert EXR to HDRE", "Export", {name_width: "70%", callback: function() { gui.exportEnvironment() } });
+		/*widgets.addButton( null, "Redo prefilter", {name_width: "70%", callback: function() { 
+			
+			CORE.set( CORE._environment_set, {force_prefilter: true} );
+
+		} });
+		widgets.addSeparator();*/
+		widgets.addButton( "Environment to HDRE", "Export", {name_width: "70%", callback: function() { gui.exportEnvironment() } });
 		widgets.addButton( "Update repo preview", "Update", {name_width: "70%", callback: function() { gui.createPreview( CORE._environment ) } });
 		widgets.addSeparator();
 
@@ -2109,7 +2135,7 @@ GUI.prototype.onExport = function()
     };
 
 	var data;
-	var filename = "export";
+	var filename = CORE.current_file ? CORE.current_file.filename : "export";
 
 	gl.canvas.toBlob(function(v){ 
 		
@@ -2211,6 +2237,7 @@ GUI.prototype.onImportFromServer = function(data)
 	var oncomplete = function( data ){
 		$('#'+dialog_id).remove();
 		LiteGUI.showModalBackground(false);
+		data.file_selected = selected;
 		CORE.fromJSON( data );
 	}
 
@@ -2257,34 +2284,34 @@ GUI.prototype.onImportFromServer = function(data)
  */
 GUI.prototype.render = function()
 {
-	if(this._uniform_canvas)
+	if(!this._uniform_canvas)
+	return;
+
+	var ctx = this._uniform_canvas.getContext("2d");
+	ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+
+	ctx.globalAlpha = 0.25;
+	ctx.fillStyle = "#FFF";
+	ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
+	ctx.globalAlpha = 1;
+	ctx.font = "12px Monospace";
+
+	var k = 12;
+	var z = 10;
+
+	for(var i in this._uniform_list)
 	{
-		var ctx = this._uniform_canvas.getContext("2d");
-		ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+		var name = this._uniform_list[i];
+		if(k > 150) { z += 160; k = 12; }
 
-		ctx.globalAlpha = 0.25;
-		ctx.fillStyle = "#FFF";
-		ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
-		ctx.globalAlpha = 1;
-		ctx.font = "12px Monospace";
+		var value = renderer._uniforms[name];
+		value = value.toFixed ? value.toFixed(3) : value;
 
-		var k = 12;
-		var z = 10;
+		if(value.constructor === Float32Array)
+			continue;
 
-		for(var i in this._uniform_list)
-		{
-			var name = this._uniform_list[i];
-			if(k > 150) { z += 160; k = 12; }
-	
-			var value = renderer._uniforms[name];
-			value = value.toFixed ? value.toFixed(3) : value;
-
-			if(value.constructor === Float32Array)
-				continue;
-
-			ctx.fillText( name + " " + value, z, k );
-			k += 15;
-		}
+		ctx.fillText( name + " " + value, z, k );
+		k += 15;
 	}
 }
 
@@ -2639,6 +2666,9 @@ GUI.prototype.onDragMesh = function(file, extension)
     var dialog = new LiteGUI.Dialog( {id: dialog_id, parent: "body", title: id, close: true, width: w, draggable: true });
     dialog.show('fade');
 
+	var scales = ["m", "cm"];
+	var world_scale = "cm";
+
     var widgets = new LiteGUI.Inspector();
     widgets.on_refresh = function(){
 
@@ -2653,6 +2683,9 @@ GUI.prototype.onDragMesh = function(file, extension)
         widgets.addFile( "Metalness", "" );
         widgets.widgets_per_row = 1;
         widgets.addSeparator();
+		widgets.addCombo("Custom scale", world_scale, {values: scales, callback: function(v){
+			world_scale = v;
+		}});
         widgets.addButton( null, "Load", {width: "100%", name_width: "50%", callback: function(){
             
 			dialog.close();
@@ -2666,7 +2699,9 @@ GUI.prototype.onDragMesh = function(file, extension)
 					{
 						var mesh_data = RM.formats[extension].parse(e.target.result);
 						var mesh = GL.Mesh.load( mesh_data );
-						CORE.addMesh(mesh, extension, filename);
+						CORE.addMesh(mesh, extension, filename, {
+							custom_scale: world_scale
+						});
 						
 						that.loading(0);	
 					}
@@ -3347,7 +3382,7 @@ LiteGUI.Inspector.prototype.addShader = function( name, value, options )
 
 	this.values[name] = value;
 
-	var element = this.createWidget(name,"<span class='inputfield button shader'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+ (value == "notfound" ? "" : value) +"' "+(options.disabled?"disabled":"")+"/></span><button title='show folders' class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button>", options);
+	var element = this.createWidget(name,"<span class='inputfield button shader'><input type='text' tabIndex='"+this.tab_index+"' class='text string' value='"+ (value == "notfound" ? "" : value) +"' "+(options.disabled?"disabled":"")+"/></span><button title='show folders' class='micro'>"+(options.button || LiteGUI.special_codes.open_folder )+"</button><button title='edit shader' class='micro shader-edit' style='color: white'>"+"{...}"+"</button>", options);
 
 	//INPUT
 	var input = element.querySelector(".wcontent input");
@@ -3471,6 +3506,11 @@ LiteGUI.Inspector.prototype.addShader = function( name, value, options )
 		}});
 
 		dialog.adjustSize();
+	});
+
+	element.querySelector(".wcontent button.shader-edit").addEventListener( "click", function(e) { 
+
+		ShaderEditor.openWindow(node.shader);
 	});
 
 	this.tab_index += 1;

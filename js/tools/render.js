@@ -134,11 +134,11 @@ RenderComposer.prototype.getCameraUniforms = function()
     
     var uniforms = {};
 
+    uniforms['u_view'] = this.camera.view_matrix;
+    uniforms['u_projection'] = this.camera.projection_matrix;
     uniforms["u_invv"] = inv_v;
     uniforms['u_invp'] = inv_p;
     uniforms['u_invvp'] = inv_vp;
-    uniforms['u_projection'] = this.camera.projection_matrix;
-    uniforms['u_view'] = this.camera.view_matrix;
 
     return uniforms;
 }

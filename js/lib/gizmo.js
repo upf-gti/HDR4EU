@@ -9,11 +9,14 @@ function Gizmo(o)
 	this.targets = null;
 	this.size = 150; //in pixels
 	this.mode = Gizmo.DEFAULT;
+	this.layers = 0xFF;
+	this.grid_size = 0;
 
+	this.shader = "flat"; //do not change this
 	this._last = vec3.create();
 
 	var colors = {x:Gizmo.XAXIS_COLOR,y:Gizmo.YAXIS_COLOR,z:Gizmo.ZAXIS_COLOR};
-	var actions = ["drag","movex","movey","movez","scalex","scaley","scalez","rotatex","rotatey","rotatez","rotatefront","rotate","scale"];
+	var actions = ["drag","movex","movey","movez","movexy","movexz","moveyz","scalex","scaley","scalez","scalexy","scaleyz","scalexz","rotatex","rotatey","rotatez","rotatefront","rotate","scale"];
 	this.actions = {};
 	for(var i in actions)
 	{
@@ -22,7 +25,7 @@ function Gizmo(o)
 			mask: 0xFF,
 			pos: vec3.create(),
 			pos2D: vec3.create(),
-			radius: 0.2,
+			radius: 0.15,
 			visible: false,
 			flag: Gizmo[action.toUpperCase()]
 		};
@@ -41,6 +44,11 @@ function Gizmo(o)
 	this.actions["scalex"].axis = this.actions["rotatex"].axis = this.actions["movex"].axis = vec3.fromValues(1,0,0);
 	this.actions["scaley"].axis = this.actions["rotatey"].axis = this.actions["movey"].axis = vec3.fromValues(0,1,0);
 	this.actions["scalez"].axis = this.actions["rotatez"].axis = this.actions["movez"].axis = vec3.fromValues(0,0,1);
+	this.actions["movexy"].normal = this.actions["scalexy"].normal = vec3.fromValues(0,0,1);
+	this.actions["movexz"].normal = this.actions["scalexz"].normal = vec3.fromValues(0,1,0);
+	this.actions["moveyz"].normal = this.actions["scaleyz"].normal = vec3.fromValues(1,0,0);
+	this.actions["movexy"].radius = this.actions["movexz"].radius = this.actions["moveyz"].radius = 0.1;
+	this.actions["scalexy"].radius = this.actions["scalexz"].radius = this.actions["scaleyz"].radius = 0.1;
 	this.actions["drag"].cursor = "move";
 	this.actions["scale"].cursor = "row-resize";
 	//this.actions["scale"].radius = 0.3;
@@ -58,24 +66,34 @@ function Gizmo(o)
 Gizmo.MOVEX = 1<<0;
 Gizmo.MOVEY = 1<<1;
 Gizmo.MOVEZ = 1<<2;
-Gizmo.ROTATEX = 1<<3;
-Gizmo.ROTATEY = 1<<4;
-Gizmo.ROTATEZ = 1<<5;
-Gizmo.SCALEX = 1<<6;
-Gizmo.SCALEY = 1<<7;
-Gizmo.SCALEZ = 1<<8;
-Gizmo.SCALE = 1<<9;
-Gizmo.DRAG = 1<<10;
-Gizmo.ROTATE = 1<<11;
-Gizmo.ROTATEFRONT = 1<<12;
+Gizmo.MOVEXY = 1<<3;
+Gizmo.MOVEXZ = 1<<4;
+Gizmo.MOVEYZ = 1<<5;
+Gizmo.ROTATEX = 1<<6;
+Gizmo.ROTATEY = 1<<7;
+Gizmo.ROTATEZ = 1<<8;
+Gizmo.SCALEX = 1<<9;
+Gizmo.SCALEY = 1<<10;
+Gizmo.SCALEZ = 1<<11;
+Gizmo.SCALEXY = 1<<12;
+Gizmo.SCALEYZ = 1<<13;
+Gizmo.SCALEXZ = 1<<14;
+Gizmo.SCALE = 1<<15;
+Gizmo.DRAG = 1<<16;
+Gizmo.ROTATE = 1<<17;
+Gizmo.ROTATEFRONT = 1<<18;
 
-Gizmo.MOVEALL = Gizmo.DRAG | Gizmo.MOVEX | Gizmo.MOVEY | Gizmo.MOVEZ;
-Gizmo.ROTATEALL = Gizmo.ROTATE | Gizmo.ROTATEX | Gizmo.ROTATEY | Gizmo.ROTATEZ | Gizmo.ROTATEFRONT;
-Gizmo.SCALEALL = Gizmo.SCALE | Gizmo.SCALEX | Gizmo.SCALEY | Gizmo.SCALEZ;
-Gizmo.MOVEROTATESCALE = Gizmo.MOVEX | Gizmo.MOVEY | Gizmo.MOVEZ | Gizmo.ROTATEALL | Gizmo.SCALE;
-Gizmo.ALL = Gizmo.MOVEALL | Gizmo.ROTATEALL | Gizmo.SCALEX | Gizmo.SCALEY | Gizmo.SCALEZ;
+Gizmo.MOVEAXIS = Gizmo.MOVEX | Gizmo.MOVEY | Gizmo.MOVEZ;
+Gizmo.MOVEPLANAR = Gizmo.MOVEXY | Gizmo.MOVEXZ | Gizmo.MOVEYZ;
+Gizmo.MOVEALL = Gizmo.DRAG | Gizmo.MOVEAXIS | Gizmo.MOVEPLANAR;
+Gizmo.PLANAR = Gizmo.MOVEX | Gizmo.MOVEZ | Gizmo.MOVEXZ | Gizmo.ROTATEY | Gizmo.SCALE;
+Gizmo.ROTATEALL = Gizmo.ROTATEX | Gizmo.ROTATEY | Gizmo.ROTATEZ | Gizmo.ROTATEFRONT;
+Gizmo.SCALEALL = Gizmo.SCALE | Gizmo.SCALEX | Gizmo.SCALEY | Gizmo.SCALEZ | Gizmo.SCALEXY | Gizmo.SCALEYZ | Gizmo.SCALEXZ;
+Gizmo.MOVEROTATESCALE = Gizmo.MOVEAXIS | Gizmo.MOVEPLANAR | Gizmo.ROTATEALL | Gizmo.SCALE;
+//Gizmo.ALL = Gizmo.MOVEALL | Gizmo.ROTATEALL | Gizmo.SCALEX | Gizmo.SCALEY | Gizmo.SCALEZ;
+Gizmo.ALL = Gizmo.MOVEAXIS | Gizmo.MOVEPLANAR | Gizmo.ROTATEALL | Gizmo.SCALEALL;
 
-Gizmo.DEFAULT = Gizmo.ALL;
+Gizmo.DEFAULT = Gizmo.PLANAR;
 
 var axisX = mat4.create();
 var axisY = mat4.create();
@@ -104,6 +122,7 @@ mat4.rotate( axisZ, axisZ, 90 * DEG2RAD, [1,0,0] );
 var reverse = mat4.create();
 mat4.scale( reverse, reverse, [-1,-1,-1] );
 
+Gizmo.full_viewport = null;
 
 var tmp = mat4.create();
 var tmp2 = mat4.create();
@@ -111,11 +130,15 @@ var tmp2 = mat4.create();
 Gizmo.XAXIS_COLOR = [0.901, 0.247, 0.349,1];
 Gizmo.YAXIS_COLOR = [0.55, 0.81, 0.11,1];
 Gizmo.ZAXIS_COLOR = [0.23, 0.57, 0.93,1];
-Gizmo.SPHERE_COLOR = [0.3,0.3,0.3,0.5];
+Gizmo.XYAXIS_COLOR = [0.9, 0.7, 0.23, 0.75];
+Gizmo.XZAXIS_COLOR = [0.6, 0.4, 0.7, 0.75];
+Gizmo.YZAXIS_COLOR = [0.39, 0.69, 0.52, 0.75];
+Gizmo.SPHERE_COLOR = [0.8,0.8,0.8,0.4];
 Gizmo.RING_COLOR = [0.5,0.5,0.5,1];
 Gizmo.INNERSPHERE_COLOR = [0.6,0.6,0.6,1];
 Gizmo.SELECTED_COLOR = [1,1,1,1];
 Gizmo.NOAXIS_COLOR = [0.901, 0.247, 0.749,1];
+Gizmo.STATIC_SPHERE_COLOR = [0.1, 0.1, 0.1,0.3];
 
 Gizmo.prototype.isTarget = function( node )
 {
@@ -124,9 +147,13 @@ Gizmo.prototype.isTarget = function( node )
 
 Gizmo.prototype.setTargets = function( nodes, append )
 {
+	if(nodes && nodes.constructor !== Array)
+		throw("nodes must be an Array");
+
 	if(!nodes || nodes.length == 0)
 	{
-		this.targets = null;
+		if(!append)
+			this.targets = null;
 		return
 	}
 
@@ -142,16 +169,25 @@ Gizmo.prototype.setTargets = function( nodes, append )
 Gizmo.prototype.computeCenter = function(nodes)
 {
 	nodes = nodes || this.targets;
+	if(!nodes || !nodes.length)
+		return;
+
 	var pos = null;
 	for(var i = 0; i < nodes.length; ++i)
 	{
 		var n = nodes[i];
+		// allow to move lights
+		if(!(n.layers & this.layers) && n.constructor != LS.Light)
+			continue;
+		
 		var gpos = n.getGlobalPosition();
 		if(!pos)
 			pos = gpos;
 		else
 			vec3.add(pos,pos,gpos);
 	}
+	if(!pos)
+		return [0,0,0];
 	vec3.scale(pos,pos,1/nodes.length);
 	return pos;
 }
@@ -167,7 +203,10 @@ Gizmo.prototype.updateGizmo = function()
 		return;
 	}
 	this.resetTransform();
-	this.position = this.computeCenter(this.targets);
+	if(this.targets.length == 1 && this.coord_system )
+		this.transform = this.targets[0].transform;
+	else
+		this.position = this.computeCenter(this.targets);
 }
 
 Gizmo.prototype.updateTargets = function()
@@ -178,63 +217,122 @@ Gizmo.prototype.updateTargets = function()
 	for(var i = 0; i < this.targets.length; ++i)
 	{
 		var n = this.targets[i];
+		if(!(n.layers & this.layers))
+			continue;
 		n.fromMatrix(gm,true);
 	}
 }
 
 Gizmo.prototype.saveTargetTransforms = function()
 {
+	if(!this.targets)
+		return;
 	this.target_tranforms = [];
 	for(var i = 0; i < this.targets.length; ++i)
 	{
 		var n = this.targets[i];
+		if(!(n.layers & this.layers))
+			continue;
 		this.target_tranforms[i] = new Float32Array(n.transform);
 	}
 }
 
 Gizmo.prototype.restoreTargetTransforms = function()
 {
-	if(!this.target_tranforms || this.target_tranforms.length != this.targets.length)
+	if(!this.target_tranforms || !this.targets || this.target_tranforms.length != this.targets.length )
 		return;
 
 	for(var i = 0; i < this.targets.length; ++i)
 	{
 		var n = this.targets[i];
+		if(!(n.layers & this.layers))
+			continue;
 		n.transform = this.target_tranforms[i];
 	}
 }
 
-
-Gizmo.prototype.applyTransformToTarget = function(transmat)
+Gizmo.prototype.removeTargetsFromScene = function()
 {
-	var gm = this.getGlobalMatrix( mat4.create() );
-	var igm = mat4.invert(mat4.create(), gm);
-	var m = mat4.create();
+	if(!this.targets)
+		return;
+	for(var i = 0; i < this.targets.length; ++i)
+	{
+		var n = this.targets[i];
+		if(!(n.layers & this.layers))
+			continue;
+		if(n.parentNode)
+			n.parentNode.removeChild(n);
+	}	
+	this.targets = null;
+}
+
+Gizmo.prototype.getTargetBaseNodes = function()
+{
+	if(!this.targets || !this.targets.length)
+		return null;
+	var r = [];
 	var targets = this.targets;
 	for(var i = 0; i < targets.length; ++i)
 	{
 		var n = targets[i];
+		if(!(n.layers & this.layers) && n.constructor != LS.Light)
+			continue;
 		if(isParentSelected(n.parentNode))
 			continue;
-		n.getGlobalMatrix(m); //in global
-		mat4.multiply(m,igm,m); //local to gizmo
-		mat4.multiply(m,transmat,m);//scaled
-		mat4.multiply(m,gm,m);//back to world
-		n.fromMatrix(m,true);
+		r.push(n);
 	}
 
-	mat4.multiply(m,gm,transmat);//back to world
-	this.fromMatrix(m);
-	this.scaling = [1,1,1];
+	return r;
 
 	function isParentSelected(node)
 	{
+		if(!node)
+			return false;
 		if(targets.indexOf(node) != -1)
 			return true;
 		if(!node.parentNode)
 			return false;
 		return isParentSelected(node.parentNode)
 	}
+}
+
+Gizmo.prototype.applyTransformToTarget = function(transmat)
+{
+	var gm = this.getGlobalMatrix( mat4.create() );
+	var igm = mat4.invert(mat4.create(), gm);
+	var m = mat4.create();
+	var targets = this.getTargetBaseNodes();
+	if(!targets)
+		return;
+
+	for(var i = 0; i < targets.length; ++i)
+	{
+		var n = targets[i];
+		n.getGlobalMatrix(m); //in global
+		mat4.multiply(m,igm,m); //local to gizmo
+		mat4.multiply(m,transmat,m);//scaled
+		mat4.multiply(m,gm,m);//back to world
+		n.fromMatrix(m,true);
+		n.position = this.applySnap( n.position );
+
+		if(n.onApplyTransform)
+			n.onApplyTransform();
+
+		if(this.grid_size) //snap
+		{
+			var euler = quat.toEuler(vec3.create(), n.rotation );
+			euler[0] = (Math.round((euler[0] * RAD2DEG) / 15) * 15) * DEG2RAD;
+			euler[1] = (Math.round((euler[1] * RAD2DEG) / 15) * 15) * DEG2RAD;
+			euler[2] = (Math.round((euler[2] * RAD2DEG) / 15) * 15) * DEG2RAD;
+			quat.fromEuler(n.rotation,euler);
+		}
+		//console.log("result",n.position);
+	}
+
+	mat4.multiply(m,gm,transmat);//back to world
+	this.fromMatrix(m);
+	this.scaling = [1,1,1];
+	this.updateGizmo();
 }
 
 Gizmo.prototype.applyTranslation = function(d)
@@ -260,6 +358,29 @@ Gizmo.prototype.applyScale = function(s)
 	this.applyTransformToTarget(transmat);
 }
 
+Gizmo.prototype.applySnap = function(pos)
+{
+	if(!this.grid_size)
+		return pos;
+
+	pos[0] = Math.round(pos[0] / this.grid_size) * this.grid_size;
+	pos[1] = Math.round(pos[1] / this.grid_size) * this.grid_size;
+	pos[2] = Math.round(pos[2] / this.grid_size) * this.grid_size;
+	return pos;
+}
+
+Gizmo.prototype.setColor = function(color)
+{
+	if(!this.targets)
+		return;
+	for(var i = 0; i < this.targets.length; ++i)
+	{
+		var n = this.targets[i];
+		if(!(n.layers & this.layers))
+			continue;
+		n.color = color;
+	}	
+}
 
 Gizmo.prototype.cloneTargets = function()
 {
@@ -267,7 +388,9 @@ Gizmo.prototype.cloneTargets = function()
 	for(var i = 0; i < this.targets.length; ++i)
 	{
 		var t = this.targets[i];
-		var n = t.clone();
+		if(!(t.layers & this.layers))
+			continue;
+		var n = t.clone(true);
 		t.parentNode.addChild(n);
 		r.push(t);
 	}
@@ -277,7 +400,7 @@ Gizmo.prototype.cloneTargets = function()
 
 Gizmo.prototype.onMouse = function(e)
 {
-	if(!this._camera)
+	if(!this._camera || !this.targets || this.visible === false)
 		return;
 
 	var camera = this._camera;
@@ -288,49 +411,64 @@ Gizmo.prototype.onMouse = function(e)
 		mouse[0] += e.movementX;
 		mouse[1] += e.movementY;
 	}
-	var ray = camera.getRay(mouse[0], mouse[1]);
+
+	var ray = camera.getRay(mouse[0], mouse[1] );
 	var center = this.position;
 	var front = vec3.sub( vec3.create(), center, camera.position );
 	vec3.normalize(front,front);
 	var action = this._selected_action;
 	var action_info = this.actions[action];
 	var model = this._global_matrix;
-	var center2D = camera.project( center );
+	var center_2D = camera.project( center, null, this.center_2D );
 
 	if(e.type == "mousedown")
 	{
 		this.click_2D[0] = this.click_2D2[0] = mouse[0];
 		this.click_2D[1] = this.click_2D2[0] = mouse[1];
 
+		//special case
+		if(e.is_touch)
+		{
+			this.testMouseOver(e);
+		}
+
 		action = this._selected_action = this._hover_action;
 		action_info = this.actions[action];
 		if(action_info)
 		{
-			//compute axis
-			if( action_info.move )
+			if( action_info.move && action_info.axis ) //axis move
 			{
 				var axis = vec3.clone(action_info.axis);
 				mat4.rotateVec3(axis,model,axis);
 				vec3.normalize(axis,axis);
-				this._last = ray.closestPointOnRay( center, axis );
+				this._last = ray.closestPointOnRay( center, axis ); //compute axis
 				if(e.shiftKey)
 				{
-					this.cloneTarget();
+					this.cloneTargets();
+				}
+			}
+			else if( action_info.move && action_info.normal ) //plane move
+			{
+				if( ray.testPlane( center, action_info.normal ) )
+					this.click_pos = ray.collision_point;
+				if(e.shiftKey)
+				{
+					this.cloneTargets();
 				}
 			}
 			if( action == "drag")
 			{
-				ray.testPlane( center, this._camera.getFront() );
+				ray.testPlane( center, camfront );
 				this._last = ray.collision_point;
 				if(e.shiftKey)
 					this.cloneTargets();
 			}
 			if( action == "rotatefront")
 			{
-				vec2.sub(this.click_2D,this.click_2D,center2D);
+				vec2.sub(this.click_2D,this.click_2D,this.center_2D);
 				vec2.normalize(this.click_2D,this.click_2D);
 				this.click_2D_norm.set( this.click_2D );
-				vec2.scaleAndAdd(this.click_2D,center2D,this.click_2D,this.size*0.5);
+				vec2.scaleAndAdd(this.click_2D,this.center_2D,this.click_2D,this.size*0.5);
 				this.click_2D2.set( this.click_2D );
 			}
 			else if( action_info.rotate )
@@ -354,12 +492,12 @@ Gizmo.prototype.onMouse = function(e)
 					vec3.normalize(this.click_pos,this.click_pos);
 					this.click_axis = vec3.cross( this.click_axis || vec3.create(), front, this.click_pos );
 					//this.click_2D_norm.set( this.click_2D );
-					//vec2.scaleAndAdd(this.click_2D,center2D,this.click_2D,this.size*0.5);
+					//vec2.scaleAndAdd(this.click_2D,this.center_2D,this.click_2D,this.size*0.5);
 				}
 			}
 			this.click_model.set( model );
 			this.click_transform.set( this.transform );
-			this.click_dist = vec3.distance( this.click_2D, center2D );
+			this.click_dist = vec3.distance( this.click_2D, this.center_2D );
 			this.saveTargetTransforms();
 		}
 	}
@@ -369,10 +507,10 @@ Gizmo.prototype.onMouse = function(e)
 		{
 			if( action == "rotatefront")
 			{
-				var v = vec2.sub(vec3.create(),mouse,center2D);
+				var v = vec2.sub(vec3.create(),mouse,this.center_2D);
 				vec2.normalize(v,v);
 				var v2 = this.click_2D_norm;
-				vec2.scaleAndAdd( this.click_2D2, center2D, v, this.size * 0.5 );
+				vec2.scaleAndAdd( this.click_2D2, this.center_2D, v, this.size * 0.5 );
 				var angle1 = Math.atan2(v[0],v[1]);  //angle current click
 				var angle2 = Math.atan2(v2[0],v2[1]);  //angle original click
 				var angle = angle1 - angle2; //offset
@@ -423,9 +561,9 @@ Gizmo.prototype.onMouse = function(e)
 				else //no axis "rotate"
 				{
 					var axis = vec3.cross( vec3.create(), front, this.click_pos );
-					var angle = (vec2.dist( center2D, mouse ) - this.click_dist) * 0.01;
-					var A = vec2.sub( vec2.create(), center2D, mouse );
-					var B = vec2.sub( vec2.create(), center2D, this.click_2D );
+					var angle = (vec2.dist( this.center_2D, mouse ) - this.click_dist) * 0.01;
+					var A = vec2.sub( vec2.create(), this.center_2D, mouse );
+					var B = vec2.sub( vec2.create(), this.center_2D, this.click_2D );
 					if( vec2.dot(A,B) < 0 )
 						angle = -angle;
 					console.log(angle);
@@ -438,12 +576,38 @@ Gizmo.prototype.onMouse = function(e)
 			}
 
 			var diff = null;
-			if( action_info.move || action_info.scale )
+			if( action_info.move && action_info.normal ) //plane move
 			{
-				if(action == "scale" || e.ctrlKey)
+				if( ray.testPlane( center, action_info.normal ) )
+				{
+					var pos = ray.collision_point;
+					this.applySnap(pos);
+					//console.log("expected",pos);
+					diff = vec3.sub( vec3.create(), pos, this.click_pos );
+					this.click_pos = pos;
+				}
+			}
+			else if( action_info.move || action_info.scale ) //axis move and scale
+			{
+				if(action == "scale" || (action_info.scale && e.ctrlKey) )
 				{
 					var f = (1 + (mouse[1] - this.click_2D[1]) * 0.01 );
 					this.applyScale(f);
+					this.click_2D[0] = mouse[0];
+					this.click_2D[1] = mouse[1];
+					return true;
+				}
+
+				if(action == "scalexy" || action == "scalexz" || action == "scaleyz")
+				{
+					var f = (1 + (mouse[1] - this.click_2D[1]) * 0.01 );
+					switch(action)
+					{
+						case "scalexy": this.applyScale([f,f,1]); break;
+						case "scaleyz": this.applyScale([1,f,f]); break;
+						case "scalexz": this.applyScale([f,1,f]); break;
+					}
+
 					this.click_2D[0] = mouse[0];
 					this.click_2D[1] = mouse[1];
 					return true;
@@ -456,7 +620,7 @@ Gizmo.prototype.onMouse = function(e)
 				if(action_info.scale)
 				{
 					//var dist = vec3.distance( closest, center );
-					var dist = vec2.distance( mouse, center2D );
+					var dist = vec2.distance( mouse, this.center_2D );
 					var ratio = dist / this.click_dist;
 					if(action == "scalex")
 						this.applyScale([ratio,1,1]); //this.target._scale[0] *= ratio;
@@ -468,6 +632,7 @@ Gizmo.prototype.onMouse = function(e)
 					//this.target.updateMatrices();
 					return true;
 				}
+				this.applySnap(closest);
 				diff = vec3.sub( vec3.create(), closest, this._last );
 				this._last = closest;
 			}
@@ -475,6 +640,8 @@ Gizmo.prototype.onMouse = function(e)
 			{
 				var closest = ray.testPlane( center, this._camera.getFront() );
 				var closest = ray.collision_point;
+				this.applySnap(closest);
+				//console.log("expected",closest);
 				diff = vec3.sub( vec3.create(), closest, this._last );
 				this._last = closest;
 			}
@@ -482,6 +649,7 @@ Gizmo.prototype.onMouse = function(e)
 			if(diff)
 			{
 				this.applyTranslation(diff);
+				//this.applySnap(pos);
 				//this.translate(diff);
 				//this.updateMatrices();
 				//this.updateTarget();
@@ -490,41 +658,20 @@ Gizmo.prototype.onMouse = function(e)
 		}
 		else //moving the mouse without click
 		{
-			this._hover_action = null;
-			var mouse = [e.canvasx,e.canvasy];
-			var mindist = 100000;
-			var hover = null;
-			for(var i in this.actions)
-			{
-				var info = this.actions[i];
-				if(!info.visible)
-					continue;
-				var pos = info.pos2D;
-				var dist = vec2.distance( pos, mouse );
-				if(dist < info.radius * this.size && dist < mindist)
-				{
-					mindist = dist;
-					hover = i;
-				}
-			}
-			if( !hover )
-			{
-				var disttocenter = vec2.distance( center2D, mouse );
-				if( this.actions.rotatefront.visible && Math.abs(disttocenter - this.size*0.5) < 10 ) //border
-					hover = "rotatefront";
-				else if( this.mode & Gizmo.ROTATE && disttocenter < this.size*0.5 )
-					hover = "rotate";
-			}
-			this._hover_action = hover;
-			gl.canvas.style.cursor = "";
-			if(hover && this.actions[hover])
-				gl.canvas.style.cursor = this.actions[hover].cursor;
+			this.testMouseOver(e);
 		}
 	}
 	else if(e.type == "mouseup")
 	{
-		this._selected_action = null;
-		this.updateGizmo();
+		this.saveTargetTransforms();
+		if(this._selected_action)
+		{
+			this._selected_action = null;
+			this.render( this._last_renderer, this._last_camera ); //update gizmo positions
+			this.testMouseOver(e);
+			this.updateGizmo();
+			return true;
+		}
 	}
 	else if(e.type == "wheel")
 	{
@@ -537,16 +684,12 @@ Gizmo.prototype.onMouse = function(e)
 
 		if(this._selected_action == "drag")
 		{
-			var diff = vec3.sub( vec3.create(), center, camera.position );
+			var diff = vec3.sub(vec3.create(),center,camera.position);
 			var f = 1 + e.wheel * 0.0002;
 			vec3.scaleAndAdd(diff,camera.position,diff,f);
-			this.position = diff;
-			var closest = ray.testPlane( center, this._camera.getFront() );
-			var closest = ray.collision_point;
-			diff = vec3.sub( vec3.create(), closest, this._last );
-			this._last = closest;
-			this.updateMatrices();
-			this.updateTarget();
+			vec3.sub(diff,diff,center);
+			this.applyTranslation(diff);
+			this._last = center;
 			return true;
 		}
 	}
@@ -554,23 +697,74 @@ Gizmo.prototype.onMouse = function(e)
 	return false;
 }
 
+Gizmo.prototype.testMouseOver = function(e)
+{
+	this._hover_action = null;
+	var mouse = [e.canvasx,e.canvasy];
+	var mindist = 100000;
+	var hover = null;
+	for(var i in this.actions)
+	{
+		var info = this.actions[i];
+		if(!info.visible)
+			continue;
+		var pos = info.pos2D;
+		var dist = vec2.distance( pos, mouse );
+		if(dist < info.radius * this.size && dist < mindist)
+		{
+			mindist = dist;
+			hover = i;
+		}
+	}
+	if( !hover )
+	{
+		var disttocenter = vec2.distance( this.center_2D, mouse );
+		if( this.actions.rotatefront.visible && Math.abs(disttocenter - this.size*0.5) < 10 ) //border
+			hover = "rotatefront";
+		else if( this.mode & Gizmo.ROTATE && disttocenter < this.size*0.5 )
+			hover = "rotate";
+	}
+	this._hover_action = hover;
+	//gl.canvas.style.cursor = "";
+	//if(hover && this.actions[hover])
+	//	gl.canvas.style.cursor = this.actions[hover].cursor;
+	return hover;
+}
+
 Gizmo.prototype.cancel = function()
 {
-	this._selected_action = null;
-	this.transform = this.click_transform;
-	this.updateTarget();
+	if(this._selected_action)
+	{
+		this._selected_action = null;
+		this.restoreTargetTransforms();
+	}
 }
 
 //rendering ********************************
 
 Gizmo.prototype.render = function(renderer,camera)
 {
+	this._last_renderer = renderer;
+	this._last_camera = camera;
+
+	//mark as not rendered
+	for(var i in this.actions)
+		this.actions[i].visible = false;
+
+	if(!this.targets || !this.targets.length)
+		return;
+
+	if(this.visible === false)
+		return;
+
 	if(!gl.meshes["cone"])
 	{
+		gl.meshes["circle"] = GL.Mesh.circle({radius:1});
 		gl.meshes["cylinder"] = GL.Mesh.cylinder({radius:0.02,height:1});
 		gl.meshes["cone"] = GL.Mesh.cone({radius:0.1,height:0.25});
 		gl.meshes["torus"] = GL.Mesh.torus({outerradius:1,innerradius:0.02,outerslices:64,innerslices:8});
-		gl.meshes["halftorus"] = GL.Mesh.torus({angle:Math.PI*0.5,outerradius:1,innerradius:0.02,outerslices:64,innerslices:8});
+		gl.meshes["quartertorus"] = GL.Mesh.torus({angle:Math.PI*0.5,outerradius:1,innerradius:0.02,outerslices:64,innerslices:8});
+		gl.meshes["halftorus"] = GL.Mesh.torus({angle:Math.PI,outerradius:1,innerradius:0.02,outerslices:64,innerslices:8});
 	}
 	var cone = gl.meshes["cone"];
 	var sphere = gl.meshes["sphere"];
@@ -587,10 +781,8 @@ Gizmo.prototype.render = function(renderer,camera)
 	var camera_perspective = camera._projection_matrix[5];
 	this.updateMatrices();
 	model.set( this._global_matrix );
-
-	//mark as not rendered
-	for(var i in this.actions)
-		this.actions[i].visible = false;
+	var truefront = vec3.sub( vec3.create(), position, camera.position );
+	vec3.normalize(truefront,truefront);
 
 	this._camera = camera;
 	this._unitary_model = model;
@@ -607,7 +799,6 @@ Gizmo.prototype.render = function(renderer,camera)
 	vec3.normalize(right,right);
 	vec3.normalize(up,up);
 	vec3.normalize(front,front);
-
 	mat4.fromTranslationFrontTop( model_aligned, position, camfront, camtop );
 
 	vec4.transformMat4( pos4, pos4, camera._viewprojection_matrix );
@@ -617,23 +808,26 @@ Gizmo.prototype.render = function(renderer,camera)
 	mat4.scale( model, model, [s,s,s] );
 	mat4.scale( model_aligned, model_aligned, [s,s,s] );
 
-	var dotx = vec3.dot(camfront,right);
-	var doty = vec3.dot(camfront,up);
-	var dotz = vec3.dot(camfront,front);
+	var dotx = vec3.dot(truefront,right);
+	var doty = vec3.dot(truefront,up);
+	var dotz = vec3.dot(truefront,front);
 
-	this._camera.project( position, null, this.center_2D );
+	var camdotx = vec3.dot(camfront,RD.RIGHT);
+	var camdoty = vec3.dot(camfront,RD.UP);
+	var camdotz = vec3.dot(camfront,RD.FRONT);
+
+	var viewport_data = [0,0,gl.canvas.width,gl.canvas.height];
+	this._camera.project( position, viewport_data, this.center_2D );
 
 	gl.disable(gl.DEPTH_TEST);
 	gl.disable(gl.BLEND);
 	gl.disable(gl.CULL_FACE);
+	gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-	var shader = gl.shaders["flat"];
-	shader.uniforms(renderer.uniforms);
+	var shader = gl.shaders[ this.shader ];
+	shader.uniforms(renderer._uniforms);
 	shader.uniforms(camera.uniforms);
 	shader.uniforms(this.uniforms);
-
-	if(this.debug_point)
-		renderer.drawSphere3D(this.debug_point,0.25,[1,1,0,1]);
 
 	//axis lines when moving
 	if( selected == "movex" )
@@ -657,6 +851,24 @@ Gizmo.prototype.render = function(renderer,camera)
 	if( selected == "drag" )
 	{
 		renderer.drawCircle2D(this.center_2D[0],this.center_2D[1],2,Gizmo.XAXIS_COLOR,true);
+		return;
+	}
+
+	if( selected_info && selected_info.normal ) //plane move
+	{
+		tmp.set(model);
+		if( selected == "movexz" )
+			mat4.rotateX( tmp, model, Math.PI / 2 );
+		else if( selected == "moveyz" )
+			mat4.rotateY( tmp, model, Math.PI / 2 );
+		mat4.scale(tmp,tmp,[100,100,100]);
+		shader.setUniform("u_model",tmp);
+		shader.setUniform("u_color",[0.1,0.1,0.1,0.4]);
+		gl.enable(gl.BLEND);
+		gl.enable(gl.DEPTH_TEST);
+		shader.draw( gl.meshes["plane"] );
+		gl.disable(gl.BLEND);
+		gl.disable(gl.DEPTH_TEST);
 		return;
 	}
 
@@ -713,6 +925,8 @@ Gizmo.prototype.render = function(renderer,camera)
 		return;		
 	}
 
+	this.drawRotateSphere(model,Gizmo.STATIC_SPHERE_COLOR);
+
 	//sphere
 	if( mode & Gizmo.ROTATE && hover == "rotate")
 	{
@@ -732,13 +946,23 @@ Gizmo.prototype.render = function(renderer,camera)
 	if( Math.abs(dotx) > 0.1 && mode & Gizmo.ROTATEX)
 	{
 		mat4.rotateZ(tmp, model, Math.PI/2);
+		if(camdotz < 0)
+			mat4.rotateX(tmp, tmp, Math.PI);
+		if(camdoty < 0)
+			mat4.rotateY(tmp, tmp, Math.PI/2);
 		this.drawRotator(tmp, hover == "rotatex" ? Gizmo.SELECTED_COLOR : Gizmo.XAXIS_COLOR, "rotatex" );
 	}
 
 	//rotator Y
 	if( Math.abs(doty) > 0.1 && mode & Gizmo.ROTATEY)
 	{
-		mat4.rotateY(tmp, model, Math.PI/2 );
+		tmp.set(model); //camdotx > 0 && camdotz > 0
+		if(camdotx > 0 && camdotz < 0 )
+			mat4.rotateY(tmp, tmp, -Math.PI/2);
+		else if(camdotx < 0 && camdotz < 0)
+			mat4.rotateY(tmp, tmp, Math.PI);
+		else if(camdotx < 0 && camdotz > 0)
+			mat4.rotateY(tmp, tmp, Math.PI/2);
 		this.drawRotator(tmp, hover == "rotatey" ? Gizmo.SELECTED_COLOR : Gizmo.YAXIS_COLOR, "rotatey" );
 	}
 
@@ -746,15 +970,21 @@ Gizmo.prototype.render = function(renderer,camera)
 	if( Math.abs(dotz) > 0.1 && mode & Gizmo.ROTATEZ)
 	{
 		tmp.set(model);
-		mat4.rotateX(tmp, tmp, Math.PI/2 );
-		mat4.rotateZ(tmp, tmp, -Math.PI );
+		mat4.rotateX(tmp, tmp, Math.PI/2 ); //camdotx > 0 && camdoty > 0
+		if(camdotx > 0 && camdoty < 0 )
+			mat4.rotateY(tmp, tmp, -Math.PI/2);
+		else if(camdotx < 0 && camdoty < 0)
+			mat4.rotateY(tmp, tmp, Math.PI);
+		else if(camdotx < 0 && camdoty > 0)
+			mat4.rotateY(tmp, tmp, Math.PI/2);
+
 		this.drawRotator(tmp, hover == "rotatez" ? Gizmo.SELECTED_COLOR : Gizmo.ZAXIS_COLOR, "rotatez" );
 	}
 
 	//translate X
 	if( Math.abs(dotx) < 0.95)
 	{
-		mat4.rotateZ( tmp, model, dotx < 0  ? -Math.PI / 2 : Math.PI / 2 );
+		mat4.rotateZ( tmp, model, camdotx < 0  ? -Math.PI / 2 : Math.PI / 2 );
 		if(mode & Gizmo.MOVEX)
 			this.drawArrow( tmp, hover == "movex" ? Gizmo.SELECTED_COLOR : Gizmo.XAXIS_COLOR, "movex" );
 		if(mode & Gizmo.SCALEX)
@@ -764,7 +994,7 @@ Gizmo.prototype.render = function(renderer,camera)
 	//translate and scale Y
 	if( Math.abs(doty) < 0.95)
 	{
-		if(doty > 0)
+		if(camdoty > 0)
 			mat4.rotateZ( tmp, model, Math.PI );
 		else
 			tmp.set(model);
@@ -777,12 +1007,43 @@ Gizmo.prototype.render = function(renderer,camera)
 	//translate and scale Z
 	if( Math.abs(dotz) < 0.95 )
 	{
-		mat4.rotateX( tmp, model, dotz < 0 ? -Math.PI / 2 : Math.PI / 2 );
+		mat4.rotateX( tmp, model, camdotz < 0 ? -Math.PI / 2 : Math.PI / 2 );
 		if(mode & Gizmo.MOVEZ)
 			this.drawArrow( tmp, hover == "movez" ? Gizmo.SELECTED_COLOR : Gizmo.ZAXIS_COLOR, "movez" );
 		if(mode & Gizmo.SCALEZ)
 			this.drawScale( tmp, hover == "scalez" ? Gizmo.SELECTED_COLOR : Gizmo.ZAXIS_COLOR, "scalez" );
 	}
+
+	//translate plane
+	if( Math.abs(dotz) > 0.2 && ( mode & Gizmo.MOVEXY || mode & Gizmo.SCALEXY ))
+	{
+		mat4.translate(tmp,model,[0.45 * (dotx<0?1:-1),0.45 * (doty<0?1:-1),0.0]);
+		if( mode & Gizmo.MOVEXY )
+			this.drawFlat( tmp, hover == "movexy" ? Gizmo.SELECTED_COLOR : Gizmo.XYAXIS_COLOR, "movexy" );
+		else
+			this.drawFlat( tmp, hover == "scalexy" ? Gizmo.SELECTED_COLOR : Gizmo.XYAXIS_COLOR, "scalexy", "circle" );
+	}
+
+	if( Math.abs(doty) > 0.2 && ( mode & Gizmo.MOVEXZ || mode & Gizmo.SCALEXZ ) )
+	{
+		mat4.rotateX( tmp, model, Math.PI / 2 );
+		mat4.translate(tmp,tmp,[0.45 * (dotx<0?1:-1),0.45 * (dotz<0?-1:1),0.0]);
+		if(mode & Gizmo.MOVEXZ)
+			this.drawFlat( tmp, hover == "movexz" ? Gizmo.SELECTED_COLOR : Gizmo.XZAXIS_COLOR, "movexz" );
+		else
+			this.drawFlat( tmp, hover == "scalexz" ? Gizmo.SELECTED_COLOR : Gizmo.XZAXIS_COLOR, "scalexz", "circle" );
+	}
+
+	if( Math.abs(dotx) > 0.2 && ( mode & Gizmo.MOVEYZ || mode & Gizmo.SCALEYZ ))
+	{
+		mat4.rotateY( tmp, model, Math.PI / 2 );
+		mat4.translate(tmp,tmp,[0.45 * (dotz<0?1:-1),0.45*(doty<0?1:-1),0.0]);
+		if(mode & Gizmo.MOVEYZ)
+			this.drawFlat( tmp, hover == "moveyz" ? Gizmo.SELECTED_COLOR : Gizmo.YZAXIS_COLOR, "moveyz" );
+		else
+			this.drawFlat( tmp, hover == "scaleyz" ? Gizmo.SELECTED_COLOR : Gizmo.YZAXIS_COLOR, "scaleyz", "circle" );
+	}
+
 
 	if( mode & Gizmo.DRAG )
 		this.drawInnerSphere(model,"drag");
@@ -795,7 +1056,7 @@ Gizmo.prototype.render = function(renderer,camera)
 
 Gizmo.prototype.drawArrow = function( model, color, action )
 {
-	var shader = gl.shaders["flat"];
+	var shader = gl.shaders[this.shader];
 	var cone = gl.meshes["cone"];
 	var cylinder = gl.meshes["cylinder"];
 	var hover = this._hover_action;
@@ -818,12 +1079,12 @@ Gizmo.prototype.drawArrow = function( model, color, action )
 	shader.setUniform("u_model",tmp2);
 	shader.draw( cylinder );
 
-	this.toScreen(tmp2,action);
+	this.toScreen(tmp2,action,[0,0.6,0]);
 }
 
 Gizmo.prototype.drawAxis = function(model,color)
 {
-	var shader = gl.shaders["flat"];
+	var shader = gl.shaders[this.shader];
 	var mesh = gl.meshes["sphere"]; //lots of polys here?
 	mat4.scale( tmp2, model, [0.01,100,0.01] );
 	shader.setUniform("u_model",tmp2 );
@@ -846,16 +1107,30 @@ Gizmo.prototype.drawAxis = function(model,color)
 	this.drawInnerSphere(model);
 }
 
+Gizmo.prototype.drawFlat = function(model,color,action,mesh_type)
+{
+	var mesh = gl.meshes[mesh_type || "plane"];
+	var shader = gl.shaders[this.shader];
+	mat4.scale(tmp,model,[0.25,0.25,0.25]);
+	shader.setUniform("u_color",color);
+	shader.setUniform("u_model",tmp);
+	gl.enable(gl.BLEND);
+	shader.draw( mesh );
+	gl.disable(gl.BLEND);
+	this.toScreen(tmp,action);
+}
+
+
 Gizmo.prototype.drawRotator = function(model,color,action)
 {
 	var full = false; //this.mode == Gizmo.ROTATEALL;
-	var halftorus = gl.meshes[full ? "torus" : "halftorus"];
-	var shader = gl.shaders["flat"];
+	var halftorus = gl.meshes[full ? "halftorus" : "quartertorus"];
+	var shader = gl.shaders[this.shader];
 	mat4.scale(tmp,model,[0.9,0.9,0.9]);
 	shader.setUniform("u_color",color);
 	shader.setUniform("u_model",tmp);
 	shader.draw( halftorus );
-	this.toScreen(tmp,action, [-0.5,0,0.5]);
+	this.toScreen(tmp,action, [-0.75,0,0.75]);
 }
 
 Gizmo.prototype.drawScale = function(model,color,action)
@@ -863,7 +1138,7 @@ Gizmo.prototype.drawScale = function(model,color,action)
 	var cylinder = gl.meshes["cylinder"];
 	var sphere = gl.meshes["sphere"];
 
-	var shader = gl.shaders["flat"];
+	var shader = gl.shaders[this.shader];
 	shader.setUniform("u_color",color);
 
 	var action_info = this.actions[action];
@@ -895,7 +1170,7 @@ Gizmo.prototype.drawScale = function(model,color,action)
 
 Gizmo.prototype.drawRotateSphere = function(model, color)
 {
-	var shader = gl.shaders["flat"];
+	var shader = gl.shaders[this.shader];
 	var sphere = gl.meshes["sphere"];
 	gl.enable(gl.BLEND);
 	gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -908,7 +1183,7 @@ Gizmo.prototype.drawRotateSphere = function(model, color)
 
 Gizmo.prototype.drawInnerSphere = function(model, action)
 {
-	var shader = gl.shaders["flat"];
+	var shader = gl.shaders[this.shader];
 	var sphere = gl.meshes["sphere"];
 	var hover = this._hover_action;
 
@@ -932,30 +1207,37 @@ Gizmo.prototype.drawInnerSphere = function(model, action)
 Gizmo.prototype.renderOutline = function( renderer, scene, camera, objects )
 {
 	objects = objects || this.targets;
-
+	if(!objects || !objects.length)
+		return;
+	var layers = this.layers;
+	objects = objects.filter(function(a){ return a.layers & layers; });
 	var w = gl.viewport_data[2];
 	var h = gl.viewport_data[3];
 	if(!this._selection_buffer || this._selection_buffer.width != w || this._selection_buffer.height != h)
 	{
 		this._selection_buffer = new GL.Texture( w, h, { magFilter: gl.NEAREST});
 	}
+	var shadername = this.shader;
 	this._selection_buffer.drawTo(function(){
-		gl.clearColor(0,0,0,1);
+		// gl.clearColor(0,0,0,1);
 		gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
-		renderer.shader_overwrite = "flat";
+		renderer.shader_overwrite = shadername;
+		var tmp = renderer.onNodeShaderUniforms;
 		renderer.onNodeShaderUniforms = function(node,shader) { shader.setUniform("u_color",[1,1,1,1]); };
 		renderer.render( scene, camera, objects );
-		renderer.onNodeShaderUniforms = renderer.shader_overwrite = null;
+		renderer.shader_overwrite = null;
+		renderer.onNodeShaderUniforms = tmp;
 	});
 	var outline_shader = gl.shaders["outline"];
 	if(!outline_shader)
 		outline_shader = gl.shaders["outline"] = GL.Shader.createFX("\
 			vec3 colorU = texture2D(u_texture, uv - vec2(0.0,u_res.y)).xyz;\n\
 			vec3 colorUL = texture2D(u_texture, uv - u_res).xyz;\n\
+			vec3 colorUR = texture2D(u_texture, uv + vec2(u_res.x,-u_res.y)).xyz;\n\
 			vec3 colorL = texture2D(u_texture, uv - vec2(u_res.x,0.0)).xyz;\n\
 			vec3 colorDL = texture2D(u_texture, uv - vec2(u_res.x,-u_res.y)).xyz;\n\
 			vec3 outline = abs(color.xyz - colorU) * 0.3 + abs(color.xyz - colorL) * 0.3;\n\
-			outline += abs(color.xyz - colorUL) * 0.25 + abs(color.xyz - colorDL) * 0.25;\n\
+			outline += (abs(color.xyz - colorUL) + abs(color.xyz - colorDL) + abs(color.xyz - colorUR)) * 0.1;\n\
 			color = vec4( clamp(outline,vec3(0.0),vec3(1.0)),1.0 );\n\
 		","uniform vec2 u_res;\n");
 
@@ -967,11 +1249,16 @@ Gizmo.prototype.renderOutline = function( renderer, scene, camera, objects )
 	gl.enable(gl.DEPTH_TEST);
 }
 
+Gizmo.prototype.renderCameraGizmo = function( renderer, camera )
+{
+	this.drawInnerSphere
+}
+
 Gizmo.prototype.toScreen = function( m, action, pos )
 {
 	var info = this.actions[action];
 	mat4.multiplyVec3( info.pos, m, pos || [0,0,0] );
-	this._camera.project( info.pos, null, info.pos2D );
+	this._camera.project( info.pos, Gizmo.full_viewport, info.pos2D );
 	info.visible = true;
 }
 

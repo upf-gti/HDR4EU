@@ -235,13 +235,13 @@ function computeSH( faces, cubemapSize, ch) {
 
         for (var c = 0; c < 3; c++) {
           var value = pixels[y * size * channels + x * channels + c]
-		  if(low_precision)
-			  value /= 255;
-          if (gammaCorrect)
-			  value = Math.pow(value, 2.2)
-		  //value = Math.clamp( value, 0, 2 );
+		    if(low_precision)
+			    value /= 255;
+        if (gammaCorrect)
+			    value = Math.pow(value, 2.2)
+		  
 	
-		  sh[0][c] += value * weight1
+		      sh[0][c] += value * weight1
           sh[1][c] += value * weight2 * dy
           sh[2][c] += value * weight2 * dz
           sh[3][c] += value * weight2 * dx

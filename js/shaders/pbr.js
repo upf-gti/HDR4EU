@@ -1,6 +1,11 @@
-// inicializar uniforms
-// cargar HDRE y subir las texturas a la gpu
-// actualizar nodos al poner environment
+// PBRLite 
+// @jxarco
+
+/*
+	Example use case for pbr lighting
+	It uses only indirect illumination from 
+	HDRE cubemap. 
+*/
 
 var PBR = {
 
@@ -11,6 +16,9 @@ var PBR = {
     {
         if(!LS || !GL)
         throw("Add Litescene.js and litegl.js to your project");
+
+		if(!HDRE)
+        throw("Add hdre.js to your project");
 
         this.brdf_tex = this.createBRDF();
 		this.shader = new GL.Shader(this.VERTEX_SHADER, this.FRAGMENT_SHADER);
@@ -24,7 +32,6 @@ var PBR = {
             "u_roughness": 1.0,
             "u_metalness": 1.0,
             "u_alpha": 1.0,
-            "u_emissiveScale": 1.0,
             "u_Skinning": false, // mesh skinning 
         }
     },
@@ -37,14 +44,12 @@ var PBR = {
         // update environment map textures
         var mipCount = 5;
         
-          // LS or RD node
+        // LS or RD node
         var node_textures = node.material ? node.material.textures : node.textures;
 
-       node_textures['brdf'] = "_brdf_integrator";
-       node_textures['SpecularEnvSampler'] =  filename;
-
-        for(var j = 1; j <= mipCount; j++)
-           node_textures['Mip_EnvSampler' + j] = "@mip" + j + "__" +  filename;
+		// All textures are stored in original tex mipmaps
+		node_textures['brdf'] = "_brdf_integrator";
+		node_textures['SpecularEnvSampler'] =  filename;
     },
 
     setTextureProperties(node)
@@ -122,16 +127,22 @@ var PBR = {
     createBRDF()
     {
         var tex_name = '_brdf_integrator';
-        var options = { type: gl.FLOAT, texture_type: gl.TEXTURE_2D, filter: gl.LINEAR};
-        LS.RM.load("users/dmoreno/projects/ondev/saucemedusa/assets/environments/brdf_LUT.png", options, function(tex){
-            gl.textures[tex_name] = tex;
-            return tex;
-        });
+		var options = { type: gl.FLOAT, texture_type: gl.TEXTURE_2D, filter: gl.LINEAR};
+		
+		var shader = new GL.Shader(PBR.BRDF_VSHADER, PBR.BRDF_FSHADER);
+        var tex = gl.textures[tex_name] = new GL.Texture(128, 128, options);
+
+        tex.drawTo(function(texture) {
+    
+            shader.draw(Mesh.getScreenQuad(), gl.TRIANGLES);
+		});
+		
+		return tex;
     },
 
     parseHDRE( buffer, tex_name, on_complete)
     {
-        var r = HDRE.parse(buffer);
+        var r = HDRE.parse(buffer, {onprogress: onprogress});
 
 		if(!r)
 			return false;
@@ -140,45 +151,48 @@ var PBR = {
         var header = r.header;
         var textures = [];
 
-        // create textures
-        for(var i = 0; i < _envs.length; i++)
-        {
-            var type = GL.FLOAT;
-            var data = _envs[i].data;			
-
-            var options = {
-                format: gl.RGBA,
-                type: type,
-				minFilter: gl.LINEAR_MIPMAP_LINEAR,
-                texture_type: GL.TEXTURE_CUBE_MAP,
-                pixel_data: data
-            };
-
-            Texture.setUploadOptions( {no_flip: true} );
-			let tex = new GL.Texture( _envs[i].width, _envs[i].width, options);
-            Texture.setUploadOptions();
-			
-			tex.bind(0);
-			gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
-			tex.unbind();
-
-			textures.push( tex );
-        }
-
-		var version = header.version;
-
+        var version = header.version;
         this.printVersion( version );
 
-        // store the texture 
-        gl.textures[tex_name] = textures[0];
+        // Get base enviroment texture
 
-		for(var i = 1; i < 6; i++){
-			// console.log(i);
-			gl.textures["@mip" + i + "__" + tex_name] = textures[i];
+        var type = GL.FLOAT;
+		var data = _envs[0].data;
+		
+        var options = {
+            format: header.nChannels == 4 ? gl.RGBA : gl.RGB,
+            type: type,
+            minFilter: gl.LINEAR_MIPMAP_LINEAR,
+            texture_type: GL.TEXTURE_CUBE_MAP,
+            pixel_data: data
+        };
+
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false );
+        let tex = new GL.Texture( _envs[0].width, _envs[0].width, options);
+        tex.mipmap_data = {};
+        
+        // Generate mipmap
+        tex.bind(0);
+        gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+        tex.unbind();
+
+        // Upload prefilter mipmaps
+        for(var i = 1; i < 6; i++){
+
+            var pixels =  _envs[i].data;
+            
+            for(var f = 0; f < 6; ++f)
+                tex.uploadData( pixels[f], { no_flip: true, cubemap_face: f, mipmap_level: i}, true );
+
+            tex.mipmap_data[i] = pixels;
         }
         
-        if(on_complete)
-            on_complete();
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true );
+
+        // Store the texture 
+        gl.textures[tex_name] = tex;
+        tex.has_mipmaps = true;
+        tex.data = null;
 
 		return true;
     },
@@ -225,8 +239,6 @@ PBR.VERTEX_SHADER = `
 	uniform mat4 u_bones[64];
 	uniform bool u_Skinning;
 
-	uniform float u_bumpScale;
-	uniform sampler2D u_height_texture;
 	uniform mat4 u_mvp;
 	uniform mat4 u_viewprojection;
 	uniform mat4 u_model;
@@ -261,20 +273,13 @@ PBR.VERTEX_SHADER = `
 		vec3 position = vertex;
 		mat4 transform_matrix = u_viewprojection;
 
-		// has_bump
-		if(u_properties_array1.w == 1.) {
-		    vec4 bumpData = texture2D( u_height_texture, v_coord );
-		    float vAmount = bumpData.r;
-		    position += (v_wNormal * vAmount * u_bumpScale);
-		    v_wPosition = (u_model * vec4(position, 1.0)).xyz;
-		}
-
 		gl_Position = transform_matrix * vec4(v_wPosition, 1.0);
     }
 `;
     
 PBR.FRAGMENT_SHADER = `
-#extension GL_OES_standard_derivatives : enable
+	
+	#extension GL_OES_standard_derivatives : enable
 	#extension GL_EXT_shader_texture_lod : enable
 	precision highp float;
 
@@ -304,11 +309,6 @@ PBR.FRAGMENT_SHADER = `
 
 	// Environment textures
 	uniform samplerCube u_SpecularEnvSampler_texture;
-	uniform samplerCube u_Mip_EnvSampler1_texture;
-	uniform samplerCube u_Mip_EnvSampler2_texture;
-	uniform samplerCube u_Mip_EnvSampler3_texture;
-	uniform samplerCube u_Mip_EnvSampler4_texture;
-	uniform samplerCube u_Mip_EnvSampler5_texture;
 
 	// Mat textures
 	uniform sampler2D u_albedo_texture;
@@ -325,18 +325,9 @@ PBR.FRAGMENT_SHADER = `
 	uniform float u_roughness;
 	uniform float u_metalness;
 	uniform float u_alpha;
-	uniform float u_emissiveScale;
 
 	uniform vec4 u_properties_array0;
 	uniform vec4 u_properties_array1;
-
-	// GUI
-	uniform bool u_flipX;
-	uniform bool u_renderDiffuse;
-	uniform bool u_renderSpecular;
-	uniform float u_ibl_intensity;
-	uniform bool u_enable_ao;
-	uniform bool u_gamma_albedo;
 	uniform bool u_selected;
 
 	struct PBRMat
@@ -534,8 +525,6 @@ PBR.FRAGMENT_SHADER = `
 
 		material.reflection = normalize(reflect(v, n));
 
-		if(u_flipX)
-			material.reflection.x = -material.reflection.x;
 		material.N = n;
 		material.V = v;
 		material.H = h;
@@ -570,7 +559,6 @@ PBR.FRAGMENT_SHADER = `
 
 		if(u_properties_array0.x != 0.){
 			vec3 albedo_tex = texture2D(u_albedo_texture, v_coord).rgb;
-			// albedo_tex = pow(albedo_tex, vec3(1./2.2));
 			baseColor *= albedo_tex;
 		}
 
@@ -587,7 +575,7 @@ PBR.FRAGMENT_SHADER = `
 		if(u_properties_array0.y != 0.){
 				
 			vec4 sampler = texture2D(u_roughness_texture, v_coord);
-			roughness *= 1.0;
+			roughness *= sampler.r;
 		}
 
 		roughness *= u_roughness;
@@ -608,21 +596,17 @@ PBR.FRAGMENT_SHADER = `
 
 	vec3 prem(vec3 R, float roughness) {
 
-		float lod = roughness * 5.;
-
-		vec3 r = R;
+		float 	f = roughness * 5.0;
+		vec3 	r = R;
 
 		vec4 color;
 
-		if(lod < 1.0) color = mix( textureCube(u_SpecularEnvSampler_texture, r), textureCube(u_Mip_EnvSampler1_texture, r), lod );
-		else if(lod < 2.0) color = mix( textureCube(u_Mip_EnvSampler1_texture, r), textureCube(u_Mip_EnvSampler2_texture, r), lod - 1.0 );
-		else if(lod < 3.0) color = mix( textureCube(u_Mip_EnvSampler2_texture, r), textureCube(u_Mip_EnvSampler3_texture, r), lod - 2.0 );
-		else if(lod < 4.0) color = mix( textureCube(u_Mip_EnvSampler3_texture, r), textureCube(u_Mip_EnvSampler4_texture, r), lod - 3.0 );
-		else color = mix( textureCube(u_Mip_EnvSampler4_texture, r), textureCube(u_Mip_EnvSampler5_texture, r), lod - 4.0 );
-
-
-		color /= (color + vec4(1.0));
-		color = pow(color, vec4(1./2.2));
+		if(f < 1.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 0.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 1.0), f );
+		else if(f < 2.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 1.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 2.0), f - 1.0 );
+		else if(f < 3.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 2.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 3.0), f - 2.0 );
+		else if(f < 4.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 3.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 4.0), f - 3.0 );
+		else if(f < 5.0) color = mix( textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 4.0), textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 5.0), f - 4.0 );
+		else color = textureCubeLodEXT(u_SpecularEnvSampler_texture, r, 5.0);
 
 		return color.rgb;
 	}
@@ -634,13 +618,15 @@ PBR.FRAGMENT_SHADER = `
 		vec2 brdfSamplePoint = vec2(NdotV, material.roughness);
 		vec2 brdf = texture2D(u_brdf_texture, brdfSamplePoint).rg;
 
-		vec3 diffuseSample = prem(material.reflection, 1.0);
+		vec3 normal = -material.N;
+
+		vec3 diffuseSample = prem(normal, 1.0); // diffuse part uses normal vector (no reflection)
 		vec3 specularSample = prem(material.reflection, material.roughness);
 
 		vec3 specularColor = mix(material.f0, material.baseColor.rgb, material.metallic);
 
-			Fd += diffuseSample * material.diffuseColor;
-			Fr += specularSample * (specularColor * brdf.x + brdf.y);
+		Fd += diffuseSample * material.diffuseColor;
+		Fr += specularSample * (specularColor * brdf.x + brdf.y);
 	}
 
 	void do_lighting(inout PBRMat material, inout vec3 color)
@@ -649,13 +635,12 @@ PBR.FRAGMENT_SHADER = `
 
 		vec3 Fd_i = vec3(0.0);
 		vec3 Fr_i = vec3(0.0);
-		//ibl_multiscattering(material, Fd_i, Fr_i); // needs some work
 		getIBLContribution(material, Fd_i, Fr_i); // no energy conservation
 		
 		vec3 indirect = Fd_i + Fr_i;
 
 		// Apply ambient oclusion 
-		if(u_properties_array1.z != 0. && u_enable_ao)
+		if(u_properties_array1.z != 0.0)
 			indirect *= texture2D(u_ao_texture, v_coord).r;
 		
 	
@@ -670,10 +655,160 @@ PBR.FRAGMENT_SHADER = `
 		createMaterial( material );
 		do_lighting( material, color);
 
-		
 		if(u_properties_array1.x != 0.)
-			color += texture2D(u_emissive_texture, v_coord).rgb * 1.0;//u_emissiveScale;
-		  
+			color += texture2D(u_emissive_texture, v_coord).rgb;
+		color /= (color+vec3(1.0));
 		gl_FragColor = vec4(color, 1.0);
 	}
 `;
+
+PBR.BRDF_SAMPLING_SHADERCODE = `
+
+		/* -- Tangent Space conversion -- */
+		vec3 tangent_to_world(vec3 vector, vec3 N, vec3 T, vec3 B)
+		{
+		  return T * vector.x + B * vector.y + N * vector.z;
+		}
+		vec2 noise2v(vec2 co)  {
+		    return vec2(
+				fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453),
+				fract(sin(dot(co.yx ,vec2(12.9898,78.233))) * 43758.5453)
+			);
+		}
+		float noise(vec2 co)  {
+		    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+		}
+		vec3 sample_ggx(vec3 rand, float a2)
+		{
+		  /* Theta is the aperture angle of the cone */
+		  float z = sqrt((1.0 - rand.x) / (1.0 + a2 * rand.x - rand.x)); /* cos theta */
+		  float r = sqrt(max(0.0, 1.0 - z * z));                        /* sin theta */
+		  float x = r * rand.y;
+		  float y = r * rand.z;
+
+		  /* Microfacet Normal */
+		  return vec3(x, y, z);
+		}
+		vec3 hammersley_3d(float i, float invsamplenbr)
+		{
+		  vec3 Xi; /* Theta, cos(Phi), sin(Phi) */
+
+		  Xi.x = i * invsamplenbr; /* i/samples */
+		  Xi.x = fract(Xi.x + jitternoise.x);
+
+		  int u = int(mod(i + jitternoise.y * HAMMERSLEY_SIZE, HAMMERSLEY_SIZE));
+
+		  Xi.yz = texture2D(u_hammersley_sample_texture, vec2(u, 0)).rg;
+
+		  return Xi;
+		}
+		vec2 Hammersley(const in int index, const in int numSamples){
+			vec2 r = fract(vec2(float(index) * 5.3983, float(int(int(2147483647.0) - index)) * 5.4427));
+			r += dot(r.yx, r.xy + vec2(21.5351, 14.3137));
+			return fract(vec2(float(index) / float(numSamples), (r.x * r.y) * 95.4337));
+		}
+		vec3 sample_ggx(float nsample, float a2, vec3 N, vec3 T, vec3 B)
+		{
+			vec3 Xi = vec3(
+				Hammersley(int(nsample), sampleCount),
+				0.0
+			);
+			// Xi = hammersley_3d(nsample, float(1.0/float(sampleCount)));
+			vec3 Ht = sample_ggx(Xi, a2);
+			return tangent_to_world(Ht, N, T, B);
+		}
+		float G1_Smith_GGX(float NX, float a2)
+		{
+		  /* Using Brian Karis approach and refactoring by NX/NX
+		   * this way the (2*NL)*(2*NV) in G = G1(V) * G1(L) gets canceled by the brdf denominator 4*NL*NV
+		   * Rcp is done on the whole G later
+		   * Note that this is not convenient for the transmission formula */
+		  return NX + sqrt(NX * (NX - NX * a2) + a2);
+		  /* return 2 / (1 + sqrt(1 + a2 * (1 - NX*NX) / (NX*NX) ) ); /* Reference function */
+		}
+		
+	`;
+
+	PBR.BRDF_VSHADER = `
+		
+		precision highp float;
+
+		attribute vec3 a_vertex;
+		attribute vec3 a_normal;
+		attribute vec2 a_coord;
+
+		varying vec2 v_coord;
+		varying vec3 v_vertex;
+
+		void main(){
+			v_vertex = a_vertex;
+			v_coord  = a_coord;
+			vec3 pos = v_vertex * 2.0 - vec3(1.0);
+			gl_Position = vec4(pos, 1.0);
+		}
+	`;
+
+	PBR.BRDF_FSHADER = `
+
+		// BLENDER METHOD
+		precision highp float;
+		varying vec2 v_coord;
+		varying vec3 v_vertex;
+		vec2 jitternoise = vec2(0.0);
+
+		uniform sampler2D u_hammersley_sample_texture;
+
+		#define sampleCount 8192
+		#define PI 3.1415926535897932384626433832795
+		
+		const float HAMMERSLEY_SIZE = 8192.0; 
+
+		`  +  PBR.BRDF_SAMPLING_SHADERCODE +  `
+		
+		 void main() {
+
+			vec3 N, T, B, V;
+
+			float NV = ((clamp(v_coord.y, 1e-4, 0.9999)));
+			float sqrtRoughness = clamp(v_coord.x, 1e-4, 0.9999);
+			float a = sqrtRoughness * sqrtRoughness;
+			float a2 = a * a;
+
+			N = vec3(0.0, 0.0, 1.0);
+			T = vec3(1.0, 0.0, 0.0);
+			B = vec3(0.0, 1.0, 0.0);
+			V = vec3(sqrt(1.0 - NV * NV), 0.0, NV);
+
+			// Setup noise (blender version)
+			jitternoise = noise2v(v_coord);
+
+			 /* Integrating BRDF */
+			float brdf_accum = 0.0;
+			float fresnel_accum = 0.0;
+			for (int i = 0; i < sampleCount; i++) {
+				vec3 H = sample_ggx(float(i), a2, N, T, B); /* Microfacet normal */
+				vec3 L = -reflect(V, H);
+				float NL = L.z;
+
+				if (NL > 0.0) {
+					float NH = max(H.z, 0.0);
+					float VH = max(dot(V, H), 0.0);
+
+					float G1_v = G1_Smith_GGX(NV, a2);
+					float G1_l = G1_Smith_GGX(NL, a2);
+					float G_smith = 4.0 * NV * NL / (G1_v * G1_l); /* See G1_Smith_GGX for explanations. */
+
+					float brdf = (G_smith * VH) / (NH * NV);
+					float Fc = pow(1.0 - VH, 5.0);
+
+					brdf_accum += (1.0 - Fc) * brdf;
+					fresnel_accum += Fc * brdf;
+				}
+			}
+
+			brdf_accum /= float(sampleCount);
+			fresnel_accum /= float(sampleCount);
+
+			gl_FragColor = vec4(brdf_accum, fresnel_accum, 0.0, 1.0);
+		}
+	`;

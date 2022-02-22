@@ -29,10 +29,6 @@ class EventManager {
         if(!ctx)
             throw('no WebGLRenderingContext');
 
-        var camera = this.camera;
-        var s = this.mouse_speed;
-        var keys = this.keys;
-
         ctx.captureKeys(true);
         this.bindKeyboard(ctx);
 
@@ -70,14 +66,14 @@ class EventManager {
             tokens = name.split("."),
             extension = tokens[tokens.length-1].toLowerCase(),
             valid_extensions = [ 
-                'exr', 'hdre', 'png', 'jpg', 'obj', 
+                /*'exr', */'hdre', 'png', 'jpg', 'obj', 
                 'wbin', 'json', 'hdrec', "cr2", "jpeg", 
                 "hdr", "nef", "dae", "hdr"
             ];
             
             if(valid_extensions.lastIndexOf(extension) < 0)
             {
-                LiteGUI.showMessage("Invalid file extension", {title: "Error"});
+                LiteGUI.alert("Invalid file extension. Extension was '<b>" + extension + "</b>'", {title: "Error"});
                 return;
             }
 
@@ -195,30 +191,32 @@ class EventManager {
 
             }
 
-            else if(e.keyCode === 82) // R rotate
+            else if(e.keyCode === 69) // E rotate
             {
                 CORE.gizmo.mode = RD.Gizmo.ROTATEALL;
             }
 
-            else if(e.keyCode === 84) // T translate
+            else if(e.keyCode === 87) // W translate
             {
                 //CORE.gizmo.mode = RD.Gizmo.MOVEALL;
                 CORE.gizmo.mode = RD.Gizmo.DRAG | RD.Gizmo.MOVEAXIS;
             }
 
-            if(e.keyCode === 83)    // S  scale and export scene when ctrl
+            if(e.keyCode === 83)    // S  export scene when ctrl
             {
                 if(e.ctrlKey)
                 {
                     gui.onExport();
                     e.preventDefault();
                     e.stopPropagation();
-                }else{
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    CORE.gizmo.mode = RD.Gizmo.SCALEALL;
                 }
+            }
+
+            if(e.keyCode === 82)    // R  scale
+            {
+                e.preventDefault();
+                e.stopPropagation();
+                CORE.gizmo.mode = RD.Gizmo.SCALEALL;
 
             }
             
@@ -338,10 +336,16 @@ class EventManager {
                     
                     var light_selected = false;
 
-                    if(CORE.GlobalLight)
-                        light_selected = CORE.GlobalLight.checkRayCollision( e.canvasx, e.canvasy );
+                    if(CORE.GlobalLight && CORE.GlobalLight.checkRayCollision( e.canvasx, e.canvasy ))
+                    {
+                        if(RM.Get('NodePicker'))
+                            RM.Get('NodePicker').unSelectAll();
 
-                    if(collide_node && !light_selected) 
+                        light_selected = true;
+                        CORE.gizmo.setTargets( [].concat(CORE.LightNode) );
+                    }
+
+                    if(collide_node) 
                     {
                         // falta saber si está repetido el uid de entre los multiples
                         if(window.node && window.node._uid === collide_node._uid)

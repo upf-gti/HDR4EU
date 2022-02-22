@@ -17,7 +17,8 @@
         "js/lib/litegl.js",
         "js/lib/litescene.js",
         "js/lib/rendeer.js",
-        "https://tamats.com/projects/rendeer/editor/js/gizmo.js",
+        "js/lib/rendeer-extended.js",
+        "js/lib/gizmo.js",
         "js/lib/skeletalAnimation.js",
         "js/lib/collada.js",
         "js/lib/litegraph.js",
@@ -26,6 +27,11 @@
         "js/lib/litefileserver.js",
         "js/lib/Canvas2DtoWebGL.js",
         "js/lib/wbin.js",
+        "js/lib/codemirror/codemirror.js",
+        "js/lib/codemirror/javascript.js",
+        "js/lib/codemirror/glsl.js",
+        "js/lib/codemirror/active-line.js",
+        "js/lib/codemirror/mark-selection.js",
         "js/lib/jscolor/jscolor.js",
         "js/lib/graph_nodes/math.js",
         "js/lib/graph_nodes/math3d.js",
@@ -33,6 +39,7 @@
         "js/lib/graph_nodes/glfx.js",
 
         "js/tools/importer.js",
+        "js/tools/shader_editor.js",
         "js/tools/utils.js",
         "js/tools/hdre.js",
         "js/tools/hdr_engine.js",
@@ -175,6 +182,21 @@
                 }
             ],
             "properties": {
+                "flags": "blend_alpha"
+            }
+        },
+        "PbrCharacter": {
+            "name": "PbrCharacter",
+            "mesh": "PbrCharacter/model.wbin",
+            "textures": {
+                "albedo": "PbrCharacter/Head_albedo.jpeg",
+                "roughness": "PbrCharacter/Head_roughness.jpeg",
+                "metalness": "PbrCharacter/Head_metallic.jpeg",
+                "normal": "PbrCharacter/Head_normal.png"
+            },
+            "size": "18MBs",
+            "camera": {
+                "eye": [-2.075,1.365,5.18]
             }
         },
         "Radio": {
@@ -185,8 +207,8 @@
                 "albedo": "Radio/albedo.png",
                 "ao": "Radio/ao.png",
                 "normal": "Radio/normal.png",
-        "metalness": "Radio/metalness.png"
-        },
+                "metalness": "Radio/metalness.png"
+            },
             "size": "168 KB",
             "camera": {
                 "eye": [-0.5,0.25,1]
@@ -202,7 +224,7 @@
                 "normal": "Bot/normal.png",
                 "emissive": "Bot/emissive.jpg",
                 "metalness": "Bot/metalness.jpg"
-        },
+            },
             "size": "13 MB",
             "camera": {
                 "eye": [-1.2,1.3,-3.8]

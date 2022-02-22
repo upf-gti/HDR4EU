@@ -42,13 +42,34 @@ class GraphManager {
         this.graph.add(viewport_node);
 
         var uniforms_node = LiteGraph.createNode("scene/uniforms");
-        uniforms_node.pos = [920,150];
+        uniforms_node.pos = [850,160];
         this.graph.add(uniforms_node);
         uniforms_node.collapse(true);
 
         frame_node.connect(0, glow_node, 0 );
         glow_node.connect(0, tm_node, 0 );
-        uniforms_node.connect(0, tm_node, 1 );
+
+        // uniforms_node.connect(0, tm_node, 1 );
+
+        // scale average luminance
+        var widget_node = LiteGraph.createNode("widget/hslider");
+        widget_node.properties["min"] = 1.0;
+        widget_node.properties["max"] = 10.0;
+        widget_node.pos = [745,240];
+        widget_node.value = 0.1;
+        this.graph.add(widget_node);
+
+        window.wid = widget_node;
+
+        var operation_node = LiteGraph.createNode("math/operation");
+        operation_node.properties["OP"] = "*";
+        operation_node.pos = [955,240];
+        this.graph.add(operation_node);
+
+        uniforms_node.connect(0, operation_node, 0 );
+        widget_node.connect(0, operation_node, 1 );
+        operation_node.connect(0, tm_node, 1 );
+        //
 
         var ssao_node = LiteGraph.createNode("fx/ssao");
        

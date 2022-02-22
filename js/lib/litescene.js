@@ -1705,7 +1705,7 @@ var LS = {
 	{
 		if(obj.setProperty)
 			return obj.setProperty(name, value);
-		obj[ name ] = value; //clone¿?
+		obj[ name ] = value; //cloneï¿½?
 		if(obj.onPropertyChanged)
 			obj.onPropertyChanged( name, value );
 	},
@@ -11657,7 +11657,7 @@ CompositePattern.prototype.removeChild = function(node, param1, param2)
 		return false; //not his son
 	var pos = this._children.indexOf(node);
 	if(pos == -1)
-		return false; //not his son ¿?
+		return false; //not his son ï¿½?
 	this._children.splice(pos,1);
 
 	if(this._onChildRemoved)
@@ -32572,6 +32572,11 @@ Light.DIRECTIONAL = 3;
 
 Light.DEFAULT_DIRECTIONAL_FRUSTUM_SIZE = 50;
 
+Light.prototype.getGlobalPosition = function()
+{
+	return this._position;
+}
+
 Light.prototype.onAddedToNode = function(node)
 {
 	if(!node.light)
@@ -32686,7 +32691,7 @@ Light.prototype.computeFar = function()
 
 	if( this.type == Light.OMNI )
 	{
-		//Math.SQRT2 because in a 45º triangle the hypotenuse is sqrt(1+1) * side
+		//Math.SQRT2 because in a 45ï¿½ triangle the hypotenuse is sqrt(1+1) * side
 		if( this.attenuation_type == this.RANGE_ATTENUATION  && (this.att_end * Math.SQRT2) < closest_far)
 			closest_far = this.att_end / Math.SQRT2;
 		//TODO, if no range_attenuation but linear_attenuation also check intensity to reduce the far
@@ -33029,7 +33034,7 @@ Light.prototype.getTransformMatrix = function( element, mat )
 * apply a transformation to a given light property, this is done in a function to allow more complex gizmos
 * @method applyTransformMatrix
 * @param {mat4} matrix transformation in matrix form
-* @param {vec3} center ¿?
+* @param {vec3} center ï¿½?
 * @param {string} property_name "target" or "position"
 * @return {mat4} mat4
 */

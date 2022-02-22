@@ -558,6 +558,13 @@ var parserOBJ = {
 				y = parseFloat(tokens[2]);
 				if( code != VT_CODE ) //not always present
 					z = parseFloat(tokens[3]); 
+
+				if(0)
+				{
+					var aux = x;
+					x = z;
+					z = aux;
+				}
 			}
 			
 			switch(code)
