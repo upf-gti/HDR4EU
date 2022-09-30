@@ -1,41 +1,180 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
-<head>
-	<title>Lightdrop</title>
-	<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
-	<meta name="viewport" 
-	content="width=device-width, initial-scale=1.0, user-scalable=no">
+<!DOCTYPE html>
+<html lang="en">
 
-	<link rel="shortcut icon" type="image/png" href="imgs/favicon.png"/>
-	<link rel="stylesheet" href="css/icon.css">
-	<link rel="stylesheet" href="css/litegui.css">
-	<link rel="stylesheet" href="css/style.css">
-	<link rel="stylesheet" href="css/litegraph.css">
-	<link rel="stylesheet" href="css/codemirror/codemirror.css">
-	<link rel="stylesheet" href="css/codemirror/moxer.css">
+<head>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="">
+  <meta name="author" content="">
+  <link rel="icon" href="img/favicon.png">
+
+  <title>HDR4EU Project</title>
+
+  <!-- Bootstrap core CSS -->
+  <link href="vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Custom fonts for this template -->
+  <link href="vendor/fontawesome-free/css/all.min.css" rel="stylesheet">
+  <link href="vendor/simple-line-icons/css/simple-line-icons.css" rel="stylesheet" type="text/css">
+  <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700,300italic,400italic,700italic" rel="stylesheet" type="text/css">
+
+  <!-- Custom styles for this template -->
+  <link href="css/landing-page.css" rel="stylesheet">
+
 </head>
 
 <body>
-	<div id="modal">
-		<div id="xhr-load" style="width: 0%; height: 4px; background-color: rgb(30, 211, 111) !important;"></div>
-		<div class="pbar" style="width: 0%; height: 4px; background-color: #AAF !important;"></div>
-	</div>
-	<div id="import-loader">
-		<div style="margin-top: 25vh;margin-bottom: 2vh;">
-			<img src="imgs/title_short.png" style="width: 20%; min-width: 250px;">
-		</div>
-		<div id="import-names"></div>
-		<div id="import-container">
-			<div id="import-bar"></div>
-		</div>
-	</div>
+
+  <!-- Masthead -->
+  <header class="masthead text-white text-center">
+    <div class="overlay"></div>
+    <div class="container">
+      <div class="row">
+        <div class="col-xl-10 mx-auto">
+          <img class="img-fluid mb-3" src="img/title.png" style="width:45%;" alt="">
+          <h4 class="mb-5">Proof-of-concept web based tools which essentially
+             consists of a renderer on the web achieving photorealistic results and matching real
+              lighting conditions. This work is undertaken by the GTI (UPF) as part of the H2020 HDR4EU Project.
+          </h4>
+          <a class="btn btn-lg btn-outline-light" href="https://www.upf.edu/web/hdr4eu/">Go to project official page</a>
+        </div>
+      </div>
+    </div>
+  </header>
+<!-- 
+  <section class="screenshots text-center bg-light">
+    <div class="container" style="display: flex;">
+          <img class="mb-3" src="img/screenshots/PBR.PNG" alt="" style="width: 33.3%;">
+          <img class="mb-3" src="img/screenshots/graph.PNG" alt="" style="width: 33.3%;">
+          <img class="mb-3" src="img/screenshots/chroma.PNG" alt="" style="width: 33.3%;">
+    </div>
+  </section> -->
+
+  <!-- Icons Grid -->
+  <section class="features-icons bg-light text-center">
+    <div class="container">
+      <div class="row">
+        <div class="col-lg-3">
+          <div class="features-icons-item mx-auto mb-5 mb-lg-0 mb-lg-3">
+            <div class="features-icons-icon d-flex">
+              <i class="icon-screen-desktop m-auto text-primary"></i>
+            </div>
+            <a class="btn btn-lg btn-light" href="demo/">Go to editor</a>
+            <p class="lead mb-2">Interactive and photorealistic 3D renderer</p>
+          </div>
+        </div>
+        <div class="col-lg-3">
+          <div class="features-icons-item mx-auto mb-5 mb-lg-0 mb-lg-3">
+            <div class="features-icons-icon d-flex">
+              <i class="icon-pencil m-auto text-primary"></i>
+            </div>
+            <a class="btn btn-lg btn-warning" href="latest/">Try latest version</a>
+            <p class="lead mb-0">New and updated features with new bugs!</p>
+          </div>
+        </div>
+        <div class="col-lg-3">
+          <div class="features-icons-item mx-auto mb-0 mb-lg-3">
+            <div class="features-icons-icon d-flex">
+              <i class="icon-grid m-auto text-primary"></i>
+            </div>
+            <a class="btn btn-lg btn-light" href="repository/">HDRE Repository</a>
+            <p class="lead mb-0">Web based stand-alone browser for HDR environments</p>
+          </div>
+        </div>
+        <div class="col-lg-3">
+          <div class="features-icons-item mx-auto mb-0 mb-lg-3">
+            <div class="features-icons-icon d-flex">
+              <i class="icon-folder-alt m-auto text-primary"></i>
+            </div>
+            <a class="btn btn-lg btn-light" href="https://github.com/upf-gti/HDR4EU">Source on Github</a>
+            <p class="lead mb-0"></p>
+          </div>
+        </div>
+      </div>
+    </div> 
+  </section>
+
+  <!-- Testimonials -->
+  <section class="testimonials text-center bg-light">
+    <div class="container">
+      <h2 class="mb-5">GTI participation at H2020 HDR4EU</h2>
+      <div class="row">
+        <div class="col-lg-4">
+          <div class="testimonial-item mx-auto mb-5 mb-lg-0">
+            <img class="img-team img-fluid rounded-circle mb-3" src="img/josep.png" alt="">
+            <h5>BLAT, JOSEP</h5>
+            <p class="font-weight-light mb-0">josep.blat@upf.edu</p>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="testimonial-item mx-auto mb-5 mb-lg-0">
+            <img class="img-team img-fluid rounded-circle mb-3" src="img/javi.png" alt="">
+            <h5>AGENJO, JAVI</h5>
+            <p class="font-weight-light mb-0">javi.agenjo@gmail.com</p>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="testimonial-item mx-auto mb-5 mb-lg-0">
+            <img class="img-team img-fluid rounded-circle mb-3" src="img/alex.jpg" alt="">
+            <h5>RODRIGUEZ, ALEX</h5>
+            <p class="font-weight-light mb-0">alejandro.rodriguez@upf.edu</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer bg-light">
+    <div class="container">
+      <div class="row">
+        <div id="logos" class="col-lg-5 h-100 text-center text-lg-left my-auto">
+          <img class="img-fluid mb-3" src="img/upf.png" style="width: 10%; margin-right: 15px;" alt="">
+          <img class="img-fluid mb-3" src="img/horizon.png" style="width: 85%;" alt="">
+        </div>
+        
+        <div class="col-lg-4 h-100 text-center text-lg-left my-auto">
+          <ul class="list-inline mb-2">
+            <li class="list-inline-item">
+              <a href="https://www.upf.edu/web/gti/">Interactive Technologies Group (UPF)</a>
+            </li>
+            <li class="list-inline-item">&sdot;</li>
+            <li class="list-inline-item">
+              <a href="https://www.upf.edu/web/gti/projects">Other projects</a>
+            </li>
+          </ul>
+          <p class="text-muted small mb-4 mb-lg-0">&copy; Template by Start Bootstrap.</p>
+        </div>
+        <div class="col-lg-3 h-100 text-center text-lg-right my-auto">
+          <ul class="list-inline mb-0">
+            <li class="list-inline-item mr-3">
+              <a href="https://github.com/upf-gti">
+                <i class="fab fa-github fa-2x fa-fw"></i>
+              </a>
+            </li>
+            <li class="list-inline-item mr-3">
+              <a href="https://twitter.com/upfbarcelona">
+                <i class="fab fa-twitter-square fa-2x fa-fw"></i>
+              </a>
+            </li>
+            <li class="list-inline-item">
+              <a href="https://www.linkedin.com/school/universitat-pompeu-fabra/">
+                <i class="fab fa-linkedin fa-2x fa-fw"></i>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Bootstrap core JavaScript -->
+  <script src="vendor/jquery/jquery.min.js"></script>
+  <script src="vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+  <script type="text/javascript" src="js/code.js"></script>  
+
 </body>
 
-	<script type="text/javascript" src="js/lib/jquery.min.js"></script>
-	<script type="text/javascript" src="js/lib/litegui.js"></script>
-	<script type="text/javascript" src="js/init.js"></script>
-
-	<script type="text/javascript">
-		RM.init();
-	</script>
 </html>

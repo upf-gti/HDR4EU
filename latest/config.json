@@ -1,0 +1,384 @@
+{
+    "nocache": false,
+    
+    "imports" : [
+        "js/lib/math/linearAlgebra.js",
+        "js/lib/math/numbers.js",
+        "js/lib/math/numeric.js",
+        "js/lib/tinyexr.js",
+        "js/lib/pako.js",
+        "js/lib/UTIF.js",
+        "js/lib/dcraw.js",
+        "js/lib/UPNG.js",
+        "js/lib/hdr-parser.js",
+        "js/lib/jpg.js",
+        "js/lib/gl-matrix-min.js",
+        "js/lib/gl-matrix-extra.js",
+        "js/lib/litegl.js",
+        "js/lib/litescene.js",
+        "js/lib/rendeer.js",
+        "js/lib/rendeer-extended.js",
+        "js/lib/gizmo.js",
+        "js/lib/skeletalAnimation.js",
+        "js/lib/collada.js",
+        "js/lib/litegraph.js",
+        "js/lib/stats.js",
+        "js/lib/importer.js",
+        "js/lib/litefileserver.js",
+        "js/lib/Canvas2DtoWebGL.js",
+        "js/lib/wbin.js",
+        "js/lib/codemirror/codemirror.js",
+        "js/lib/codemirror/javascript.js",
+        "js/lib/codemirror/glsl.js",
+        "js/lib/codemirror/active-line.js",
+        "js/lib/codemirror/mark-selection.js",
+        "js/lib/jscolor/jscolor.js",
+        "js/lib/graph_nodes/math.js",
+        "js/lib/graph_nodes/math3d.js",
+        "js/lib/graph_nodes/gltextures.js",
+        "js/lib/graph_nodes/glfx.js",
+
+        "js/tools/importer.js",
+        "js/tools/shaderEditor.js",
+        "js/tools/utils.js",
+        "js/tools/hdre.js",
+        "js/tools/hdrEngine.js",
+        "js/tools/filesystem.js",
+        "js/tools/eventManager.js",
+        "js/tools/graphManager.js",
+        "js/tools/controller.js",
+        "js/tools/hdri.js",
+        "js/tools/render.js",
+        "js/tools/nodepicker.js",
+        "js/tools/screenfx.js",
+        
+
+        "js/graph_nodes/textures.js",
+        "js/graph_nodes/texturefx.js",
+        "js/graph_nodes/scene.js",
+        "js/graph_nodes/atmos.js",
+
+        "js/components/irradiance.js",
+        "js/components/light.js",
+        "js/components/ssao.js",
+        "js/components/animator.js",
+        "js/components/chroma.js",
+        "js/components/webcam.js",
+        "js/components/target.js",
+
+        "js/shaders/chroma.js",
+
+        "js/gui.js",
+        "js/core.js"
+    ],
+
+    "scenes" : {
+
+        "Wild Bike": {
+            "name": "Wild Bike",
+            "mesh": "WildWestBike/WildWestBike.obj",
+            "textures": {
+                "albedo": "WildWestBike/albedo.jpg",
+                "ao": "WildWestBike/ao.jpg",
+                "emissive": "WildWestBike/emissive.jpg",
+                "roughness": "WildWestBike/roughness.jpg",
+                "metalness": "WildWestBike/metallic.jpg",
+                "normal": "WildWestBike/normal.jpg"
+            },
+            "size": "2,6 MB",
+            "camera": {
+                "eye": [-3,1,4]
+            },
+            "uniforms": {
+                "u_emissiveScale": 30
+            }
+        },
+
+        "Damaged Helmet": {
+            "name": "Damaged Helmet",
+            "mesh": "DamagedHelmet/DamagedHelmet.obj",
+            "textures": {
+                "roughness": "DamagedHelmet/metalRoughness.jpg",
+                "albedo": "DamagedHelmet/albedo.jpg",
+                "ao": "DamagedHelmet/ao.jpg",
+                "normal": "DamagedHelmet/normal.jpg",
+                "emissive": "DamagedHelmet/emissive.jpg"
+            },
+            "size": "1,65 MB",
+            "camera": {
+                "eye": [-1.5,0.5,2.5]
+            },
+            "uniforms": {
+                "u_metallicRough": "true"
+            }
+        },
+        "Run Animation": {
+            "name": "Run Animation",
+            "mesh": "../animations/character.mesh",
+            "textures": {
+               
+            },
+            "size": "0 MB",
+            "camera": {
+                "eye": [-1.5,0.5,2.5]
+            },
+            "properties": {
+                "scale": 0.01
+            }
+        },
+        "Woman": {
+            "name": "Woman",
+            "mesh": "Woman/Woman.dae",
+            "size": "1,65 MB",
+            "camera": {
+                "eye": [-25, 150, 100]
+            },
+            "textures": [
+                {
+                    "albedo": "Woman/Lara_Hair_BaseColor.png",
+                    "roughness": "Woman/Lara_Hair_Roughness.png",
+                    "metalness": "Woman/Lara_Hair_Metallic.png",
+                    "normal": "Woman/Lara_Hair_Normal.png",
+                    "ao": "Woman/Lara_Hair_AmbientOcclusion.png"
+                },
+                {
+                    "albedo": "Woman/Lara_Tops_BaseColor.png",
+                    "roughness": "Woman/Lara_Tops_Roughness.png",
+                    "metalness": "Woman/Lara_Tops_Metallic.png",
+                    "normal": "Woman/Lara_Tops_Normal.png",
+                    "ao": "Woman/Lara_Tops_AmbientOcclusion.png"
+                },
+                {
+                    "albedo": "Woman/Lara_Bottoms_BaseColor.png",
+                    "roughness": "Woman/Lara_Bottoms_Roughness.png",
+                    "metalness": "Woman/Lara_Bottoms_Metallic.png",
+                    "normal": "Woman/Lara_Bottoms_Normal.png",
+                    "ao": "Woman/Lara_Bottoms_AmbientOcclusion.png"
+                },
+                {
+                    "albedo": "Woman/Lara_Shoes_BaseColor.png",
+                    "roughness": "Woman/Lara_Shoes_Roughness.png",
+                    "metalness": "Woman/Lara_Shoes_Metallic.png",
+                    "normal": "Woman/Lara_Shoes_Normal.png",
+                    "ao": "Woman/Lara_Shoes_AmbientOcclusion.png"
+                },
+                {
+                    "albedo": "Woman/Lara_Body_BaseColor.png",
+                    "roughness": "Woman/Lara_Body_Roughness.png",
+                    "metalness": "Woman/Lara_Body_Metallic.png",
+                    "normal": "Woman/Lara_Body_Normal.png",
+                    "ao": "Woman/Lara_Body_AmbientOcclusion.png"
+                },
+                {
+                    "albedo": "Woman/Lara_Body_BaseColor.png",
+                    "roughness": "Woman/Lara_Body_Roughness.png",
+                    "metalness": "Woman/Lara_Body_Metallic.png",
+                    "normal": "Woman/Lara_Body_Normal.png",
+                    "ao": "Woman/Lara_Body_AmbientOcclusion.png"
+                },
+                {
+                    "albedo": "Woman/Lara_Body_BaseColor.png",
+                    "roughness": "Woman/Lara_Body_Roughness.png",
+                    "metalness": "Woman/Lara_Body_Metallic.png",
+                    "normal": "Woman/Lara_Body_Normal.png",
+                    "ao": "Woman/Lara_Body_AmbientOcclusion.png"
+                }
+            ],
+            "properties": {
+                "xxscale": 0.05,
+                "flags": {
+                    "Eyelashes":  [ "blend_alpha" ],
+                    "Hair": [ "two_sided" ]
+                }
+            }
+        },
+        "PbrCharacter": {
+            "name": "PbrCharacter",
+            "mesh": "PbrCharacter/model.wbin",
+            "textures": {
+                "albedo": "PbrCharacter/Head_albedo.jpeg",
+                "roughness": "PbrCharacter/Head_roughness.jpeg",
+                "metalness": "PbrCharacter/Head_metallic.jpeg",
+                "normal": "PbrCharacter/Head_normal.png"
+            },
+            "size": "18MBs",
+            "camera": {
+                "eye": [-2.075,1.365,5.18]
+            }
+        },
+        "Radio": {
+            "name": "Radio",
+            "mesh": "Radio/radio.obj",
+            "textures": {
+                "roughness": "Radio/roughness.png",
+                "albedo": "Radio/albedo.png",
+                "ao": "Radio/ao.png",
+                "normal": "Radio/normal.png",
+                "metalness": "Radio/metalness.png"
+            },
+            "size": "168 KB",
+            "camera": {
+                "eye": [-0.5,0.25,1]
+            }
+        },
+        "Bean Bot": {
+            "name": "Bean Bot",
+            "mesh": "Bot/bot.obj",
+            "textures": {
+                "roughness": "Bot/roughness.jpg",
+                "albedo": "Bot/albedo.jpg",
+                "ao": "Bot/ao.jpg",
+                "normal": "Bot/normal.png",
+                "emissive": "Bot/emissive.jpg",
+                "metalness": "Bot/metalness.jpg"
+            },
+            "size": "13 MB",
+            "camera": {
+                "eye": [-1.2,1.3,-3.8]
+            }
+        },
+        "Substance Mesh": {
+            "name": "Substance Mesh",
+            "mesh": "Pbr/pbr.wbin",
+            "textures": {
+                "roughness": "Pbr/roughness.png",
+                "metalness": "Pbr/metalness.png",
+                "albedo": "Pbr/albedo.png",
+                "normal": "Pbr/normal.png",
+                "ao": "Pbr/ao.png",
+                "height": "Pbr/height.png"
+            },
+            "size": "7,28 MB",
+            "camera": {
+                "eye": [0,65,387]
+            }
+        },
+        "Lantern": {
+            "name": "Lantern",
+            "mesh": "Lantern/lantern.obj",
+            "textures": {
+                "roughness": "Lantern/roughness.png",
+                "metalness": "Lantern/metalness.png",
+                "albedo": "Lantern/albedo.png",
+                "normal": "Lantern/normal.png",
+                "ao": "Lantern/ao.png",
+                "opacity": "Lantern/opacity.png"
+            },
+            "size": "1,94 MB",
+            "camera": {
+                "eye": [-25,80,150],
+                "target": [0,30,0]
+            }
+        },
+        "Blaster": {
+            "name": "Blaster",
+            "mesh": "Blaster/blaster.obj",
+            "textures": {
+                "roughness": "Blaster/roughness.png",
+                "metalness": "Blaster/metalness.png",
+                "albedo": "Blaster/albedo.png",
+                "normal": "Blaster/normal.png",
+                "ao": "Blaster/ao.png",
+                "emissive": "Blaster/emissive.png"
+            },
+            "size": "3,6 MB",
+            "camera": {
+                "eye": [-10,3.6,-8]
+            }
+        },
+        "JetPrince 1967": {
+            "name": "JetPrince 1967",
+            "mesh": [
+             "Bike/bike1/bike1.obj",
+             "Bike/bike2/bike2.obj",
+             "Bike/bike3/bike3.obj",
+             "Bike/bike4/bike4.obj"
+            ],
+            "textures": [
+                {
+                    "roughness": "Bike/bike1/roughness.png",
+                    "metalness": "Bike/bike1/metalness.png",
+                    "albedo": "Bike/bike1/albedo.png",
+                    "normal": "Bike/bike1/normal.png",
+                    "ao": "Bike/bike1/ao.png"
+                },
+                {
+                    "roughness": "Bike/bike2/roughness.png",
+                    "metalness": "Bike/bike2/metalness.png",
+                    "albedo": "Bike/bike2/albedo.png",
+                    "normal": "Bike/bike2/normal.png",
+                    "ao": "Bike/bike2/ao.png"
+                },
+                {
+                    "roughness": "Bike/bike3/roughness.png",
+                    "metalness": "Bike/bike3/metalness.png",
+                    "albedo": "Bike/bike3/albedo.png",
+                    "normal": "Bike/bike3/normal.png",
+                    "ao": "Bike/bike3/ao.png"
+                },
+                {
+                    "roughness": "Bike/bike4/roughness.png",
+                    "metalness": "Bike/bike4/metalness.png",
+                    "albedo": "Bike/bike4/albedo.png",
+                    "normal": "Bike/bike4/normal.png",
+                    "ao": "Bike/bike4/ao.png",
+                    "opacity": "Bike/bike4/opacity.png"
+                }
+            ],
+            "size": "10,2 MB",
+            "camera": {
+                "eye": [2.5,1.5,3]
+            },
+            "node_name": "multipart_node"
+        },
+        "Iron Man helmet": {
+            "name": "Iron Man helmet",
+            "mesh": [
+             "IronMan/helmet/helmet.obj",
+             "IronMan/base/base.obj"
+            ],
+            "textures": [
+                {
+                    "roughness": "IronMan/helmet/roughness.png",
+                    "metalness": "IronMan/helmet/metalness.png",
+                    "albedo": "IronMan/helmet/albedo.png",
+                    "normal": "IronMan/helmet/normal.png",
+                    "ao": "IronMan/helmet/ao.png",
+                    "emissive": "IronMan/helmet/emissive.png"
+                },
+                {
+                    "roughness": "IronMan/base/roughness.png",
+                    "metalness": "IronMan/base/metalness.png",
+                    "albedo": "IronMan/base/albedo.png",
+                    "normal": "IronMan/base/normal.png",
+                    "ao": "IronMan/base/ao.png"
+                }
+            ],
+            "size": "2,51 MB"
+        },
+        "Cerberus": {
+            "name": "Cerberus",
+            "mesh": "Cerberus/cerberus.wbin",
+            "textures": {
+                "roughness": "Cerberus/roughness.png",
+                "metalness": "Cerberus/metalness.png",
+                "albedo": "Cerberus/albedo.png",
+                "normal": "Cerberus/normal.png",
+                "ao": "Cerberus/ao.png"
+            },
+            "size": "2,51 MB",
+            "camera": {
+                "eye": [1,0.5,-1],
+                "target": [0,0,-0.5]
+            }
+        },
+        "Matrix": {
+            "name": "Matrix",
+            "node_name": "matrix_node",
+            "camera": {
+                "eye": [0,10,25],
+                "target": [7,0,7]
+            }
+        }
+    }
+}
